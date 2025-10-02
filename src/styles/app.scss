@@ -35,6 +35,16 @@
   gap: 0.8rem;
 }
 
+.header-actions button,
+.header-actions .stat-badge {
+  height: 2.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 1.2rem;
+  line-height: 1;
+}
+
 .workspace {
   flex: 1;
   display: grid;
@@ -280,7 +290,6 @@
   flex-direction: row;
   align-items: center;
   gap: 0.6rem;
-  padding: 0.65rem 1.2rem;
 }
 
 .stat-badge.inline .stat-label {
