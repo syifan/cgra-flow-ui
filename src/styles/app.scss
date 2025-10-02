@@ -207,18 +207,20 @@
 }
 
 .switch-thumb {
+  position: absolute;
+  top: 50%;
   display: block;
   width: 18px;
   height: 18px;
   background: #fff;
   border-radius: 50%;
-  transform: translateX(2px);
+  transform: translate(2px, -50%);
   transition: transform 0.2s ease;
   box-shadow: 0 3px 10px rgba(15, 23, 42, 0.4);
 }
 
 .switch-root[data-state='checked'] .switch-thumb {
-  transform: translateX(24px);
+  transform: translate(24px, -50%);
 }
 
 .slider-field {
