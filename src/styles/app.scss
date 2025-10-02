@@ -276,6 +276,21 @@
   color: var(--success);
 }
 
+.stat-badge.inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.65rem 1.2rem;
+}
+
+.stat-badge.inline .stat-label {
+  font-size: 0.75rem;
+}
+
+.stat-badge.inline .stat-value {
+  font-size: 1rem;
+}
+
 .layout-preview {
   display: flex;
   flex-direction: column;

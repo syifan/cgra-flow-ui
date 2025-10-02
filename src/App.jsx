@@ -117,7 +117,7 @@ function App() {
           <p>Design, explore, and map kernels onto coarse-grained reconfigurable architectures.</p>
         </div>
         <div className="header-actions">
-          <StatBadge label="Status" value={status} variant={status === 'Complete' ? 'success' : 'info'} />
+          <StatBadge label="Status" value={status} variant={status === 'Complete' ? 'success' : 'info'} inline />
           <button type="button" className="outline" onClick={handleReset}>
             Reset
           </button>
