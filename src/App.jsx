@@ -174,7 +174,7 @@ function App() {
           </Stack>
 
           <Grid container spacing={3} alignItems="stretch">
-            <Grid item xs={12} lg={3}>
+            <Grid item xs={12} md={3} lg={3}>
               <Stack spacing={3} sx={{ height: '100%' }}>
                 <Card sx={{ flexGrow: 1 }}>
                   <CardHeader title="Dataflow Graph" />
@@ -264,7 +264,7 @@ function App() {
               </Stack>
             </Grid>
 
-            <Grid item xs={12} lg={6}>
+            <Grid item xs={12} md={6} lg={6}>
               <Stack spacing={3} sx={{ height: '100%' }}>
                 <Card>
                   <CardHeader title="Architecture Configuration" />
@@ -497,7 +497,7 @@ function App() {
               </Stack>
             </Grid>
 
-            <Grid item xs={12} lg={3}>
+            <Grid item xs={12} md={3} lg={3}>
               <Stack spacing={3} sx={{ height: '100%' }}>
                 <Card>
                   <CardHeader title="Layout Preview" subheader="Shows placement strategy" />
