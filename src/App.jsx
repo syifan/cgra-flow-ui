@@ -173,12 +173,22 @@ function App() {
             </Stack>
           </Stack>
 
-          <Grid container spacing={3} alignItems="stretch">
-            <Grid item xs={12} lg={3}>
-              <Stack spacing={3} sx={{ height: '100%' }}>
-                <Card sx={{ flexGrow: 1 }}>
-                  <CardHeader title="Dataflow Graph" />
-                  <CardContent>
+          <Box
+            sx={{
+              display: 'grid',
+              gap: { xs: 3, md: 3.5 },
+              alignItems: 'stretch',
+              gridTemplateColumns: {
+                xs: '1fr',
+                md: 'minmax(0, 320px) minmax(0, 1fr) minmax(0, 320px)',
+                lg: 'minmax(0, 360px) minmax(0, 1fr) minmax(0, 360px)'
+              }
+            }}
+          >
+            <Stack spacing={3} sx={{ height: '100%' }}>
+              <Card sx={{ flexGrow: 1 }}>
+                <CardHeader title="Dataflow Graph" />
+                <CardContent>
                     <Box
                       sx={{
                         display: 'grid',
@@ -262,13 +272,11 @@ function App() {
                   </CardContent>
                 </Card>
               </Stack>
-            </Grid>
 
-            <Grid item xs={12} lg={6}>
-              <Stack spacing={3} sx={{ height: '100%' }}>
-                <Card>
-                  <CardHeader title="Architecture Configuration" />
-                  <CardContent>
+            <Stack spacing={3} sx={{ height: '100%' }}>
+              <Card>
+                <CardHeader title="Architecture Configuration" />
+                <CardContent>
                     <Grid container spacing={2}>
                       <Grid item xs={12} sm={6}>
                         <TextField
@@ -495,13 +503,11 @@ function App() {
                   </CardContent>
                 </Card>
               </Stack>
-            </Grid>
 
-            <Grid item xs={12} lg={3}>
-              <Stack spacing={3} sx={{ height: '100%' }}>
-                <Card>
-                  <CardHeader title="Layout Preview" subheader="Shows placement strategy" />
-                  <CardContent>
+            <Stack spacing={3} sx={{ height: '100%' }}>
+              <Card>
+                <CardHeader title="Layout Preview" subheader="Shows placement strategy" />
+                <CardContent>
                     <Box
                       sx={{
                         borderRadius: 3,
@@ -605,8 +611,7 @@ function App() {
                   </CardContent>
                 </Card>
               </Stack>
-            </Grid>
-          </Grid>
+          </Box>
         </Stack>
       </Container>
     </Box>
