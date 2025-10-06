@@ -5,6 +5,7 @@ import { Layout, Model } from 'flexlayout-react';
 import 'flexlayout-react/style/dark.css';
 import MainCanvas from './main_cancas';
 
+const NAVBAR_HEIGHT = 56;
 const CGRA_DIMENSION = 4;
 const PE_DIMENSION = 4;
 
@@ -171,7 +172,7 @@ function App() {
           disableGutters
           sx={{
             px: 3,
-            minHeight: 64,
+            minHeight: NAVBAR_HEIGHT,
             alignItems: 'center',
             justifyContent: 'space-between'
           }}
@@ -200,13 +201,21 @@ function App() {
         </Toolbar>
       </AppBar>
       <Box
+        component="main"
         sx={{
           flexGrow: 1,
           minHeight: 0,
-          '.flexlayout__layout, .flexlayout__tabset, .flexlayout__tabset_header': {
+          height: `calc(100vh - ${NAVBAR_HEIGHT}px)`,
+          position: 'relative',
+          overflow: 'hidden',
+          '& .flexlayout__layout': {
+            height: '100%',
+            width: '100%'
+          },
+          '& .flexlayout__layout, & .flexlayout__tabset, & .flexlayout__tabset_header': {
             bgcolor: 'transparent'
           },
-          '.flexlayout__tab': {
+          '& .flexlayout__tab': {
             color: 'text.secondary'
           }
         }}
