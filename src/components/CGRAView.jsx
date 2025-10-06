@@ -2,10 +2,12 @@ import { useEffect, useRef } from 'react';
 import PropTypes from 'prop-types';
 import * as d3 from 'd3';
 import { Box, Typography } from '@mui/material';
-import { alpha, useTheme } from '@mui/material/styles';
+import { alpha, lighten, useTheme } from '@mui/material/styles';
 
 const VIEWBOX_SIZE = 480;
 const PADDING = 32;
+const NODE_WIDTH = 36;
+const NODE_HEIGHT = 24;
 
 function buildMesh(rows, cols) {
   const nodes = [];
@@ -40,6 +42,7 @@ const CGRAView = ({ rows, cols }) => {
   const secondaryMain = theme.palette.secondary.main;
   const primaryDark = theme.palette.primary.dark;
   const secondaryDark = theme.palette.secondary.dark;
+  const linkBase = lighten(secondaryMain, 0.1);
   const backgroundPaper = theme.palette.background.paper;
   const contrastText = theme.palette.getContrastText(primaryMain);
   const white = theme.palette.common.white;
@@ -74,15 +77,15 @@ const CGRAView = ({ rows, cols }) => {
 
     defs
       .append('linearGradient')
-      .attr('id', 'link-gradient')
+      .attr('id', 'tile-fill')
       .attr('x1', '0%')
       .attr('y1', '0%')
       .attr('x2', '100%')
       .attr('y2', '100%')
       .selectAll('stop')
       .data([
-        { offset: '0%', color: alpha(primaryMain, 0.4) },
-        { offset: '100%', color: alpha(secondaryMain, 0.6) }
+        { offset: '0%', color: alpha(primaryMain, 0.9) },
+        { offset: '100%', color: alpha(secondaryMain, 0.8) }
       ])
       .join('stop')
       .attr('offset', (d) => d.offset)
@@ -107,10 +110,10 @@ const CGRAView = ({ rows, cols }) => {
       .attr('y1', (d) => yScale(nodes[d.source].row))
       .attr('x2', (d) => xScale(nodes[d.target].col))
       .attr('y2', (d) => yScale(nodes[d.target].row))
-      .attr('stroke', 'url(#link-gradient)')
-      .attr('stroke-width', 4)
+      .attr('stroke', alpha(linkBase, 0.9))
+      .attr('stroke-width', 3)
       .attr('stroke-linecap', 'round')
-      .attr('opacity', 0.9);
+      .attr('opacity', 0.85);
 
     const nodeGroup = svg
       .append('g')
@@ -120,11 +123,16 @@ const CGRAView = ({ rows, cols }) => {
       .attr('transform', (d) => `translate(${xScale(d.col)}, ${yScale(d.row)})`);
 
     nodeGroup
-      .append('circle')
-      .attr('r', 14)
-      .attr('fill', alpha(primaryMain, 0.95))
-      .attr('stroke', backgroundPaper)
-      .attr('stroke-width', 3)
+      .append('rect')
+      .attr('x', -NODE_WIDTH / 2)
+      .attr('y', -NODE_HEIGHT / 2)
+      .attr('width', NODE_WIDTH)
+      .attr('height', NODE_HEIGHT)
+      .attr('rx', 6)
+      .attr('ry', 6)
+      .attr('fill', 'url(#tile-fill)')
+      .attr('stroke', alpha(backgroundPaper, 0.8))
+      .attr('stroke-width', 2)
       .attr('filter', 'url(#node-shadow)');
 
     nodeGroup

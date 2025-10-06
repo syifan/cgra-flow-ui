@@ -149,15 +149,6 @@ function App() {
     >
       <Container maxWidth="xl">
         <Stack spacing={4}>
-          <Card>
-            <CardHeader
-              title="CGRA View"
-              subheader="Visualizes the current tile mesh and nearest-neighbor routing"
-            />
-            <CardContent>
-              <CGRAView rows={config.tileRows} cols={config.tileCols} />
-            </CardContent>
-          </Card>
           <Stack
             direction={{ xs: 'column', md: 'row' }}
             spacing={3}
@@ -196,6 +187,12 @@ function App() {
             }}
           >
             <Stack spacing={3} sx={{ height: '100%' }}>
+              <Card>
+                <CardHeader title="CGRA Mesh" subheader="Tile layout and neighborhood links" />
+                <CardContent>
+                  <CGRAView rows={config.tileRows} cols={config.tileCols} />
+                </CardContent>
+              </Card>
               <Card sx={{ flexGrow: 1 }}>
                 <CardHeader title="Dataflow Graph" />
                 <CardContent>
