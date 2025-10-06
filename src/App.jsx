@@ -3,6 +3,36 @@ import { AppBar, Box, IconButton, Toolbar, Typography } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import { Layout, Model } from 'flexlayout-react';
 import 'flexlayout-react/style/dark.css';
+import MainCanvas from './main_cancas';
+
+const data = {
+  architecture: {
+    CGRAs: [
+      {
+        id: 'cgra-1',
+        x: 0,
+        y: 0,
+        PEs: [
+          { id: 'pe-1-1', x: 0, y: 0 },
+          { id: 'pe-1-2', x: 1, y: 0 },
+          { id: 'pe-1-3', x: 0, y: 1 },
+          { id: 'pe-1-4', x: 1, y: 1 }
+        ]
+      },
+      {
+        id: 'cgra-2',
+        x: 2,
+        y: 0,
+        PEs: [
+          { id: 'pe-2-1', x: 0, y: 0 },
+          { id: 'pe-2-2', x: 1, y: 0 },
+          { id: 'pe-2-3', x: 0, y: 1 },
+          { id: 'pe-2-4', x: 1, y: 1 }
+        ]
+      }
+    ]
+  }
+};
 
 const initialLayout = {
   global: {
@@ -68,23 +98,7 @@ function App() {
 
     switch (component) {
       case 'canvas':
-        return (
-          <Box
-            sx={{
-              height: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              borderRadius: 1,
-              bgcolor: 'rgba(59,130,246,0.08)',
-              color: 'text.secondary',
-              fontSize: '1.1rem',
-              fontWeight: 500
-            }}
-          >
-            Main canvas placeholder
-          </Box>
-        );
+        return <MainCanvas architecture={data.architecture} />;
       case 'rightPanel':
         return (
           <Box
