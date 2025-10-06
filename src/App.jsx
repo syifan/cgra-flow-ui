@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { AppBar, Box, Button, Toolbar, Typography } from '@mui/material';
+import { AppBar, Box, IconButton, Toolbar, Typography } from '@mui/material';
+import MenuIcon from '@mui/icons-material/Menu';
 import { Layout, Model } from 'flexlayout-react';
 import 'flexlayout-react/style/dark.css';
 
@@ -138,11 +139,28 @@ function App() {
       }}
     >
       <AppBar position="static" color="default" elevation={1}>
-        <Toolbar>
-          <Typography variant="h6" sx={{ flexGrow: 1 }}>
-            CGRA-Flow Workspace
+        <Toolbar
+          disableGutters
+          sx={{
+            px: 3,
+            minHeight: 64,
+            alignItems: 'center',
+            justifyContent: 'space-between'
+          }}
+        >
+          <Typography
+            variant="h6"
+            sx={{
+              fontWeight: 700,
+              letterSpacing: 1,
+              textTransform: 'uppercase'
+            }}
+          >
+            CGRA Flow
           </Typography>
-          <Button color="inherit">New Project</Button>
+          <IconButton color="inherit" edge="end" aria-label="open settings">
+            <MenuIcon />
+          </IconButton>
         </Toolbar>
       </AppBar>
       <Box
