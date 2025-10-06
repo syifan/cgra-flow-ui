@@ -23,6 +23,7 @@ import {
   Typography
 } from '@mui/material';
 import { alpha, useTheme } from '@mui/material/styles';
+import CGRAView from './components/CGRAView';
 
 const kernels = [
   { id: 'fir', name: 'FIR Filter', description: 'Streaming DSP kernel' },
@@ -148,6 +149,15 @@ function App() {
     >
       <Container maxWidth="xl">
         <Stack spacing={4}>
+          <Card>
+            <CardHeader
+              title="CGRA View"
+              subheader="Visualizes the current tile mesh and nearest-neighbor routing"
+            />
+            <CardContent>
+              <CGRAView rows={config.tileRows} cols={config.tileCols} />
+            </CardContent>
+          </Card>
           <Stack
             direction={{ xs: 'column', md: 'row' }}
             spacing={3}
