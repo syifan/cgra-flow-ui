@@ -19,10 +19,14 @@ import {
   Slider,
   Stack,
   Switch,
+  Tab,
+  Tabs,
   TextField,
   Typography
 } from '@mui/material';
 import { alpha, useTheme } from '@mui/material/styles';
+import AddIcon from '@mui/icons-material/Add';
+import CloseIcon from '@mui/icons-material/Close';
 
 const kernels = [
   { id: 'fir', name: 'FIR Filter', description: 'Streaming DSP kernel' },
@@ -48,27 +52,35 @@ const initialLog = [
   { id: 2, message: 'DFG validation completed', level: 'success' }
 ];
 
+const createDefaultConfig = (id, name) => ({
+  id,
+  name,
+  architecture: 'AIE Tile',
+  tileRows: 4,
+  tileCols: 4,
+  bitWidth: 16,
+  vectorLength: 8,
+  routingMode: 'Dynamic',
+  enableDebug: true,
+  powerCap: 35,
+  heuristicSettings: Object.fromEntries(heuristics.map((h) => [h.id, true])),
+  mapper: mapperOptions[0],
+  pipeline: pipelines[0],
+  layout: layouts[0],
+  autoClockGating: true,
+  autoPlaceRegisters: false
+});
+
 function App() {
   const theme = useTheme();
   const [selectedKernel, setSelectedKernel] = useState(kernels[0].id);
-  const [config, setConfig] = useState({
-    architecture: 'AIE Tile',
-    tileRows: 4,
-    tileCols: 4,
-    bitWidth: 16,
-    vectorLength: 8,
-    routingMode: 'Dynamic',
-    enableDebug: true,
-    powerCap: 35,
-    heuristicSettings: Object.fromEntries(heuristics.map((h) => [h.id, true])),
-    mapper: mapperOptions[0],
-    pipeline: pipelines[0],
-    layout: layouts[0],
-    autoClockGating: true,
-    autoPlaceRegisters: false
-  });
+  const [cgras, setCgras] = useState([createDefaultConfig(1, 'CGRA 1')]);
+  const [activeCgraId, setActiveCgraId] = useState(1);
   const [log, setLog] = useState(initialLog);
   const [status, setStatus] = useState('Idle');
+
+  const activeCgra = cgras.find((c) => c.id === activeCgraId) || cgras[0];
+  const config = activeCgra;
 
   const selectedKernelInfo = useMemo(
     () => kernels.find((kernel) => kernel.id === selectedKernel),
@@ -76,20 +88,47 @@ function App() {
   );
 
   const handleConfigChange = (key, value) => {
-    setConfig((prev) => ({
-      ...prev,
-      [key]: value
-    }));
+    setCgras((prev) =>
+      prev.map((cgra) =>
+        cgra.id === activeCgraId
+          ? {
+              ...cgra,
+              [key]: value
+            }
+          : cgra
+      )
+    );
   };
 
   const toggleHeuristic = (id) => {
-    setConfig((prev) => ({
-      ...prev,
-      heuristicSettings: {
-        ...prev.heuristicSettings,
-        [id]: !prev.heuristicSettings[id]
-      }
-    }));
+    setCgras((prev) =>
+      prev.map((cgra) =>
+        cgra.id === activeCgraId
+          ? {
+              ...cgra,
+              heuristicSettings: {
+                ...cgra.heuristicSettings,
+                [id]: !cgra.heuristicSettings[id]
+              }
+            }
+          : cgra
+      )
+    );
+  };
+
+  const addCgra = () => {
+    const newId = Math.max(...cgras.map((c) => c.id)) + 1;
+    const newCgra = createDefaultConfig(newId, `CGRA ${newId}`);
+    setCgras((prev) => [...prev, newCgra]);
+    setActiveCgraId(newId);
+  };
+
+  const removeCgra = (id) => {
+    if (cgras.length <= 1) return;
+    setCgras((prev) => prev.filter((c) => c.id !== id));
+    if (activeCgraId === id) {
+      setActiveCgraId(cgras[0].id === id ? cgras[1].id : cgras[0].id);
+    }
   };
 
   const appendLog = (message, level = 'info') => {
@@ -121,13 +160,19 @@ function App() {
   const handleReset = () => {
     setStatus('Idle');
     setLog([...initialLog]);
-    setConfig((prev) => ({
-      ...prev,
-      tileRows: 4,
-      tileCols: 4,
-      bitWidth: 16,
-      vectorLength: 8
-    }));
+    setCgras((prev) =>
+      prev.map((cgra) =>
+        cgra.id === activeCgraId
+          ? {
+              ...cgra,
+              tileRows: 4,
+              tileCols: 4,
+              bitWidth: 16,
+              vectorLength: 8
+            }
+          : cgra
+      )
+    );
   };
 
   const statusColor = status === 'Complete' ? 'success' : status === 'Idle' ? 'default' : 'info';
@@ -172,6 +217,63 @@ function App() {
               </Button>
             </Stack>
           </Stack>
+
+          <Card>
+            <CardContent sx={{ py: 2 }}>
+              <Stack direction="row" spacing={2} alignItems="center">
+                <Tabs
+                  value={activeCgraId}
+                  onChange={(_, newValue) => setActiveCgraId(newValue)}
+                  sx={{ flexGrow: 1 }}
+                >
+                  {cgras.map((cgra) => (
+                    <Tab
+                      key={cgra.id}
+                      value={cgra.id}
+                      label={
+                        <Box
+                          sx={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 1
+                          }}
+                        >
+                          <span>{cgra.name}</span>
+                          {cgras.length > 1 && (
+                            <Box
+                              component="span"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                removeCgra(cgra.id);
+                              }}
+                              sx={{
+                                display: 'inline-flex',
+                                cursor: 'pointer',
+                                ml: 0.5,
+                                '&:hover': {
+                                  opacity: 0.7
+                                }
+                              }}
+                            >
+                              <CloseIcon fontSize="small" />
+                            </Box>
+                          )}
+                        </Box>
+                      }
+                    />
+                  ))}
+                </Tabs>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<AddIcon />}
+                  onClick={addCgra}
+                >
+                  Add CGRA
+                </Button>
+              </Stack>
+            </CardContent>
+          </Card>
 
           <Box
             sx={{
