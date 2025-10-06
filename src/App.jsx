@@ -5,34 +5,39 @@ import { Layout, Model } from 'flexlayout-react';
 import 'flexlayout-react/style/dark.css';
 import MainCanvas from './main_cancas';
 
-const data = {
-  architecture: {
-    CGRAs: [
-      {
-        id: 'cgra-1',
-        x: 0,
-        y: 0,
-        PEs: [
-          { id: 'pe-1-1', x: 0, y: 0 },
-          { id: 'pe-1-2', x: 1, y: 0 },
-          { id: 'pe-1-3', x: 0, y: 1 },
-          { id: 'pe-1-4', x: 1, y: 1 }
-        ]
-      },
-      {
-        id: 'cgra-2',
-        x: 2,
-        y: 0,
-        PEs: [
-          { id: 'pe-2-1', x: 0, y: 0 },
-          { id: 'pe-2-2', x: 1, y: 0 },
-          { id: 'pe-2-3', x: 0, y: 1 },
-          { id: 'pe-2-4', x: 1, y: 1 }
-        ]
+const CGRA_DIMENSION = 4;
+const PE_DIMENSION = 4;
+
+const buildDefaultData = () => {
+  const CGRAs = [];
+
+  for (let cgraY = 0; cgraY < CGRA_DIMENSION; cgraY += 1) {
+    for (let cgraX = 0; cgraX < CGRA_DIMENSION; cgraX += 1) {
+      const PEs = [];
+
+      for (let peY = 0; peY < PE_DIMENSION; peY += 1) {
+        for (let peX = 0; peX < PE_DIMENSION; peX += 1) {
+          PEs.push({
+            id: `pe-${cgraY}-${cgraX}-${peY}-${peX}`,
+            x: peX,
+            y: peY
+          });
+        }
       }
-    ]
+
+      CGRAs.push({
+        id: `cgra-${cgraY}-${cgraX}`,
+        x: cgraX,
+        y: cgraY,
+        PEs
+      });
+    }
   }
+
+  return { architecture: { CGRAs } };
 };
+
+const data = buildDefaultData();
 
 const initialLayout = {
   global: {

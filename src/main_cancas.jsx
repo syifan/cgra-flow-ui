@@ -1,12 +1,23 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Box } from '@mui/material';
 import { select } from 'd3-selection';
+import { zoom } from 'd3-zoom';
 
 const PE_SIZE = 42;
 const PE_GAP = 16;
 const CGRA_PADDING = 32;
 const CGRA_GAP = 160;
 const MARGIN = 48;
+const CGRA_FILL = 'rgba(30, 64, 175, 0.18)';
+const CGRA_SELECTED_FILL = 'rgba(14, 116, 144, 0.3)';
+const CGRA_STROKE = 'rgba(96, 165, 250, 0.6)';
+const CGRA_SELECTED_STROKE = '#38bdf8';
+const PE_FILL = 'rgba(59, 130, 246, 0.6)';
+const PE_STROKE = '#1d4ed8';
+const PE_SELECTED_FILL = '#f97316';
+const PE_SELECTED_STROKE = '#fb923c';
+const PE_LABEL_FILL = '#e2e8f0';
+const PE_LABEL_SELECTED_FILL = '#0f172a';
 
 function buildLayout(architecture) {
   const layouts = architecture.CGRAs.map((cgra) => {
@@ -34,12 +45,8 @@ function buildLayout(architecture) {
   });
 
   const enhancedLayouts = layouts.map((layout) => {
-    const originX =
-      MARGIN +
-      layout.x * (layout.width + CGRA_GAP);
-    const originY =
-      MARGIN +
-      layout.y * (layout.height + CGRA_GAP);
+    const originX = MARGIN + layout.x * (layout.width + CGRA_GAP);
+    const originY = MARGIN + layout.y * (layout.height + CGRA_GAP);
 
     return {
       ...layout,
@@ -64,6 +71,7 @@ function buildLayout(architecture) {
 
 function MainCanvas({ architecture }) {
   const svgRef = useRef(null);
+  const [selection, setSelection] = useState(null);
 
   const layout = useMemo(() => buildLayout(architecture), [architecture]);
 
@@ -78,7 +86,9 @@ function MainCanvas({ architecture }) {
       .attr('width', '100%')
       .attr('height', '100%');
 
-    const cgraLinkLayer = svg
+    const zoomGroup = svg.append('g').attr('class', 'zoom-group');
+
+    const cgraLinkLayer = zoomGroup
       .append('g')
       .attr('class', 'cgra-links')
       .attr('stroke', '#7dd3fc')
@@ -86,12 +96,19 @@ function MainCanvas({ architecture }) {
       .attr('stroke-opacity', 0.45)
       .attr('fill', 'none');
 
-    const cgraNodeLayer = svg.append('g').attr('class', 'cgra-nodes');
+    const cgraNodeLayer = zoomGroup.append('g').attr('class', 'cgra-nodes');
 
     layout.layouts.forEach((cgraLayout) => {
       const group = cgraNodeLayer
         .append('g')
-        .attr('transform', `translate(${cgraLayout.originX}, ${cgraLayout.originY})`);
+        .attr('class', 'cgra')
+        .attr('data-id', cgraLayout.id)
+        .attr('transform', `translate(${cgraLayout.originX}, ${cgraLayout.originY})`)
+        .style('cursor', 'pointer')
+        .on('click', (event) => {
+          event.stopPropagation();
+          setSelection({ type: 'cgra', id: cgraLayout.id });
+        });
 
       const peLinkLayer = group
         .append('g')
@@ -103,12 +120,13 @@ function MainCanvas({ architecture }) {
 
       group
         .append('rect')
+        .attr('class', 'cgra-boundary')
         .attr('width', cgraLayout.width)
         .attr('height', cgraLayout.height)
         .attr('rx', 18)
         .attr('ry', 18)
-        .attr('fill', 'rgba(30, 64, 175, 0.18)')
-        .attr('stroke', 'rgba(96, 165, 250, 0.6)')
+        .attr('fill', CGRA_FILL)
+        .attr('stroke', CGRA_STROKE)
         .attr('stroke-width', 2.5);
 
       const peLayer = group.append('g').attr('class', 'pe-nodes');
@@ -164,7 +182,13 @@ function MainCanvas({ architecture }) {
         .enter()
         .append('g')
         .attr('class', 'pe')
-        .attr('transform', (d) => `translate(${d.px}, ${d.py})`);
+        .attr('data-id', (d) => d.id)
+        .attr('transform', (d) => `translate(${d.px}, ${d.py})`)
+        .style('cursor', 'pointer')
+        .on('click', (event, d) => {
+          event.stopPropagation();
+          setSelection({ type: 'pe', id: d.id, cgraId: cgraLayout.id });
+        });
 
       nodeGroups
         .append('rect')
@@ -172,15 +196,15 @@ function MainCanvas({ architecture }) {
         .attr('height', PE_SIZE)
         .attr('rx', 8)
         .attr('ry', 8)
-        .attr('fill', 'rgba(59, 130, 246, 0.6)')
-        .attr('stroke', '#1d4ed8')
+        .attr('fill', PE_FILL)
+        .attr('stroke', PE_STROKE)
         .attr('stroke-width', 1.5);
 
       nodeGroups
         .append('text')
         .attr('x', PE_SIZE / 2)
         .attr('y', PE_SIZE / 2 + 4)
-        .attr('fill', '#e2e8f0')
+        .attr('fill', PE_LABEL_FILL)
         .attr('font-family', '"Fira Code", monospace')
         .attr('font-size', 12)
         .attr('text-anchor', 'middle')
@@ -220,7 +244,60 @@ function MainCanvas({ architecture }) {
       .attr('x2', (d) => d.target.centerX)
       .attr('y2', (d) => d.target.centerY)
       .attr('stroke-linecap', 'round');
+
+    const zoomBehavior = zoom()
+      .scaleExtent([0.5, 4])
+      .on('zoom', (event) => {
+        zoomGroup.attr('transform', event.transform);
+      });
+
+    svg.call(zoomBehavior);
+    svg.on('click', (event) => {
+      if (event.defaultPrevented) return;
+      setSelection(null);
+    });
+
+    return () => {
+      svg.on('.zoom', null);
+      svg.on('click', null);
+    };
   }, [layout]);
+
+  useEffect(() => {
+    if (!svgRef.current) return;
+
+    const svg = select(svgRef.current);
+
+    svg.selectAll('g.cgra').each(function updateCgra() {
+      const group = select(this);
+      const id = group.attr('data-id');
+      const boundary = group.select('rect.cgra-boundary');
+      const isSelected = selection?.type === 'cgra' && selection.id === id;
+      const containsSelectedPe = selection?.type === 'pe' && selection.cgraId === id;
+      const highlight = isSelected || containsSelectedPe;
+
+      boundary
+        .attr('fill', highlight ? CGRA_SELECTED_FILL : CGRA_FILL)
+        .attr('stroke', highlight ? CGRA_SELECTED_STROKE : CGRA_STROKE)
+        .attr('stroke-width', highlight ? 3.5 : 2.5)
+        .attr('stroke-opacity', highlight ? 0.95 : 1);
+    });
+
+    svg.selectAll('g.pe').each(function updatePe() {
+      const node = select(this);
+      const id = node.attr('data-id');
+      const rect = node.select('rect');
+      const label = node.select('text');
+      const isSelected = selection?.type === 'pe' && selection.id === id;
+
+      rect
+        .attr('fill', isSelected ? PE_SELECTED_FILL : PE_FILL)
+        .attr('stroke', isSelected ? PE_SELECTED_STROKE : PE_STROKE)
+        .attr('stroke-width', isSelected ? 2 : 1.5);
+
+      label.attr('fill', isSelected ? PE_LABEL_SELECTED_FILL : PE_LABEL_FILL);
+    });
+  }, [selection]);
 
   return (
     <Box
