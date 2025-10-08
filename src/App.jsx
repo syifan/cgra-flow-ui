@@ -64,11 +64,11 @@ const initialLayout = {
   },
   borders: [],
   layout: {
-    type: 'column',
+    type: 'row',
     weight: 100,
     children: [
       {
-        type: 'row',
+        type: 'column',
         weight: 70,
         children: [
           {
@@ -90,8 +90,18 @@ const initialLayout = {
             children: [
               {
                 type: 'tab',
-                name: 'Right Panel',
-                component: 'rightPanel'
+                name: 'Mapping',
+                component: 'mapping'
+              },
+              {
+                type: 'tab',
+                name: 'Verification',
+                component: 'verification'
+              },
+              {
+                type: 'tab',
+                name: 'Layout',
+                component: 'layout'
               }
             ]
           }
@@ -104,8 +114,8 @@ const initialLayout = {
         children: [
           {
             type: 'tab',
-            name: 'Terminal',
-            component: 'terminal'
+            name: 'Right Panel',
+            component: 'rightPanel'
           }
         ]
       }
@@ -174,20 +184,55 @@ function App() {
               onPropertyChange={handlePropertyChange}
             />
           );
-        case 'terminal':
+        case 'mapping':
           return (
             <Box
               sx={{
                 height: '100%',
-                p: 2,
+                p: 3,
                 borderRadius: 1,
-                bgcolor: 'rgba(15,118,110,0.16)',
-                fontFamily: '"Fira Code", monospace',
-                fontSize: '0.85rem',
-                color: 'success.light'
+                border: '1px dashed rgba(148, 163, 184, 0.3)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'text.secondary'
               }}
             >
-              ➜ Terminal ready. Use this space for build output, logs, or interactive tooling.
+              Mapping workspace coming soon.
+            </Box>
+          );
+        case 'verification':
+          return (
+            <Box
+              sx={{
+                height: '100%',
+                p: 3,
+                borderRadius: 1,
+                border: '1px dashed rgba(148, 163, 184, 0.3)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'text.secondary'
+              }}
+            >
+              Verification workspace coming soon.
+            </Box>
+          );
+        case 'layout':
+          return (
+            <Box
+              sx={{
+                height: '100%',
+                p: 3,
+                borderRadius: 1,
+                border: '1px dashed rgba(148, 163, 184, 0.3)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'text.secondary'
+              }}
+            >
+              Layout workspace coming soon.
             </Box>
           );
         default:
