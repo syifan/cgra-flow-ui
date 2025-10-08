@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { AppBar, Box, IconButton, Toolbar, Typography } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import { Layout, Model } from 'flexlayout-react';
 import 'flexlayout-react/style/dark.css';
 import MainCanvas from './main_cancas';
+import PropertyInspector from './PropertyInspector';
 
 const NAVBAR_HEIGHT = 56;
 const CGRA_DIMENSION = 4;
@@ -16,20 +17,38 @@ const buildDefaultData = () => {
     for (let cgraX = 0; cgraX < CGRA_DIMENSION; cgraX += 1) {
       const PEs = [];
 
+      const cgraId = `cgra-${cgraY}-${cgraX}`;
+      const routerId = `router-${cgraY}-${cgraX}`;
+
       for (let peY = 0; peY < PE_DIMENSION; peY += 1) {
         for (let peX = 0; peX < PE_DIMENSION; peX += 1) {
           PEs.push({
             id: `pe-${cgraY}-${cgraX}-${peY}-${peX}`,
             x: peX,
-            y: peY
+            y: peY,
+            cgraId,
+            label: `PE (${peY}, ${peX})`,
+            operation: 'ALU',
+            latency: 1,
+            enabled: true
           });
         }
       }
 
       CGRAs.push({
-        id: `cgra-${cgraY}-${cgraX}`,
+        id: cgraId,
         x: cgraX,
         y: cgraY,
+        label: `CGRA (${cgraY}, ${cgraX})`,
+        clockFrequency: 600,
+        voltage: 0.9,
+        router: {
+          id: routerId,
+          cgraId,
+          routingStrategy: 'Shortest Path',
+          bufferDepth: 8,
+          bandwidth: 128
+        },
         PEs
       });
     }
@@ -37,8 +56,6 @@ const buildDefaultData = () => {
 
   return { architecture: { CGRAs } };
 };
-
-const data = buildDefaultData();
 
 const initialLayout = {
   global: {
@@ -96,57 +113,89 @@ const initialLayout = {
   }
 };
 
+const defaultData = buildDefaultData();
+
 function App() {
   const [model] = useState(() => Model.fromJson(initialLayout));
+  const [architecture, setArchitecture] = useState(defaultData.architecture);
+  const [selection, setSelection] = useState(null);
 
-  const factory = (node) => {
-    const component = node.getComponent();
+  const handlePropertyChange = useCallback((target, key, value) => {
+    setArchitecture((prev) => ({
+      ...prev,
+      CGRAs: prev.CGRAs.map((cgra) => {
+        if (target.type === 'cgra') {
+          if (cgra.id !== target.id) return cgra;
+          return { ...cgra, [key]: value };
+        }
 
-    switch (component) {
-      case 'canvas':
-        return <MainCanvas architecture={data.architecture} />;
-      case 'rightPanel':
-        return (
-          <Box
-            sx={{
-              height: '100%',
-              p: 2.5,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 2,
-              borderRadius: 1,
-              bgcolor: 'rgba(148,163,184,0.08)',
-              color: 'text.secondary'
-            }}
-          >
-            <Typography variant="subtitle1" color="text.primary">
-              Inspector
-            </Typography>
-            <Typography variant="body2">
-              Use this panel to show kernel metadata, selection details, or configuration forms.
-            </Typography>
-          </Box>
-        );
-      case 'terminal':
-        return (
-          <Box
-            sx={{
-              height: '100%',
-              p: 2,
-              borderRadius: 1,
-              bgcolor: 'rgba(15,118,110,0.16)',
-              fontFamily: '"Fira Code", monospace',
-              fontSize: '0.85rem',
-              color: 'success.light'
-            }}
-          >
-            ➜ Terminal ready. Use this space for build output, logs, or interactive tooling.
-          </Box>
-        );
-      default:
-        return null;
-    }
-  };
+        if (target.type === 'router') {
+          if (cgra.id !== target.cgraId) return cgra;
+          return {
+            ...cgra,
+            router: {
+              ...cgra.router,
+              [key]: value
+            }
+          };
+        }
+
+        if (target.type === 'pe') {
+          if (cgra.id !== target.cgraId) return cgra;
+          return {
+            ...cgra,
+            PEs: cgra.PEs.map((pe) => (pe.id === target.id ? { ...pe, [key]: value } : pe))
+          };
+        }
+
+        return cgra;
+      })
+    }));
+  }, []);
+
+  const factory = useCallback(
+    (node) => {
+      const component = node.getComponent();
+
+      switch (component) {
+        case 'canvas':
+          return (
+            <MainCanvas
+              architecture={architecture}
+              selection={selection}
+              onSelectionChange={setSelection}
+            />
+          );
+        case 'rightPanel':
+          return (
+            <PropertyInspector
+              architecture={architecture}
+              selection={selection}
+              onPropertyChange={handlePropertyChange}
+            />
+          );
+        case 'terminal':
+          return (
+            <Box
+              sx={{
+                height: '100%',
+                p: 2,
+                borderRadius: 1,
+                bgcolor: 'rgba(15,118,110,0.16)',
+                fontFamily: '"Fira Code", monospace',
+                fontSize: '0.85rem',
+                color: 'success.light'
+              }}
+            >
+              ➜ Terminal ready. Use this space for build output, logs, or interactive tooling.
+            </Box>
+          );
+        default:
+          return null;
+      }
+    },
+    [architecture, handlePropertyChange, selection]
+  );
 
   return (
     <Box
