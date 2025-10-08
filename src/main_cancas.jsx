@@ -12,12 +12,32 @@ const CGRA_FILL = 'rgba(30, 64, 175, 0.18)';
 const CGRA_SELECTED_FILL = 'rgba(14, 116, 144, 0.3)';
 const CGRA_STROKE = 'rgba(96, 165, 250, 0.6)';
 const CGRA_SELECTED_STROKE = '#38bdf8';
+const CGRA_ROUTER_RADIUS = 14;
+const CGRA_ROUTER_FILL = '#0ea5e9';
+const CGRA_ROUTER_STROKE = '#38bdf8';
+const CGRA_ROUTER_SELECTED_FILL = '#f97316';
+const CGRA_ROUTER_SELECTED_STROKE = '#fb923c';
 const PE_FILL = 'rgba(59, 130, 246, 0.6)';
 const PE_STROKE = '#1d4ed8';
 const PE_SELECTED_FILL = '#f97316';
 const PE_SELECTED_STROKE = '#fb923c';
 const PE_LABEL_FILL = '#e2e8f0';
 const PE_LABEL_SELECTED_FILL = '#0f172a';
+
+function computeRouterLinkEndpoints(source, target) {
+  const dx = target.centerX - source.centerX;
+  const dy = target.centerY - source.centerY;
+  const distance = Math.sqrt(dx * dx + dy * dy) || 1;
+  const ux = dx / distance;
+  const uy = dy / distance;
+
+  return {
+    x1: source.centerX + ux * CGRA_ROUTER_RADIUS,
+    y1: source.centerY + uy * CGRA_ROUTER_RADIUS,
+    x2: target.centerX - ux * CGRA_ROUTER_RADIUS,
+    y2: target.centerY - uy * CGRA_ROUTER_RADIUS
+  };
+}
 
 function buildLayout(architecture) {
   const layouts = architecture.CGRAs.map((cgra) => {
@@ -209,6 +229,18 @@ function MainCanvas({ architecture }) {
         .attr('font-size', 12)
         .attr('text-anchor', 'middle')
         .text((d) => d.id);
+
+      group
+        .append('circle')
+        .attr('class', 'cgra-router')
+        .attr('cx', cgraLayout.width / 2)
+        .attr('cy', cgraLayout.height / 2)
+        .attr('r', CGRA_ROUTER_RADIUS)
+        .attr('fill', CGRA_ROUTER_FILL)
+        .attr('stroke', CGRA_ROUTER_STROKE)
+        .attr('stroke-width', 3)
+        .attr('stroke-opacity', 0.85)
+        .attr('pointer-events', 'none');
     });
 
     const cgraLinks = [];
@@ -221,15 +253,19 @@ function MainCanvas({ architecture }) {
       const rightNeighbor = cgraMap.get(`${cgra.x + 1},${cgra.y}`);
       const downNeighbor = cgraMap.get(`${cgra.x},${cgra.y + 1}`);
       if (rightNeighbor) {
+        const endpoints = computeRouterLinkEndpoints(cgra, rightNeighbor);
         cgraLinks.push({
           source: cgra,
-          target: rightNeighbor
+          target: rightNeighbor,
+          ...endpoints
         });
       }
       if (downNeighbor) {
+        const endpoints = computeRouterLinkEndpoints(cgra, downNeighbor);
         cgraLinks.push({
           source: cgra,
-          target: downNeighbor
+          target: downNeighbor,
+          ...endpoints
         });
       }
     });
@@ -239,10 +275,10 @@ function MainCanvas({ architecture }) {
       .data(cgraLinks)
       .enter()
       .append('line')
-      .attr('x1', (d) => d.source.centerX)
-      .attr('y1', (d) => d.source.centerY)
-      .attr('x2', (d) => d.target.centerX)
-      .attr('y2', (d) => d.target.centerY)
+      .attr('x1', (d) => d.x1)
+      .attr('y1', (d) => d.y1)
+      .attr('x2', (d) => d.x2)
+      .attr('y2', (d) => d.y2)
       .attr('stroke-linecap', 'round');
 
     const zoomBehavior = zoom()
@@ -272,6 +308,7 @@ function MainCanvas({ architecture }) {
       const group = select(this);
       const id = group.attr('data-id');
       const boundary = group.select('rect.cgra-boundary');
+      const router = group.select('circle.cgra-router');
       const isSelected = selection?.type === 'cgra' && selection.id === id;
       const containsSelectedPe = selection?.type === 'pe' && selection.cgraId === id;
       const highlight = isSelected || containsSelectedPe;
@@ -281,6 +318,12 @@ function MainCanvas({ architecture }) {
         .attr('stroke', highlight ? CGRA_SELECTED_STROKE : CGRA_STROKE)
         .attr('stroke-width', highlight ? 3.5 : 2.5)
         .attr('stroke-opacity', highlight ? 0.95 : 1);
+
+      router
+        .attr('fill', highlight ? CGRA_ROUTER_SELECTED_FILL : CGRA_ROUTER_FILL)
+        .attr('stroke', highlight ? CGRA_ROUTER_SELECTED_STROKE : CGRA_ROUTER_STROKE)
+        .attr('stroke-width', highlight ? 3.5 : 3)
+        .attr('stroke-opacity', highlight ? 1 : 0.85);
     });
 
     svg.selectAll('g.pe').each(function updatePe() {
