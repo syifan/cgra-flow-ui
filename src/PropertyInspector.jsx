@@ -10,39 +10,130 @@ import {
 import { PROPERTY_SCHEMAS, PROPERTY_TITLES } from './propertySchemas';
 
 function PropertyInspector({ architecture, selection, onPropertyChange }) {
-  const { entity, schema } = useMemo(() => {
+  const { entity, schema, target, title, description, emptyMessage } = useMemo(() => {
+    if (!architecture) {
+      return {
+        entity: null,
+        schema: null,
+        target: null,
+        title: PROPERTY_TITLES.device,
+        description: null,
+        emptyMessage: 'No architecture data available.'
+      };
+    }
+
     if (!selection) {
-      return { entity: null, schema: null };
+      const cgraCount = architecture.CGRAs?.length ?? 0;
+      const peCount = architecture.CGRAs?.reduce(
+        (total, cgra) => total + (cgra.PEs?.length ?? 0),
+        0
+      );
+
+      return {
+        entity: {
+          id: architecture.id,
+          name: architecture.name,
+          technology: architecture.technology,
+          designer: architecture.designer,
+          description: architecture.description,
+          cgraCount,
+          peCount
+        },
+        schema: PROPERTY_SCHEMAS.device,
+        target: { type: 'device', id: architecture.id },
+        title: PROPERTY_TITLES.device,
+        description: 'Review and edit the overall device configuration and derived metrics.',
+        emptyMessage: null
+      };
     }
 
     if (selection.type === 'cgra') {
       const found = architecture.CGRAs.find((cgra) => cgra.id === selection.id);
-      return { entity: found ?? null, schema: PROPERTY_SCHEMAS.cgra };
+      if (!found) {
+        return {
+          entity: null,
+          schema: null,
+          target: null,
+          title: PROPERTY_TITLES.cgra,
+          description: null,
+          emptyMessage: 'The selected entity is no longer available in the current architecture.'
+        };
+      }
+
+      return {
+        entity: found,
+        schema: PROPERTY_SCHEMAS.cgra,
+        target: selection,
+        title: PROPERTY_TITLES.cgra,
+        description: 'Adjust configuration values to explore different CGRA layouts and capabilities.',
+        emptyMessage: null
+      };
     }
 
     if (selection.type === 'router') {
       const parent = architecture.CGRAs.find((cgra) => cgra.id === selection.cgraId);
-      return { entity: parent?.router ?? null, schema: PROPERTY_SCHEMAS.router };
+      if (!parent?.router) {
+        return {
+          entity: null,
+          schema: null,
+          target: null,
+          title: PROPERTY_TITLES.router,
+          description: null,
+          emptyMessage: 'The selected entity is no longer available in the current architecture.'
+        };
+      }
+
+      return {
+        entity: parent.router,
+        schema: PROPERTY_SCHEMAS.router,
+        target: selection,
+        title: PROPERTY_TITLES.router,
+        description: 'Adjust configuration values to explore different CGRA layouts and capabilities.',
+        emptyMessage: null
+      };
     }
 
     if (selection.type === 'pe') {
       const parent = architecture.CGRAs.find((cgra) => cgra.id === selection.cgraId);
       const found = parent?.PEs.find((pe) => pe.id === selection.id);
-      return { entity: found ?? null, schema: PROPERTY_SCHEMAS.pe };
+      if (!found) {
+        return {
+          entity: null,
+          schema: null,
+          target: null,
+          title: PROPERTY_TITLES.pe,
+          description: null,
+          emptyMessage: 'The selected entity is no longer available in the current architecture.'
+        };
+      }
+
+      return {
+        entity: found,
+        schema: PROPERTY_SCHEMAS.pe,
+        target: selection,
+        title: PROPERTY_TITLES.pe,
+        description: 'Adjust configuration values to explore different CGRA layouts and capabilities.',
+        emptyMessage: null
+      };
     }
 
-    return { entity: null, schema: null };
+    return {
+      entity: null,
+      schema: null,
+      target: null,
+      title: 'Properties',
+      description: null,
+      emptyMessage: 'Select an item in the canvas to see its properties.'
+    };
   }, [architecture, selection]);
-
-  const title = selection ? PROPERTY_TITLES[selection.type] ?? 'Inspector' : 'Inspector';
 
   const handleTextOrNumberChange = (property) => (event) => {
     const { value } = event.target;
-    if (!selection || !property.mutable) return;
+    if (!target || !property.mutable) return;
 
     if (property.type === 'number') {
       if (value === '') {
-        onPropertyChange(selection, property.key, null);
+        onPropertyChange(target, property.key, null);
         return;
       }
 
@@ -57,41 +148,17 @@ function PropertyInspector({ architecture, selection, onPropertyChange }) {
         clampedValue = Math.min(property.max, clampedValue);
       }
 
-      onPropertyChange(selection, property.key, clampedValue);
+      onPropertyChange(target, property.key, clampedValue);
       return;
     }
 
-    onPropertyChange(selection, property.key, value);
+    onPropertyChange(target, property.key, value);
   };
 
   const handleBooleanChange = (property) => (event) => {
-    if (!selection || !property.mutable) return;
-    onPropertyChange(selection, property.key, event.target.checked);
+    if (!target || !property.mutable) return;
+    onPropertyChange(target, property.key, event.target.checked);
   };
-
-  if (!selection) {
-    return (
-      <Box
-        sx={{
-          height: '100%',
-          p: 2.5,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 2,
-          borderRadius: 1,
-          bgcolor: 'rgba(148,163,184,0.08)',
-          color: 'text.secondary'
-        }}
-      >
-        <Typography variant="subtitle1" color="text.primary">
-          Inspector
-        </Typography>
-        <Typography variant="body2">
-          Select a CGRA, router, or processing element to edit its properties.
-        </Typography>
-      </Box>
-    );
-  }
 
   if (!entity || !schema) {
     return (
@@ -110,9 +177,7 @@ function PropertyInspector({ architecture, selection, onPropertyChange }) {
         <Typography variant="subtitle1" color="text.primary">
           {title}
         </Typography>
-        <Typography variant="body2">
-          The selected entity is no longer available in the current architecture.
-        </Typography>
+        <Typography variant="body2">{emptyMessage}</Typography>
       </Box>
     );
   }
@@ -134,9 +199,11 @@ function PropertyInspector({ architecture, selection, onPropertyChange }) {
       <Typography variant="subtitle1" color="text.primary">
         {title}
       </Typography>
-      <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-        Adjust configuration values to explore different CGRA layouts and capabilities.
-      </Typography>
+      {description ? (
+        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+          {description}
+        </Typography>
+      ) : null}
       <Divider flexItem sx={{ borderColor: 'rgba(148,163,184,0.3)' }} />
       <Box
         sx={{
@@ -193,6 +260,8 @@ function PropertyInspector({ architecture, selection, onPropertyChange }) {
                   max: property.max,
                   step: property.step
                 }}
+                multiline={property.multiline}
+                minRows={property.multiline ? 3 : undefined}
               />
             );
           }

@@ -54,7 +54,16 @@ const buildDefaultData = () => {
     }
   }
 
-  return { architecture: { CGRAs } };
+  return {
+    architecture: {
+      id: 'device-reference',
+      name: 'Reference CGRA Device',
+      technology: '7nm FinFET',
+      designer: 'CGRA Research Group',
+      description: 'Baseline 4x4 tiled architecture for experimentation.',
+      CGRAs
+    }
+  };
 };
 
 const initialLayout = {
@@ -114,8 +123,13 @@ const initialLayout = {
         children: [
           {
             type: 'tab',
-            name: 'Right Panel',
-            component: 'rightPanel'
+            name: 'Properties',
+            component: 'properties'
+          },
+          {
+            type: 'tab',
+            name: 'GenAI',
+            component: 'genai'
           }
         ]
       }
@@ -131,36 +145,47 @@ function App() {
   const [selection, setSelection] = useState(null);
 
   const handlePropertyChange = useCallback((target, key, value) => {
-    setArchitecture((prev) => ({
-      ...prev,
-      CGRAs: prev.CGRAs.map((cgra) => {
-        if (target.type === 'cgra') {
-          if (cgra.id !== target.id) return cgra;
-          return { ...cgra, [key]: value };
-        }
+    setArchitecture((prev) => {
+      if (!prev) return prev;
 
-        if (target.type === 'router') {
-          if (cgra.id !== target.cgraId) return cgra;
-          return {
-            ...cgra,
-            router: {
-              ...cgra.router,
-              [key]: value
-            }
-          };
-        }
+      if (target.type === 'device') {
+        return {
+          ...prev,
+          [key]: value
+        };
+      }
 
-        if (target.type === 'pe') {
-          if (cgra.id !== target.cgraId) return cgra;
-          return {
-            ...cgra,
-            PEs: cgra.PEs.map((pe) => (pe.id === target.id ? { ...pe, [key]: value } : pe))
-          };
-        }
+      return {
+        ...prev,
+        CGRAs: prev.CGRAs.map((cgra) => {
+          if (target.type === 'cgra') {
+            if (cgra.id !== target.id) return cgra;
+            return { ...cgra, [key]: value };
+          }
 
-        return cgra;
-      })
-    }));
+          if (target.type === 'router') {
+            if (cgra.id !== target.cgraId) return cgra;
+            return {
+              ...cgra,
+              router: {
+                ...cgra.router,
+                [key]: value
+              }
+            };
+          }
+
+          if (target.type === 'pe') {
+            if (cgra.id !== target.cgraId) return cgra;
+            return {
+              ...cgra,
+              PEs: cgra.PEs.map((pe) => (pe.id === target.id ? { ...pe, [key]: value } : pe))
+            };
+          }
+
+          return cgra;
+        })
+      };
+    });
   }, []);
 
   const factory = useCallback(
@@ -176,13 +201,30 @@ function App() {
               onSelectionChange={setSelection}
             />
           );
-        case 'rightPanel':
+        case 'properties':
           return (
             <PropertyInspector
               architecture={architecture}
               selection={selection}
               onPropertyChange={handlePropertyChange}
             />
+          );
+        case 'genai':
+          return (
+            <Box
+              sx={{
+                height: '100%',
+                p: 3,
+                borderRadius: 1,
+                border: '1px dashed rgba(148, 163, 184, 0.3)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'text.secondary'
+              }}
+            >
+              GenAI workspace coming soon.
+            </Box>
           );
         case 'mapping':
           return (

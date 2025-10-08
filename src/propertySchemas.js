@@ -1,4 +1,19 @@
 export const PROPERTY_SCHEMAS = {
+  device: [
+    { key: 'id', label: 'Identifier', type: 'text', mutable: false },
+    { key: 'name', label: 'Device Name', type: 'text', mutable: true },
+    { key: 'technology', label: 'Technology Node', type: 'text', mutable: true },
+    { key: 'designer', label: 'Designer', type: 'text', mutable: true },
+    {
+      key: 'description',
+      label: 'Description',
+      type: 'text',
+      mutable: true,
+      multiline: true
+    },
+    { key: 'cgraCount', label: 'CGRA Tiles', type: 'number', mutable: false },
+    { key: 'peCount', label: 'Processing Elements', type: 'number', mutable: false }
+  ],
   cgra: [
     { key: 'id', label: 'Identifier', type: 'text', mutable: false },
     { key: 'label', label: 'Display Label', type: 'text', mutable: true },
@@ -84,6 +99,7 @@ export const PROPERTY_SCHEMAS = {
 };
 
 export const PROPERTY_TITLES = {
+  device: 'Device Properties',
   cgra: 'CGRA Properties',
   router: 'Router Properties',
   pe: 'Processing Element Properties'
