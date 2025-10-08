@@ -13,6 +13,7 @@ const CGRA_SELECTED_FILL = 'rgba(14, 116, 144, 0.3)';
 const CGRA_STROKE = 'rgba(96, 165, 250, 0.6)';
 const CGRA_SELECTED_STROKE = '#38bdf8';
 const CGRA_ROUTER_RADIUS = 14;
+const CGRA_ROUTER_OFFSET = 28;
 const CGRA_ROUTER_FILL = '#0ea5e9';
 const CGRA_ROUTER_STROKE = '#38bdf8';
 const CGRA_ROUTER_SELECTED_FILL = '#f97316';
@@ -25,17 +26,17 @@ const PE_LABEL_FILL = '#e2e8f0';
 const PE_LABEL_SELECTED_FILL = '#0f172a';
 
 function computeRouterLinkEndpoints(source, target) {
-  const dx = target.centerX - source.centerX;
-  const dy = target.centerY - source.centerY;
+  const dx = target.routerCenterX - source.routerCenterX;
+  const dy = target.routerCenterY - source.routerCenterY;
   const distance = Math.sqrt(dx * dx + dy * dy) || 1;
   const ux = dx / distance;
   const uy = dy / distance;
 
   return {
-    x1: source.centerX + ux * CGRA_ROUTER_RADIUS,
-    y1: source.centerY + uy * CGRA_ROUTER_RADIUS,
-    x2: target.centerX - ux * CGRA_ROUTER_RADIUS,
-    y2: target.centerY - uy * CGRA_ROUTER_RADIUS
+    x1: source.routerCenterX + ux * CGRA_ROUTER_RADIUS,
+    y1: source.routerCenterY + uy * CGRA_ROUTER_RADIUS,
+    x2: target.routerCenterX - ux * CGRA_ROUTER_RADIUS,
+    y2: target.routerCenterY - uy * CGRA_ROUTER_RADIUS
   };
 }
 
@@ -67,20 +68,40 @@ function buildLayout(architecture) {
   const enhancedLayouts = layouts.map((layout) => {
     const originX = MARGIN + layout.x * (layout.width + CGRA_GAP);
     const originY = MARGIN + layout.y * (layout.height + CGRA_GAP);
+    const routerLocalX = layout.width + CGRA_ROUTER_OFFSET;
+    const routerLocalY = layout.height + CGRA_ROUTER_OFFSET;
+    const routerCenterX = originX + routerLocalX;
+    const routerCenterY = originY + routerLocalY;
 
     return {
       ...layout,
       originX,
       originY,
       centerX: originX + layout.width / 2,
-      centerY: originY + layout.height / 2
+      centerY: originY + layout.height / 2,
+      routerLocalX,
+      routerLocalY,
+      routerCenterX,
+      routerCenterY
     };
   });
 
   const totalWidth =
-    Math.max(...enhancedLayouts.map((layout) => layout.originX + layout.width)) + MARGIN;
+    (enhancedLayouts.length
+      ? Math.max(
+          ...enhancedLayouts.map((layout) =>
+            Math.max(layout.originX + layout.width, layout.routerCenterX + CGRA_ROUTER_RADIUS)
+          )
+        ) + MARGIN
+      : MARGIN * 2);
   const totalHeight =
-    Math.max(...enhancedLayouts.map((layout) => layout.originY + layout.height)) + MARGIN;
+    (enhancedLayouts.length
+      ? Math.max(
+          ...enhancedLayouts.map((layout) =>
+            Math.max(layout.originY + layout.height, layout.routerCenterY + CGRA_ROUTER_RADIUS)
+          )
+        ) + MARGIN
+      : MARGIN * 2);
 
   return {
     layouts: enhancedLayouts,
@@ -233,14 +254,18 @@ function MainCanvas({ architecture }) {
       group
         .append('circle')
         .attr('class', 'cgra-router')
-        .attr('cx', cgraLayout.width / 2)
-        .attr('cy', cgraLayout.height / 2)
+        .attr('cx', cgraLayout.routerLocalX)
+        .attr('cy', cgraLayout.routerLocalY)
         .attr('r', CGRA_ROUTER_RADIUS)
         .attr('fill', CGRA_ROUTER_FILL)
         .attr('stroke', CGRA_ROUTER_STROKE)
         .attr('stroke-width', 3)
         .attr('stroke-opacity', 0.85)
-        .attr('pointer-events', 'none');
+        .style('cursor', 'pointer')
+        .on('click', (event) => {
+          event.stopPropagation();
+          setSelection({ type: 'router', id: cgraLayout.id });
+        });
     });
 
     const cgraLinks = [];
@@ -311,6 +336,7 @@ function MainCanvas({ architecture }) {
       const router = group.select('circle.cgra-router');
       const isSelected = selection?.type === 'cgra' && selection.id === id;
       const containsSelectedPe = selection?.type === 'pe' && selection.cgraId === id;
+      const routerSelected = selection?.type === 'router' && selection.id === id;
       const highlight = isSelected || containsSelectedPe;
 
       boundary
@@ -320,10 +346,16 @@ function MainCanvas({ architecture }) {
         .attr('stroke-opacity', highlight ? 0.95 : 1);
 
       router
-        .attr('fill', highlight ? CGRA_ROUTER_SELECTED_FILL : CGRA_ROUTER_FILL)
-        .attr('stroke', highlight ? CGRA_ROUTER_SELECTED_STROKE : CGRA_ROUTER_STROKE)
-        .attr('stroke-width', highlight ? 3.5 : 3)
-        .attr('stroke-opacity', highlight ? 1 : 0.85);
+        .attr(
+          'fill',
+          routerSelected || highlight ? CGRA_ROUTER_SELECTED_FILL : CGRA_ROUTER_FILL
+        )
+        .attr(
+          'stroke',
+          routerSelected || highlight ? CGRA_ROUTER_SELECTED_STROKE : CGRA_ROUTER_STROKE
+        )
+        .attr('stroke-width', routerSelected || highlight ? 3.5 : 3)
+        .attr('stroke-opacity', routerSelected || highlight ? 1 : 0.85);
     });
 
     svg.selectAll('g.pe').each(function updatePe() {
