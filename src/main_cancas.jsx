@@ -18,6 +18,7 @@ const CGRA_ROUTER_FILL = '#0ea5e9';
 const CGRA_ROUTER_STROKE = '#38bdf8';
 const CGRA_ROUTER_SELECTED_FILL = '#f97316';
 const CGRA_ROUTER_SELECTED_STROKE = '#fb923c';
+const CGRA_ROUTER_CONNECTOR_INSET = 18;
 const PE_FILL = 'rgba(59, 130, 246, 0.6)';
 const PE_STROKE = '#1d4ed8';
 const PE_SELECTED_FILL = '#f97316';
@@ -169,6 +170,28 @@ function MainCanvas({ architecture }) {
         .attr('fill', CGRA_FILL)
         .attr('stroke', CGRA_STROKE)
         .attr('stroke-width', 2.5);
+
+      const connectorStartX = cgraLayout.width - CGRA_ROUTER_CONNECTOR_INSET;
+      const connectorStartY = cgraLayout.height - CGRA_ROUTER_CONNECTOR_INSET;
+      const connectorDx = cgraLayout.routerLocalX - connectorStartX;
+      const connectorDy = cgraLayout.routerLocalY - connectorStartY;
+      const connectorLength = Math.sqrt(connectorDx * connectorDx + connectorDy * connectorDy) || 1;
+      const connectorEndX =
+        cgraLayout.routerLocalX - (connectorDx / connectorLength) * CGRA_ROUTER_RADIUS;
+      const connectorEndY =
+        cgraLayout.routerLocalY - (connectorDy / connectorLength) * CGRA_ROUTER_RADIUS;
+
+      group
+        .append('line')
+        .attr('class', 'cgra-router-connector')
+        .attr('x1', connectorStartX)
+        .attr('y1', connectorStartY)
+        .attr('x2', connectorEndX)
+        .attr('y2', connectorEndY)
+        .attr('stroke', CGRA_ROUTER_STROKE)
+        .attr('stroke-width', 3)
+        .attr('stroke-opacity', 0.85)
+        .attr('stroke-linecap', 'round');
 
       const peLayer = group.append('g').attr('class', 'pe-nodes');
 
@@ -334,6 +357,7 @@ function MainCanvas({ architecture }) {
       const id = group.attr('data-id');
       const boundary = group.select('rect.cgra-boundary');
       const router = group.select('circle.cgra-router');
+      const connector = group.select('line.cgra-router-connector');
       const isSelected = selection?.type === 'cgra' && selection.id === id;
       const containsSelectedPe = selection?.type === 'pe' && selection.cgraId === id;
       const routerSelected = selection?.type === 'router' && selection.id === id;
@@ -344,6 +368,11 @@ function MainCanvas({ architecture }) {
         .attr('stroke', highlight ? CGRA_SELECTED_STROKE : CGRA_STROKE)
         .attr('stroke-width', highlight ? 3.5 : 2.5)
         .attr('stroke-opacity', highlight ? 0.95 : 1);
+
+      connector
+        .attr('stroke', routerSelected || highlight ? CGRA_ROUTER_SELECTED_STROKE : CGRA_ROUTER_STROKE)
+        .attr('stroke-width', routerSelected || highlight ? 3.5 : 3)
+        .attr('stroke-opacity', routerSelected || highlight ? 1 : 0.85);
 
       router
         .attr(
