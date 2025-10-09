@@ -9,6 +9,14 @@ import {
 } from '@mui/material';
 import { PROPERTY_SCHEMAS, PROPERTY_TITLES } from './propertySchemas';
 
+const getValueAtPath = (object, keyPath) => {
+  if (!object || !keyPath) return undefined;
+  return keyPath.split('.').reduce((current, key) => {
+    if (current == null) return undefined;
+    return current[key];
+  }, object);
+};
+
 function PropertyInspector({ architecture, selection, onPropertyChange }) {
   const { entity, schema, target, title, description, emptyMessage } = useMemo(() => {
     if (!architecture) {
@@ -23,26 +31,12 @@ function PropertyInspector({ architecture, selection, onPropertyChange }) {
     }
 
     if (!selection) {
-      const cgraCount = architecture.CGRAs?.length ?? 0;
-      const peCount = architecture.CGRAs?.reduce(
-        (total, cgra) => total + (cgra.PEs?.length ?? 0),
-        0
-      );
-
       return {
-        entity: {
-          id: architecture.id,
-          name: architecture.name,
-          technology: architecture.technology,
-          designer: architecture.designer,
-          description: architecture.description,
-          cgraCount,
-          peCount
-        },
+        entity: architecture,
         schema: PROPERTY_SCHEMAS.device,
         target: { type: 'device', id: architecture.id },
         title: PROPERTY_TITLES.device,
-        description: 'Review and edit the overall device configuration and derived metrics.',
+        description: 'Configure the device-wide fabric characteristics.',
         emptyMessage: null
       };
     }
@@ -56,7 +50,7 @@ function PropertyInspector({ architecture, selection, onPropertyChange }) {
           target: null,
           title: PROPERTY_TITLES.cgra,
           description: null,
-          emptyMessage: 'The selected entity is no longer available in the current architecture.'
+          emptyMessage: 'The selected CGRA is no longer part of the device.'
         };
       }
 
@@ -65,30 +59,7 @@ function PropertyInspector({ architecture, selection, onPropertyChange }) {
         schema: PROPERTY_SCHEMAS.cgra,
         target: selection,
         title: PROPERTY_TITLES.cgra,
-        description: 'Adjust configuration values to explore different CGRA layouts and capabilities.',
-        emptyMessage: null
-      };
-    }
-
-    if (selection.type === 'router') {
-      const parent = architecture.CGRAs.find((cgra) => cgra.id === selection.cgraId);
-      if (!parent?.router) {
-        return {
-          entity: null,
-          schema: null,
-          target: null,
-          title: PROPERTY_TITLES.router,
-          description: null,
-          emptyMessage: 'The selected entity is no longer available in the current architecture.'
-        };
-      }
-
-      return {
-        entity: parent.router,
-        schema: PROPERTY_SCHEMAS.router,
-        target: selection,
-        title: PROPERTY_TITLES.router,
-        description: 'Adjust configuration values to explore different CGRA layouts and capabilities.',
+        description: 'Adjust parameters for the selected CGRA tile.',
         emptyMessage: null
       };
     }
@@ -103,7 +74,7 @@ function PropertyInspector({ architecture, selection, onPropertyChange }) {
           target: null,
           title: PROPERTY_TITLES.pe,
           description: null,
-          emptyMessage: 'The selected entity is no longer available in the current architecture.'
+          emptyMessage: 'The selected PE is no longer part of the device.'
         };
       }
 
@@ -112,7 +83,7 @@ function PropertyInspector({ architecture, selection, onPropertyChange }) {
         schema: PROPERTY_SCHEMAS.pe,
         target: selection,
         title: PROPERTY_TITLES.pe,
-        description: 'Adjust configuration values to explore different CGRA layouts and capabilities.',
+        description: 'Model the processing element capabilities and connectivity.',
         emptyMessage: null
       };
     }
@@ -121,7 +92,7 @@ function PropertyInspector({ architecture, selection, onPropertyChange }) {
       entity: null,
       schema: null,
       target: null,
-      title: 'Properties',
+      title: PROPERTY_TITLES.device,
       description: null,
       emptyMessage: 'Select an item in the canvas to see its properties.'
     };
@@ -208,73 +179,114 @@ function PropertyInspector({ architecture, selection, onPropertyChange }) {
       <Box
         sx={{
           display: 'grid',
-          gridTemplateColumns: 'minmax(120px, 0.65fr) 1fr',
+          gridTemplateColumns: 'minmax(140px, 0.65fr) 1fr',
           rowGap: 1.25,
           columnGap: 2,
           alignItems: 'center'
         }}
       >
-        {schema.map((property) => {
-          const value = entity[property.key];
-          const commonProps = {
-            fullWidth: true,
-            size: 'small',
-            disabled: property.mutable === false
-          };
+        {(() => {
+          const rows = [];
+          let currentSection = null;
 
-          let input = null;
+          schema.forEach((property) => {
+            const dependencyMet = property.disabledWhen
+              ? (() => {
+                  const dependencyValue = getValueAtPath(entity, property.disabledWhen.key);
+                  if (Object.prototype.hasOwnProperty.call(property.disabledWhen, 'equals')) {
+                    return dependencyValue === property.disabledWhen.equals;
+                  }
+                  return Boolean(dependencyValue);
+                })()
+              : false;
 
-          if (property.type === 'select') {
-            input = (
-              <TextField
-                {...commonProps}
-                select
-                value={value ?? ''}
-                onChange={handleTextOrNumberChange(property)}
-              >
-                {property.options.map((option) => (
-                  <MenuItem key={option} value={option}>
-                    {option}
-                  </MenuItem>
-                ))}
-              </TextField>
-            );
-          } else if (property.type === 'boolean') {
-            input = (
-              <Switch
-                checked={Boolean(value)}
-                onChange={handleBooleanChange(property)}
-                color="primary"
-                disabled={property.mutable === false}
-              />
-            );
-          } else {
-            input = (
-              <TextField
-                {...commonProps}
-                type={property.type === 'number' ? 'number' : 'text'}
-                value={value ?? ''}
-                onChange={handleTextOrNumberChange(property)}
-                inputProps={{
-                  min: property.min,
-                  max: property.max,
-                  step: property.step
-                }}
-                multiline={property.multiline}
-                minRows={property.multiline ? 3 : undefined}
-              />
-            );
-          }
+            const isDisabled = property.mutable === false || dependencyMet;
+            const value = getValueAtPath(entity, property.key);
+            const commonProps = {
+              fullWidth: true,
+              size: 'small',
+              disabled: isDisabled
+            };
 
-          return (
-            <Fragment key={property.key}>
-              <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                {property.label}
-              </Typography>
-              <Box>{input}</Box>
-            </Fragment>
-          );
-        })}
+            if (property.section && property.section !== currentSection) {
+              currentSection = property.section;
+              rows.push(
+                <Typography
+                  key={`section-${property.section}`}
+                  variant="caption"
+                  sx={{
+                    gridColumn: '1 / -1',
+                    textTransform: 'uppercase',
+                    letterSpacing: 1,
+                    fontWeight: 600,
+                    color: 'text.secondary',
+                    mt: rows.length > 0 ? 1 : 0
+                  }}
+                >
+                  {property.section}
+                </Typography>
+              );
+            }
+
+            let input = null;
+
+            if (property.type === 'select') {
+              input = (
+                <TextField
+                  {...commonProps}
+                  select
+                  value={value ?? ''}
+                  onChange={handleTextOrNumberChange(property)}
+                >
+                  {property.options.map((option) => (
+                    <MenuItem key={option} value={option}>
+                      {option}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              );
+            } else if (property.type === 'boolean') {
+              input = (
+                <Switch
+                  checked={Boolean(value)}
+                  onChange={handleBooleanChange(property)}
+                  color="primary"
+                  disabled={isDisabled}
+                />
+              );
+            } else {
+              input = (
+                <TextField
+                  {...commonProps}
+                  type={property.type === 'number' ? 'number' : 'text'}
+                  value={value ?? ''}
+                  onChange={handleTextOrNumberChange(property)}
+                  inputProps={{
+                    min: property.min,
+                    max: property.max,
+                    step: property.step
+                  }}
+                  multiline={property.multiline}
+                  minRows={property.multiline ? 3 : undefined}
+                />
+              );
+            }
+
+            rows.push(
+              <Fragment key={property.key}>
+                <Typography
+                  variant="body2"
+                  sx={{ color: isDisabled ? 'text.disabled' : 'text.secondary' }}
+                >
+                  {property.label}
+                </Typography>
+                <Box sx={{ opacity: isDisabled ? 0.6 : 1 }}>{input}</Box>
+              </Fragment>
+            );
+          });
+
+          return rows;
+        })()}
       </Box>
     </Box>
   );

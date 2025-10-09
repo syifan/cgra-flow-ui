@@ -19,10 +19,12 @@ const CGRA_ROUTER_SELECTED_FILL = '#f97316';
 const CGRA_ROUTER_SELECTED_STROKE = '#fb923c';
 const CGRA_ROUTER_CONNECTOR_INSET = 18;
 const PE_FILL = 'rgba(59, 130, 246, 0.6)';
+const PE_DISABLED_FILL = 'rgba(148, 163, 184, 0.45)';
 const PE_STROKE = '#1d4ed8';
 const PE_SELECTED_FILL = '#f97316';
 const PE_SELECTED_STROKE = '#fb923c';
 const PE_LABEL_FILL = '#e2e8f0';
+const PE_LABEL_DISABLED_FILL = 'rgba(226, 232, 240, 0.6)';
 const PE_LABEL_SELECTED_FILL = '#0f172a';
 
 function computeRouterLinkEndpoints(source, target) {
@@ -258,7 +260,7 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
         .attr('height', PE_SIZE)
         .attr('rx', 8)
         .attr('ry', 8)
-        .attr('fill', PE_FILL)
+        .attr('fill', (d) => (d.disabled ? PE_DISABLED_FILL : PE_FILL))
         .attr('stroke', PE_STROKE)
         .attr('stroke-width', 1.5);
 
@@ -266,7 +268,7 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
         .append('text')
         .attr('x', PE_SIZE / 2)
         .attr('y', PE_SIZE / 2 + 4)
-        .attr('fill', PE_LABEL_FILL)
+        .attr('fill', (d) => (d.disabled ? PE_LABEL_DISABLED_FILL : PE_LABEL_FILL))
         .attr('font-family', '"Fira Code", monospace')
         .attr('font-size', 12)
         .attr('text-anchor', 'middle')
@@ -281,16 +283,7 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
         .attr('fill', CGRA_ROUTER_FILL)
         .attr('stroke', CGRA_ROUTER_STROKE)
         .attr('stroke-width', 3)
-        .attr('stroke-opacity', 0.85)
-        .style('cursor', 'pointer')
-        .on('click', (event) => {
-          event.stopPropagation();
-          onSelectionChange?.({
-            type: 'router',
-            id: cgraLayout.router?.id ?? cgraLayout.id,
-            cgraId: cgraLayout.id
-          });
-        });
+        .attr('stroke-opacity', 0.85);
     });
 
     const cgraLinks = [];
@@ -358,33 +351,13 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
       const group = select(this);
       const id = group.attr('data-id');
       const boundary = group.select('rect.cgra-boundary');
-      const router = group.select('circle.cgra-router');
-      const connector = group.select('line.cgra-router-connector');
       const isSelected = selection?.type === 'cgra' && selection.id === id;
-      const routerSelected = selection?.type === 'router' && selection.cgraId === id;
 
       boundary
         .attr('fill', isSelected ? CGRA_SELECTED_FILL : CGRA_FILL)
         .attr('stroke', isSelected ? CGRA_SELECTED_STROKE : CGRA_STROKE)
         .attr('stroke-width', isSelected ? 3.5 : 2.5)
         .attr('stroke-opacity', isSelected ? 0.95 : 1);
-
-      connector
-        .attr('stroke', routerSelected ? CGRA_ROUTER_SELECTED_STROKE : CGRA_ROUTER_STROKE)
-        .attr('stroke-width', routerSelected ? 3.5 : 3)
-        .attr('stroke-opacity', routerSelected ? 1 : 0.85);
-
-      router
-        .attr(
-          'fill',
-          routerSelected ? CGRA_ROUTER_SELECTED_FILL : CGRA_ROUTER_FILL
-        )
-        .attr(
-          'stroke',
-          routerSelected ? CGRA_ROUTER_SELECTED_STROKE : CGRA_ROUTER_STROKE
-        )
-        .attr('stroke-width', routerSelected ? 3.5 : 3)
-        .attr('stroke-opacity', routerSelected ? 1 : 0.85);
     });
 
     svg.selectAll('g.pe').each(function updatePe() {
@@ -393,14 +366,22 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
       const rect = node.select('rect');
       const label = node.select('text');
       const isSelected = selection?.type === 'pe' && selection.id === id;
+      const data = node.datum();
+      const isDisabled = Boolean(data?.disabled);
 
       rect
-        .attr('fill', isSelected ? PE_SELECTED_FILL : PE_FILL)
+        .attr('fill', () => {
+          if (isSelected) return PE_SELECTED_FILL;
+          return isDisabled ? PE_DISABLED_FILL : PE_FILL;
+        })
         .attr('stroke', isSelected ? PE_SELECTED_STROKE : PE_STROKE)
         .attr('stroke-width', isSelected ? 2 : 1.5);
 
       label
-        .attr('fill', isSelected ? PE_LABEL_SELECTED_FILL : PE_LABEL_FILL)
+        .attr('fill', () => {
+          if (isSelected) return PE_LABEL_SELECTED_FILL;
+          return isDisabled ? PE_LABEL_DISABLED_FILL : PE_LABEL_FILL;
+        })
         .text((d) => d.label ?? d.id);
     });
   }, [layout, selection]);

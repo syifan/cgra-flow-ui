@@ -5,66 +5,9 @@ import { Layout, Model } from 'flexlayout-react';
 import 'flexlayout-react/style/dark.css';
 import MainCanvas from './main_cancas';
 import PropertyInspector from './PropertyInspector';
+import { defaultArchitecture } from './app_data';
 
 const NAVBAR_HEIGHT = 56;
-const CGRA_DIMENSION = 4;
-const PE_DIMENSION = 4;
-
-const buildDefaultData = () => {
-  const CGRAs = [];
-
-  for (let cgraY = 0; cgraY < CGRA_DIMENSION; cgraY += 1) {
-    for (let cgraX = 0; cgraX < CGRA_DIMENSION; cgraX += 1) {
-      const PEs = [];
-
-      const cgraId = `cgra-${cgraY}-${cgraX}`;
-      const routerId = `router-${cgraY}-${cgraX}`;
-
-      for (let peY = 0; peY < PE_DIMENSION; peY += 1) {
-        for (let peX = 0; peX < PE_DIMENSION; peX += 1) {
-          PEs.push({
-            id: `pe-${cgraY}-${cgraX}-${peY}-${peX}`,
-            x: peX,
-            y: peY,
-            cgraId,
-            label: `PE (${peY}, ${peX})`,
-            operation: 'ALU',
-            latency: 1,
-            enabled: true
-          });
-        }
-      }
-
-      CGRAs.push({
-        id: cgraId,
-        x: cgraX,
-        y: cgraY,
-        label: `CGRA (${cgraY}, ${cgraX})`,
-        clockFrequency: 600,
-        voltage: 0.9,
-        router: {
-          id: routerId,
-          cgraId,
-          routingStrategy: 'Shortest Path',
-          bufferDepth: 8,
-          bandwidth: 128
-        },
-        PEs
-      });
-    }
-  }
-
-  return {
-    architecture: {
-      id: 'device-reference',
-      name: 'Reference CGRA Device',
-      technology: '7nm FinFET',
-      designer: 'CGRA Research Group',
-      description: 'Baseline 4x4 tiled architecture for experimentation.',
-      CGRAs
-    }
-  };
-};
 
 const initialLayout = {
   global: {
@@ -137,22 +80,45 @@ const initialLayout = {
   }
 };
 
-const defaultData = buildDefaultData();
-
 function App() {
   const [model] = useState(() => Model.fromJson(initialLayout));
-  const [architecture, setArchitecture] = useState(defaultData.architecture);
+  const [architecture, setArchitecture] = useState(defaultArchitecture);
   const [selection, setSelection] = useState(null);
+
+  const setValueAtPath = useCallback((object, keyPath, value) => {
+    const keys = Array.isArray(keyPath) ? keyPath : keyPath.split('.');
+
+    if (!object || keys.length === 0) {
+      return object;
+    }
+
+    const [currentKey, ...rest] = keys;
+
+    if (rest.length === 0) {
+      return {
+        ...object,
+        [currentKey]: value
+      };
+    }
+
+    const nextValue = setValueAtPath(object[currentKey] ?? {}, rest, value);
+
+    if (nextValue === object[currentKey]) {
+      return object;
+    }
+
+    return {
+      ...object,
+      [currentKey]: nextValue
+    };
+  }, []);
 
   const handlePropertyChange = useCallback((target, key, value) => {
     setArchitecture((prev) => {
       if (!prev) return prev;
 
       if (target.type === 'device') {
-        return {
-          ...prev,
-          [key]: value
-        };
+        return setValueAtPath(prev, key, value);
       }
 
       return {
@@ -160,25 +126,16 @@ function App() {
         CGRAs: prev.CGRAs.map((cgra) => {
           if (target.type === 'cgra') {
             if (cgra.id !== target.id) return cgra;
-            return { ...cgra, [key]: value };
-          }
-
-          if (target.type === 'router') {
-            if (cgra.id !== target.cgraId) return cgra;
-            return {
-              ...cgra,
-              router: {
-                ...cgra.router,
-                [key]: value
-              }
-            };
+            return setValueAtPath(cgra, key, value);
           }
 
           if (target.type === 'pe') {
             if (cgra.id !== target.cgraId) return cgra;
             return {
               ...cgra,
-              PEs: cgra.PEs.map((pe) => (pe.id === target.id ? { ...pe, [key]: value } : pe))
+              PEs: cgra.PEs.map((pe) =>
+                pe.id === target.id ? setValueAtPath(pe, key, value) : pe
+              )
             };
           }
 
@@ -186,7 +143,7 @@ function App() {
         })
       };
     });
-  }, []);
+  }, [setValueAtPath]);
 
   const factory = useCallback(
     (node) => {
