@@ -1,11 +1,23 @@
-import { useCallback, useState } from 'react';
-import { AppBar, Box, IconButton, Toolbar, Typography } from '@mui/material';
+import { useCallback, useRef, useState } from 'react';
+import {
+  AppBar,
+  Box,
+  IconButton,
+  ListItemIcon,
+  ListItemText,
+  Menu,
+  MenuItem,
+  Toolbar,
+  Typography
+} from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
+import DownloadIcon from '@mui/icons-material/Download';
+import UploadIcon from '@mui/icons-material/Upload';
 import { Layout, Model } from 'flexlayout-react';
 import 'flexlayout-react/style/dark.css';
 import MainCanvas from './main_cancas';
 import PropertyInspector from './PropertyInspector';
-import { defaultArchitecture } from './app_data';
+import { defaultAppData } from './app_data';
 
 const NAVBAR_HEIGHT = 56;
 
@@ -80,10 +92,16 @@ const initialLayout = {
   }
 };
 
+const cloneAppData = (data) => JSON.parse(JSON.stringify(data));
+
 function App() {
   const [model] = useState(() => Model.fromJson(initialLayout));
-  const [architecture, setArchitecture] = useState(defaultArchitecture);
+  const [appState, setAppState] = useState(() => cloneAppData(defaultAppData));
   const [selection, setSelection] = useState(null);
+  const [menuAnchorEl, setMenuAnchorEl] = useState(null);
+  const fileInputRef = useRef(null);
+
+  const architecture = appState.architecture;
 
   const setValueAtPath = useCallback((object, keyPath, value) => {
     const keys = Array.isArray(keyPath) ? keyPath : keyPath.split('.');
@@ -113,37 +131,122 @@ function App() {
     };
   }, []);
 
-  const handlePropertyChange = useCallback((target, key, value) => {
-    setArchitecture((prev) => {
-      if (!prev) return prev;
+  const handlePropertyChange = useCallback(
+    (target, key, value) => {
+      setAppState((prev) => {
+        const currentArchitecture = prev?.architecture;
+        if (!currentArchitecture) return prev;
 
-      if (target.type === 'device') {
-        return setValueAtPath(prev, key, value);
-      }
-
-      return {
-        ...prev,
-        CGRAs: prev.CGRAs.map((cgra) => {
-          if (target.type === 'cgra') {
-            if (cgra.id !== target.id) return cgra;
-            return setValueAtPath(cgra, key, value);
+        const nextArchitecture = (() => {
+          if (target.type === 'device') {
+            return setValueAtPath(currentArchitecture, key, value);
           }
 
-          if (target.type === 'pe') {
-            if (cgra.id !== target.cgraId) return cgra;
-            return {
-              ...cgra,
-              PEs: cgra.PEs.map((pe) =>
-                pe.id === target.id ? setValueAtPath(pe, key, value) : pe
-              )
-            };
-          }
+          return {
+            ...currentArchitecture,
+            CGRAs: currentArchitecture.CGRAs.map((cgra) => {
+              if (target.type === 'cgra') {
+                if (cgra.id !== target.id) return cgra;
+                return setValueAtPath(cgra, key, value);
+              }
 
-          return cgra;
-        })
-      };
+              if (target.type === 'pe') {
+                if (cgra.id !== target.cgraId) return cgra;
+                const nextPEs = cgra.PEs.map((pe) =>
+                  pe.id === target.id ? setValueAtPath(pe, key, value) : pe
+                );
+                const hasChanged = nextPEs.some((pe, index) => pe !== cgra.PEs[index]);
+                if (!hasChanged) {
+                  return cgra;
+                }
+
+                return {
+                  ...cgra,
+                  PEs: nextPEs
+                };
+              }
+
+              return cgra;
+            })
+          };
+        })();
+
+        if (nextArchitecture === currentArchitecture) {
+          return prev;
+        }
+
+        return {
+          ...prev,
+          architecture: nextArchitecture
+        };
+      });
+    },
+    [setValueAtPath]
+  );
+
+  const handleOpenMenu = useCallback((event) => {
+    setMenuAnchorEl(event.currentTarget);
+  }, []);
+
+  const handleCloseMenu = useCallback(() => {
+    setMenuAnchorEl(null);
+  }, []);
+
+  const handleSaveData = useCallback(() => {
+    handleCloseMenu();
+    const blob = new Blob([JSON.stringify(appState, null, 2)], {
+      type: 'application/json'
     });
-  }, [setValueAtPath]);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    const fileNameBase = architecture?.name?.trim().replace(/\s+/g, '-').toLowerCase() || 'cgra-flow';
+    link.download = `${fileNameBase}-app-state.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, [appState, architecture?.name, handleCloseMenu]);
+
+  const handleTriggerLoad = useCallback(() => {
+    handleCloseMenu();
+    fileInputRef.current?.click();
+  }, [handleCloseMenu]);
+
+  const handleFileChange = useCallback(
+    (event) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const text = typeof reader.result === 'string' ? reader.result : '';
+          const parsed = JSON.parse(text);
+          if (!parsed || typeof parsed !== 'object' || !parsed.architecture) {
+            throw new Error('Invalid app data file');
+          }
+
+          setAppState(cloneAppData(parsed));
+          setSelection(null);
+        } catch (error) {
+          console.error('Failed to load app data', error);
+          window.alert('Unable to load the selected file. Please choose a valid CGRA Flow export.');
+        } finally {
+          event.target.value = '';
+        }
+      };
+
+      reader.onerror = () => {
+        console.error('Failed to read file', reader.error);
+        window.alert('Unable to read the selected file. Please try again.');
+        event.target.value = '';
+      };
+
+      reader.readAsText(file);
+    },
+    [setAppState, setSelection]
+  );
 
   const factory = useCallback(
     (node) => {
@@ -288,11 +391,39 @@ function App() {
               border: '1px solid rgba(148, 163, 184, 0.35)',
               borderRadius: 2
             }}
+            onClick={handleOpenMenu}
           >
             <MenuIcon />
           </IconButton>
         </Toolbar>
       </AppBar>
+      <Menu
+        anchorEl={menuAnchorEl}
+        open={Boolean(menuAnchorEl)}
+        onClose={handleCloseMenu}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+      >
+        <MenuItem onClick={handleSaveData}>
+          <ListItemIcon>
+            <DownloadIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Save data</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={handleTriggerLoad}>
+          <ListItemIcon>
+            <UploadIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Load data</ListItemText>
+        </MenuItem>
+      </Menu>
+      <input
+        type="file"
+        accept="application/json"
+        hidden
+        ref={fileInputRef}
+        onChange={handleFileChange}
+      />
       <Box
         component="main"
         sx={{
