@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Box } from '@mui/material';
-import { select } from 'd3-selection';
-import { zoom } from 'd3-zoom';
+import { select, zoom } from 'd3';
 
 const PE_SIZE = 42;
 const PE_GAP = 16;
@@ -9,9 +8,9 @@ const CGRA_PADDING = 32;
 const CGRA_GAP = 160;
 const MARGIN = 48;
 const CGRA_FILL = 'rgba(30, 64, 175, 0.18)';
-const CGRA_SELECTED_FILL = 'rgba(14, 116, 144, 0.3)';
+const CGRA_SELECTED_FILL = 'rgba(249, 115, 22, 0.22)';
 const CGRA_STROKE = 'rgba(96, 165, 250, 0.6)';
-const CGRA_SELECTED_STROKE = '#38bdf8';
+const CGRA_SELECTED_STROKE = '#f97316';
 const CGRA_ROUTER_RADIUS = 14;
 const CGRA_ROUTER_OFFSET = 28;
 const CGRA_ROUTER_FILL = '#0ea5e9';
@@ -20,10 +19,12 @@ const CGRA_ROUTER_SELECTED_FILL = '#f97316';
 const CGRA_ROUTER_SELECTED_STROKE = '#fb923c';
 const CGRA_ROUTER_CONNECTOR_INSET = 18;
 const PE_FILL = 'rgba(59, 130, 246, 0.6)';
+const PE_DISABLED_FILL = 'rgba(148, 163, 184, 0.45)';
 const PE_STROKE = '#1d4ed8';
 const PE_SELECTED_FILL = '#f97316';
 const PE_SELECTED_STROKE = '#fb923c';
 const PE_LABEL_FILL = '#e2e8f0';
+const PE_LABEL_DISABLED_FILL = 'rgba(226, 232, 240, 0.6)';
 const PE_LABEL_SELECTED_FILL = '#0f172a';
 
 function computeRouterLinkEndpoints(source, target) {
@@ -111,9 +112,8 @@ function buildLayout(architecture) {
   };
 }
 
-function MainCanvas({ architecture }) {
+function MainCanvas({ architecture, selection, onSelectionChange }) {
   const svgRef = useRef(null);
-  const [selection, setSelection] = useState(null);
 
   const layout = useMemo(() => buildLayout(architecture), [architecture]);
 
@@ -149,7 +149,7 @@ function MainCanvas({ architecture }) {
         .style('cursor', 'pointer')
         .on('click', (event) => {
           event.stopPropagation();
-          setSelection({ type: 'cgra', id: cgraLayout.id });
+          onSelectionChange?.({ type: 'cgra', id: cgraLayout.id, cgraId: cgraLayout.id });
         });
 
       const peLinkLayer = group
@@ -251,7 +251,7 @@ function MainCanvas({ architecture }) {
         .style('cursor', 'pointer')
         .on('click', (event, d) => {
           event.stopPropagation();
-          setSelection({ type: 'pe', id: d.id, cgraId: cgraLayout.id });
+          onSelectionChange?.({ type: 'pe', id: d.id, cgraId: cgraLayout.id });
         });
 
       nodeGroups
@@ -260,7 +260,7 @@ function MainCanvas({ architecture }) {
         .attr('height', PE_SIZE)
         .attr('rx', 8)
         .attr('ry', 8)
-        .attr('fill', PE_FILL)
+        .attr('fill', (d) => (d.disabled ? PE_DISABLED_FILL : PE_FILL))
         .attr('stroke', PE_STROKE)
         .attr('stroke-width', 1.5);
 
@@ -268,11 +268,11 @@ function MainCanvas({ architecture }) {
         .append('text')
         .attr('x', PE_SIZE / 2)
         .attr('y', PE_SIZE / 2 + 4)
-        .attr('fill', PE_LABEL_FILL)
+        .attr('fill', (d) => (d.disabled ? PE_LABEL_DISABLED_FILL : PE_LABEL_FILL))
         .attr('font-family', '"Fira Code", monospace')
         .attr('font-size', 12)
         .attr('text-anchor', 'middle')
-        .text((d) => d.id);
+        .text((d) => d.label ?? d.id);
 
       group
         .append('circle')
@@ -283,12 +283,7 @@ function MainCanvas({ architecture }) {
         .attr('fill', CGRA_ROUTER_FILL)
         .attr('stroke', CGRA_ROUTER_STROKE)
         .attr('stroke-width', 3)
-        .attr('stroke-opacity', 0.85)
-        .style('cursor', 'pointer')
-        .on('click', (event) => {
-          event.stopPropagation();
-          setSelection({ type: 'router', id: cgraLayout.id });
-        });
+        .attr('stroke-opacity', 0.85);
     });
 
     const cgraLinks = [];
@@ -338,14 +333,14 @@ function MainCanvas({ architecture }) {
     svg.call(zoomBehavior);
     svg.on('click', (event) => {
       if (event.defaultPrevented) return;
-      setSelection(null);
+      onSelectionChange?.(null);
     });
 
     return () => {
       svg.on('.zoom', null);
       svg.on('click', null);
     };
-  }, [layout]);
+  }, [layout, onSelectionChange]);
 
   useEffect(() => {
     if (!svgRef.current) return;
@@ -356,35 +351,13 @@ function MainCanvas({ architecture }) {
       const group = select(this);
       const id = group.attr('data-id');
       const boundary = group.select('rect.cgra-boundary');
-      const router = group.select('circle.cgra-router');
-      const connector = group.select('line.cgra-router-connector');
       const isSelected = selection?.type === 'cgra' && selection.id === id;
-      const containsSelectedPe = selection?.type === 'pe' && selection.cgraId === id;
-      const routerSelected = selection?.type === 'router' && selection.id === id;
-      const highlight = isSelected || containsSelectedPe;
 
       boundary
-        .attr('fill', highlight ? CGRA_SELECTED_FILL : CGRA_FILL)
-        .attr('stroke', highlight ? CGRA_SELECTED_STROKE : CGRA_STROKE)
-        .attr('stroke-width', highlight ? 3.5 : 2.5)
-        .attr('stroke-opacity', highlight ? 0.95 : 1);
-
-      connector
-        .attr('stroke', routerSelected || highlight ? CGRA_ROUTER_SELECTED_STROKE : CGRA_ROUTER_STROKE)
-        .attr('stroke-width', routerSelected || highlight ? 3.5 : 3)
-        .attr('stroke-opacity', routerSelected || highlight ? 1 : 0.85);
-
-      router
-        .attr(
-          'fill',
-          routerSelected || highlight ? CGRA_ROUTER_SELECTED_FILL : CGRA_ROUTER_FILL
-        )
-        .attr(
-          'stroke',
-          routerSelected || highlight ? CGRA_ROUTER_SELECTED_STROKE : CGRA_ROUTER_STROKE
-        )
-        .attr('stroke-width', routerSelected || highlight ? 3.5 : 3)
-        .attr('stroke-opacity', routerSelected || highlight ? 1 : 0.85);
+        .attr('fill', isSelected ? CGRA_SELECTED_FILL : CGRA_FILL)
+        .attr('stroke', isSelected ? CGRA_SELECTED_STROKE : CGRA_STROKE)
+        .attr('stroke-width', isSelected ? 3.5 : 2.5)
+        .attr('stroke-opacity', isSelected ? 0.95 : 1);
     });
 
     svg.selectAll('g.pe').each(function updatePe() {
@@ -393,15 +366,25 @@ function MainCanvas({ architecture }) {
       const rect = node.select('rect');
       const label = node.select('text');
       const isSelected = selection?.type === 'pe' && selection.id === id;
+      const data = node.datum();
+      const isDisabled = Boolean(data?.disabled);
 
       rect
-        .attr('fill', isSelected ? PE_SELECTED_FILL : PE_FILL)
+        .attr('fill', () => {
+          if (isSelected) return PE_SELECTED_FILL;
+          return isDisabled ? PE_DISABLED_FILL : PE_FILL;
+        })
         .attr('stroke', isSelected ? PE_SELECTED_STROKE : PE_STROKE)
         .attr('stroke-width', isSelected ? 2 : 1.5);
 
-      label.attr('fill', isSelected ? PE_LABEL_SELECTED_FILL : PE_LABEL_FILL);
+      label
+        .attr('fill', () => {
+          if (isSelected) return PE_LABEL_SELECTED_FILL;
+          return isDisabled ? PE_LABEL_DISABLED_FILL : PE_LABEL_FILL;
+        })
+        .text((d) => d.label ?? d.id);
     });
-  }, [selection]);
+  }, [layout, selection]);
 
   return (
     <Box

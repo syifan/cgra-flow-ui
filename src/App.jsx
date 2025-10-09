@@ -1,44 +1,13 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { AppBar, Box, IconButton, Toolbar, Typography } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import { Layout, Model } from 'flexlayout-react';
 import 'flexlayout-react/style/dark.css';
 import MainCanvas from './main_cancas';
+import PropertyInspector from './PropertyInspector';
+import { defaultArchitecture } from './app_data';
 
 const NAVBAR_HEIGHT = 56;
-const CGRA_DIMENSION = 4;
-const PE_DIMENSION = 4;
-
-const buildDefaultData = () => {
-  const CGRAs = [];
-
-  for (let cgraY = 0; cgraY < CGRA_DIMENSION; cgraY += 1) {
-    for (let cgraX = 0; cgraX < CGRA_DIMENSION; cgraX += 1) {
-      const PEs = [];
-
-      for (let peY = 0; peY < PE_DIMENSION; peY += 1) {
-        for (let peX = 0; peX < PE_DIMENSION; peX += 1) {
-          PEs.push({
-            id: `pe-${cgraY}-${cgraX}-${peY}-${peX}`,
-            x: peX,
-            y: peY
-          });
-        }
-      }
-
-      CGRAs.push({
-        id: `cgra-${cgraY}-${cgraX}`,
-        x: cgraX,
-        y: cgraY,
-        PEs
-      });
-    }
-  }
-
-  return { architecture: { CGRAs } };
-};
-
-const data = buildDefaultData();
 
 const initialLayout = {
   global: {
@@ -47,11 +16,11 @@ const initialLayout = {
   },
   borders: [],
   layout: {
-    type: 'column',
+    type: 'row',
     weight: 100,
     children: [
       {
-        type: 'row',
+        type: 'column',
         weight: 70,
         children: [
           {
@@ -73,8 +42,18 @@ const initialLayout = {
             children: [
               {
                 type: 'tab',
-                name: 'Right Panel',
-                component: 'rightPanel'
+                name: 'Mapping',
+                component: 'mapping'
+              },
+              {
+                type: 'tab',
+                name: 'Verification',
+                component: 'verification'
+              },
+              {
+                type: 'tab',
+                name: 'Layout',
+                component: 'layout'
               }
             ]
           }
@@ -87,8 +66,13 @@ const initialLayout = {
         children: [
           {
             type: 'tab',
-            name: 'Terminal',
-            component: 'terminal'
+            name: 'Properties',
+            component: 'properties'
+          },
+          {
+            type: 'tab',
+            name: 'GenAI',
+            component: 'genai'
           }
         ]
       }
@@ -98,55 +82,164 @@ const initialLayout = {
 
 function App() {
   const [model] = useState(() => Model.fromJson(initialLayout));
+  const [architecture, setArchitecture] = useState(defaultArchitecture);
+  const [selection, setSelection] = useState(null);
 
-  const factory = (node) => {
-    const component = node.getComponent();
+  const setValueAtPath = useCallback((object, keyPath, value) => {
+    const keys = Array.isArray(keyPath) ? keyPath : keyPath.split('.');
 
-    switch (component) {
-      case 'canvas':
-        return <MainCanvas architecture={data.architecture} />;
-      case 'rightPanel':
-        return (
-          <Box
-            sx={{
-              height: '100%',
-              p: 2.5,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 2,
-              borderRadius: 1,
-              bgcolor: 'rgba(148,163,184,0.08)',
-              color: 'text.secondary'
-            }}
-          >
-            <Typography variant="subtitle1" color="text.primary">
-              Inspector
-            </Typography>
-            <Typography variant="body2">
-              Use this panel to show kernel metadata, selection details, or configuration forms.
-            </Typography>
-          </Box>
-        );
-      case 'terminal':
-        return (
-          <Box
-            sx={{
-              height: '100%',
-              p: 2,
-              borderRadius: 1,
-              bgcolor: 'rgba(15,118,110,0.16)',
-              fontFamily: '"Fira Code", monospace',
-              fontSize: '0.85rem',
-              color: 'success.light'
-            }}
-          >
-            ➜ Terminal ready. Use this space for build output, logs, or interactive tooling.
-          </Box>
-        );
-      default:
-        return null;
+    if (!object || keys.length === 0) {
+      return object;
     }
-  };
+
+    const [currentKey, ...rest] = keys;
+
+    if (rest.length === 0) {
+      return {
+        ...object,
+        [currentKey]: value
+      };
+    }
+
+    const nextValue = setValueAtPath(object[currentKey] ?? {}, rest, value);
+
+    if (nextValue === object[currentKey]) {
+      return object;
+    }
+
+    return {
+      ...object,
+      [currentKey]: nextValue
+    };
+  }, []);
+
+  const handlePropertyChange = useCallback((target, key, value) => {
+    setArchitecture((prev) => {
+      if (!prev) return prev;
+
+      if (target.type === 'device') {
+        return setValueAtPath(prev, key, value);
+      }
+
+      return {
+        ...prev,
+        CGRAs: prev.CGRAs.map((cgra) => {
+          if (target.type === 'cgra') {
+            if (cgra.id !== target.id) return cgra;
+            return setValueAtPath(cgra, key, value);
+          }
+
+          if (target.type === 'pe') {
+            if (cgra.id !== target.cgraId) return cgra;
+            return {
+              ...cgra,
+              PEs: cgra.PEs.map((pe) =>
+                pe.id === target.id ? setValueAtPath(pe, key, value) : pe
+              )
+            };
+          }
+
+          return cgra;
+        })
+      };
+    });
+  }, [setValueAtPath]);
+
+  const factory = useCallback(
+    (node) => {
+      const component = node.getComponent();
+
+      switch (component) {
+        case 'canvas':
+          return (
+            <MainCanvas
+              architecture={architecture}
+              selection={selection}
+              onSelectionChange={setSelection}
+            />
+          );
+        case 'properties':
+          return (
+            <PropertyInspector
+              architecture={architecture}
+              selection={selection}
+              onPropertyChange={handlePropertyChange}
+            />
+          );
+        case 'genai':
+          return (
+            <Box
+              sx={{
+                height: '100%',
+                p: 3,
+                borderRadius: 1,
+                border: '1px dashed rgba(148, 163, 184, 0.3)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'text.secondary'
+              }}
+            >
+              GenAI workspace coming soon.
+            </Box>
+          );
+        case 'mapping':
+          return (
+            <Box
+              sx={{
+                height: '100%',
+                p: 3,
+                borderRadius: 1,
+                border: '1px dashed rgba(148, 163, 184, 0.3)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'text.secondary'
+              }}
+            >
+              Mapping workspace coming soon.
+            </Box>
+          );
+        case 'verification':
+          return (
+            <Box
+              sx={{
+                height: '100%',
+                p: 3,
+                borderRadius: 1,
+                border: '1px dashed rgba(148, 163, 184, 0.3)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'text.secondary'
+              }}
+            >
+              Verification workspace coming soon.
+            </Box>
+          );
+        case 'layout':
+          return (
+            <Box
+              sx={{
+                height: '100%',
+                p: 3,
+                borderRadius: 1,
+                border: '1px dashed rgba(148, 163, 184, 0.3)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'text.secondary'
+              }}
+            >
+              Layout workspace coming soon.
+            </Box>
+          );
+        default:
+          return null;
+      }
+    },
+    [architecture, handlePropertyChange, selection]
+  );
 
   return (
     <Box
