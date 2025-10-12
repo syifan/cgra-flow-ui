@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { Box } from '@mui/material';
-import { select, zoom } from 'd3';
+import { select, zoom, zoomIdentity } from 'd3';
 
 const PE_SIZE = 42;
 const PE_GAP = 16;
@@ -114,6 +114,7 @@ function buildLayout(architecture) {
 
 function MainCanvas({ architecture, selection, onSelectionChange }) {
   const svgRef = useRef(null);
+  const zoomTransformRef = useRef(zoomIdentity);
 
   const layout = useMemo(() => buildLayout(architecture), [architecture]);
 
@@ -327,10 +328,16 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
     const zoomBehavior = zoom()
       .scaleExtent([0.5, 4])
       .on('zoom', (event) => {
+        zoomTransformRef.current = event.transform;
         zoomGroup.attr('transform', event.transform);
       });
 
     svg.call(zoomBehavior);
+
+    if (zoomTransformRef.current) {
+      zoomGroup.attr('transform', zoomTransformRef.current);
+      zoomBehavior.transform(svg, zoomTransformRef.current);
+    }
     svg.on('click', (event) => {
       if (event.defaultPrevented) return;
       onSelectionChange?.(null);
