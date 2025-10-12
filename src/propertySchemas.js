@@ -102,7 +102,8 @@ export const PROPERTY_SCHEMAS = {
       type: 'boolean',
       mutable: true,
       section: 'Tile Functional Units',
-      disabledWhen: { key: 'disabled', equals: true }
+      disabledWhen: { key: 'disabled', equals: true },
+      toggleGroup: 'tileFunctionalUnits'
     },
     {
       key: 'tileFunctionalUnits.shift',
@@ -110,7 +111,8 @@ export const PROPERTY_SCHEMAS = {
       type: 'boolean',
       mutable: true,
       section: 'Tile Functional Units',
-      disabledWhen: { key: 'disabled', equals: true }
+      disabledWhen: { key: 'disabled', equals: true },
+      toggleGroup: 'tileFunctionalUnits'
     },
     {
       key: 'tileFunctionalUnits.select',
@@ -118,7 +120,8 @@ export const PROPERTY_SCHEMAS = {
       type: 'boolean',
       mutable: true,
       section: 'Tile Functional Units',
-      disabledWhen: { key: 'disabled', equals: true }
+      disabledWhen: { key: 'disabled', equals: true },
+      toggleGroup: 'tileFunctionalUnits'
     },
     {
       key: 'tileFunctionalUnits.mac',
@@ -126,7 +129,8 @@ export const PROPERTY_SCHEMAS = {
       type: 'boolean',
       mutable: true,
       section: 'Tile Functional Units',
-      disabledWhen: { key: 'disabled', equals: true }
+      disabledWhen: { key: 'disabled', equals: true },
+      toggleGroup: 'tileFunctionalUnits'
     },
     {
       key: 'tileFunctionalUnits.return',
@@ -134,7 +138,8 @@ export const PROPERTY_SCHEMAS = {
       type: 'boolean',
       mutable: true,
       section: 'Tile Functional Units',
-      disabledWhen: { key: 'disabled', equals: true }
+      disabledWhen: { key: 'disabled', equals: true },
+      toggleGroup: 'tileFunctionalUnits'
     },
     {
       key: 'tileFunctionalUnits.logic',
@@ -142,7 +147,8 @@ export const PROPERTY_SCHEMAS = {
       type: 'boolean',
       mutable: true,
       section: 'Tile Functional Units',
-      disabledWhen: { key: 'disabled', equals: true }
+      disabledWhen: { key: 'disabled', equals: true },
+      toggleGroup: 'tileFunctionalUnits'
     },
     {
       key: 'tileFunctionalUnits.load',
@@ -150,7 +156,8 @@ export const PROPERTY_SCHEMAS = {
       type: 'boolean',
       mutable: true,
       section: 'Tile Functional Units',
-      disabledWhen: { key: 'disabled', equals: true }
+      disabledWhen: { key: 'disabled', equals: true },
+      toggleGroup: 'tileFunctionalUnits'
     },
     {
       key: 'tileFunctionalUnits.store',
@@ -158,7 +165,8 @@ export const PROPERTY_SCHEMAS = {
       type: 'boolean',
       mutable: true,
       section: 'Tile Functional Units',
-      disabledWhen: { key: 'disabled', equals: true }
+      disabledWhen: { key: 'disabled', equals: true },
+      toggleGroup: 'tileFunctionalUnits'
     },
     {
       key: 'tileFunctionalUnits.compare',
@@ -166,7 +174,8 @@ export const PROPERTY_SCHEMAS = {
       type: 'boolean',
       mutable: true,
       section: 'Tile Functional Units',
-      disabledWhen: { key: 'disabled', equals: true }
+      disabledWhen: { key: 'disabled', equals: true },
+      toggleGroup: 'tileFunctionalUnits'
     },
     {
       key: 'tileFunctionalUnits.add',
@@ -174,7 +183,8 @@ export const PROPERTY_SCHEMAS = {
       type: 'boolean',
       mutable: true,
       section: 'Tile Functional Units',
-      disabledWhen: { key: 'disabled', equals: true }
+      disabledWhen: { key: 'disabled', equals: true },
+      toggleGroup: 'tileFunctionalUnits'
     },
     {
       key: 'tileFunctionalUnits.mul',
@@ -182,7 +192,8 @@ export const PROPERTY_SCHEMAS = {
       type: 'boolean',
       mutable: true,
       section: 'Tile Functional Units',
-      disabledWhen: { key: 'disabled', equals: true }
+      disabledWhen: { key: 'disabled', equals: true },
+      toggleGroup: 'tileFunctionalUnits'
     },
     {
       key: 'outgoingLinks.nw',
@@ -190,7 +201,8 @@ export const PROPERTY_SCHEMAS = {
       type: 'boolean',
       mutable: true,
       section: 'Outgoing Links',
-      disabledWhen: { key: 'disabled', equals: true }
+      disabledWhen: { key: 'disabled', equals: true },
+      toggleGroup: 'outgoingLinks'
     },
     {
       key: 'outgoingLinks.sw',
@@ -198,7 +210,8 @@ export const PROPERTY_SCHEMAS = {
       type: 'boolean',
       mutable: true,
       section: 'Outgoing Links',
-      disabledWhen: { key: 'disabled', equals: true }
+      disabledWhen: { key: 'disabled', equals: true },
+      toggleGroup: 'outgoingLinks'
     },
     {
       key: 'outgoingLinks.ne',
@@ -206,7 +219,8 @@ export const PROPERTY_SCHEMAS = {
       type: 'boolean',
       mutable: true,
       section: 'Outgoing Links',
-      disabledWhen: { key: 'disabled', equals: true }
+      disabledWhen: { key: 'disabled', equals: true },
+      toggleGroup: 'outgoingLinks'
     },
     {
       key: 'outgoingLinks.se',
@@ -214,7 +228,8 @@ export const PROPERTY_SCHEMAS = {
       type: 'boolean',
       mutable: true,
       section: 'Outgoing Links',
-      disabledWhen: { key: 'disabled', equals: true }
+      disabledWhen: { key: 'disabled', equals: true },
+      toggleGroup: 'outgoingLinks'
     },
     {
       key: 'outgoingLinks.n',
@@ -222,7 +237,8 @@ export const PROPERTY_SCHEMAS = {
       type: 'boolean',
       mutable: true,
       section: 'Outgoing Links',
-      disabledWhen: { key: 'disabled', equals: true }
+      disabledWhen: { key: 'disabled', equals: true },
+      toggleGroup: 'outgoingLinks'
     },
     {
       key: 'outgoingLinks.s',
@@ -230,7 +246,8 @@ export const PROPERTY_SCHEMAS = {
       type: 'boolean',
       mutable: true,
       section: 'Outgoing Links',
-      disabledWhen: { key: 'disabled', equals: true }
+      disabledWhen: { key: 'disabled', equals: true },
+      toggleGroup: 'outgoingLinks'
     },
     {
       key: 'outgoingLinks.w',
@@ -238,7 +255,8 @@ export const PROPERTY_SCHEMAS = {
       type: 'boolean',
       mutable: true,
       section: 'Outgoing Links',
-      disabledWhen: { key: 'disabled', equals: true }
+      disabledWhen: { key: 'disabled', equals: true },
+      toggleGroup: 'outgoingLinks'
     },
     {
       key: 'outgoingLinks.e',
@@ -246,7 +264,8 @@ export const PROPERTY_SCHEMAS = {
       type: 'boolean',
       mutable: true,
       section: 'Outgoing Links',
-      disabledWhen: { key: 'disabled', equals: true }
+      disabledWhen: { key: 'disabled', equals: true },
+      toggleGroup: 'outgoingLinks'
     }
   ]
 };
