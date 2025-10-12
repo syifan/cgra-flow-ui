@@ -2,6 +2,7 @@ import { Fragment, useMemo } from 'react';
 import {
   Box,
   Divider,
+  FormControlLabel,
   MenuItem,
   Switch,
   TextField,
@@ -131,6 +132,23 @@ function PropertyInspector({ architecture, selection, onPropertyChange }) {
     onPropertyChange(target, property.key, event.target.checked);
   };
 
+  const evaluateProperty = (property) => {
+    const dependencyMet = property.disabledWhen
+      ? (() => {
+          const dependencyValue = getValueAtPath(entity, property.disabledWhen.key);
+          if (Object.prototype.hasOwnProperty.call(property.disabledWhen, 'equals')) {
+            return dependencyValue === property.disabledWhen.equals;
+          }
+          return Boolean(dependencyValue);
+        })()
+      : false;
+
+    const isDisabled = property.mutable === false || dependencyMet;
+    const value = getValueAtPath(entity, property.key);
+
+    return { isDisabled, value };
+  };
+
   if (!entity || !schema) {
     return (
       <Box
@@ -188,26 +206,18 @@ function PropertyInspector({ architecture, selection, onPropertyChange }) {
         {(() => {
           const rows = [];
           let currentSection = null;
+          const processedToggleGroups = new Set();
+          const toggleGroupMap = schema.reduce((accumulator, property) => {
+            if (property.toggleGroup) {
+              if (!accumulator.has(property.toggleGroup)) {
+                accumulator.set(property.toggleGroup, []);
+              }
+              accumulator.get(property.toggleGroup).push(property);
+            }
+            return accumulator;
+          }, new Map());
 
           schema.forEach((property) => {
-            const dependencyMet = property.disabledWhen
-              ? (() => {
-                  const dependencyValue = getValueAtPath(entity, property.disabledWhen.key);
-                  if (Object.prototype.hasOwnProperty.call(property.disabledWhen, 'equals')) {
-                    return dependencyValue === property.disabledWhen.equals;
-                  }
-                  return Boolean(dependencyValue);
-                })()
-              : false;
-
-            const isDisabled = property.mutable === false || dependencyMet;
-            const value = getValueAtPath(entity, property.key);
-            const commonProps = {
-              fullWidth: true,
-              size: 'small',
-              disabled: isDisabled
-            };
-
             if (property.section && property.section !== currentSection) {
               currentSection = property.section;
               rows.push(
@@ -227,6 +237,69 @@ function PropertyInspector({ architecture, selection, onPropertyChange }) {
                 </Typography>
               );
             }
+
+            if (property.toggleGroup) {
+              if (processedToggleGroups.has(property.toggleGroup)) {
+                return;
+              }
+
+              processedToggleGroups.add(property.toggleGroup);
+              const groupProperties = toggleGroupMap.get(property.toggleGroup) ?? [];
+
+              rows.push(
+                <Box
+                  key={`group-${property.toggleGroup}`}
+                  sx={{
+                    gridColumn: '1 / -1',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 1
+                  }}
+                >
+                  <Box
+                    sx={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+                      gap: 1
+                    }}
+                  >
+                    {groupProperties.map((groupProperty) => {
+                      const { isDisabled: groupDisabled, value: groupValue } =
+                        evaluateProperty(groupProperty);
+
+                      return (
+                        <FormControlLabel
+                          key={groupProperty.key}
+                          control={
+                            <Switch
+                              checked={Boolean(groupValue)}
+                              onChange={handleBooleanChange(groupProperty)}
+                              color="primary"
+                              disabled={groupDisabled}
+                              size="small"
+                            />
+                          }
+                          label={groupProperty.label}
+                          sx={{
+                            m: 0,
+                            color: groupDisabled ? 'text.disabled' : 'text.secondary'
+                          }}
+                        />
+                      );
+                    })}
+                  </Box>
+                </Box>
+              );
+
+              return;
+            }
+
+            const { isDisabled, value } = evaluateProperty(property);
+            const commonProps = {
+              fullWidth: true,
+              size: 'small',
+              disabled: isDisabled
+            };
 
             let input = null;
 
@@ -252,6 +325,7 @@ function PropertyInspector({ architecture, selection, onPropertyChange }) {
                   onChange={handleBooleanChange(property)}
                   color="primary"
                   disabled={isDisabled}
+                  size="small"
                 />
               );
             } else {
