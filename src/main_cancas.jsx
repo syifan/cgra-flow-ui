@@ -67,9 +67,14 @@ function buildLayout(architecture) {
     };
   });
 
+  const globalWidth = layouts.length ? Math.max(...layouts.map((layout) => layout.width)) : 0;
+  const globalHeight = layouts.length ? Math.max(...layouts.map((layout) => layout.height)) : 0;
+
   const enhancedLayouts = layouts.map((layout) => {
-    const originX = MARGIN + layout.x * (layout.width + CGRA_GAP);
-    const originY = MARGIN + layout.y * (layout.height + CGRA_GAP);
+    const baseOriginX = MARGIN + layout.x * (globalWidth + CGRA_GAP);
+    const baseOriginY = MARGIN + layout.y * (globalHeight + CGRA_GAP);
+    const originX = baseOriginX + (globalWidth - layout.width);
+    const originY = baseOriginY + (globalHeight - layout.height);
     const routerLocalX = layout.width + CGRA_ROUTER_OFFSET;
     const routerLocalY = layout.height + CGRA_ROUTER_OFFSET;
     const routerCenterX = originX + routerLocalX;

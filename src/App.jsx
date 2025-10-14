@@ -18,6 +18,7 @@ import 'flexlayout-react/style/dark.css';
 import MainCanvas from './main_cancas';
 import PropertyInspector from './PropertyInspector';
 import { defaultAppData } from './app_data';
+import { resizeArchitectureGrid, updateCgraDimensions } from './architectureUtils';
 
 const NAVBAR_HEIGHT = 56;
 
@@ -139,18 +140,43 @@ function App() {
 
         const nextArchitecture = (() => {
           if (target.type === 'device') {
-            return setValueAtPath(currentArchitecture, key, value);
+            const updated = setValueAtPath(currentArchitecture, key, value);
+
+            if (key === 'multiCgraRows' || key === 'multiCgraColumns') {
+              return resizeArchitectureGrid(
+                updated,
+                updated.multiCgraRows,
+                updated.multiCgraColumns
+              );
+            }
+
+            return updated;
           }
 
-          return {
-            ...currentArchitecture,
-            CGRAs: currentArchitecture.CGRAs.map((cgra) => {
-              if (target.type === 'cgra') {
+          if (target.type === 'cgra') {
+            return {
+              ...currentArchitecture,
+              CGRAs: currentArchitecture.CGRAs.map((cgra) => {
                 if (cgra.id !== target.id) return cgra;
-                return setValueAtPath(cgra, key, value);
-              }
+                const updatedCgra = setValueAtPath(cgra, key, value);
 
-              if (target.type === 'pe') {
+                if (key === 'perCgraRows' || key === 'perCgraColumns') {
+                  const nextRows =
+                    key === 'perCgraRows' ? value : updatedCgra.perCgraRows;
+                  const nextColumns =
+                    key === 'perCgraColumns' ? value : updatedCgra.perCgraColumns;
+                  return updateCgraDimensions(updatedCgra, nextRows, nextColumns);
+                }
+
+                return updatedCgra;
+              })
+            };
+          }
+
+          if (target.type === 'pe') {
+            return {
+              ...currentArchitecture,
+              CGRAs: currentArchitecture.CGRAs.map((cgra) => {
                 if (cgra.id !== target.cgraId) return cgra;
                 const nextPEs = cgra.PEs.map((pe) =>
                   pe.id === target.id ? setValueAtPath(pe, key, value) : pe
@@ -164,11 +190,11 @@ function App() {
                   ...cgra,
                   PEs: nextPEs
                 };
-              }
+              })
+            };
+          }
 
-              return cgra;
-            })
-          };
+          return currentArchitecture;
         })();
 
         if (nextArchitecture === currentArchitecture) {
@@ -181,7 +207,7 @@ function App() {
         };
       });
     },
-    [setValueAtPath]
+    [resizeArchitectureGrid, setValueAtPath, updateCgraDimensions]
   );
 
   const handleOpenMenu = useCallback((event) => {
