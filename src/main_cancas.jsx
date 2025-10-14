@@ -36,7 +36,8 @@ const PE_LABEL_MAX_LINES = 2;
 const PE_LABEL_VISIBILITY_THRESHOLD = 1.2;
 const PE_LABEL_LINE_HEIGHT_EM = 1.1;
 const PE_RADIUS = PE_SIZE / 2;
-const PE_LINK_SOURCE_PADDING = 6;
+const PE_LINK_SOURCE_DETACHMENT = 6;
+const PE_LINK_TARGET_DETACHMENT = 2;
 const PE_LINK_ARROW_CLEARANCE = 3;
 const PE_LINK_ARROW_LENGTH = 7;
 const PE_LINK_VISIBILITY_THRESHOLD = 0.85;
@@ -208,16 +209,26 @@ function computePeLinkEndpoints(source, target) {
   const distance = Math.sqrt(dx * dx + dy * dy) || 1;
   const ux = dx / distance;
   const uy = dy / distance;
-  const maxComponent = Math.max(Math.abs(ux), Math.abs(uy)) || 1;
+  const absUx = Math.abs(ux);
+  const absUy = Math.abs(uy);
+  const limitX = absUx > 1e-6 ? PE_RADIUS / absUx : Infinity;
+  const limitY = absUy > 1e-6 ? PE_RADIUS / absUy : Infinity;
+  const boundaryDistance = Math.min(limitX, limitY, distance / 2);
 
-  const targetApproachLimit = Math.max(0, PE_RADIUS / maxComponent - PE_LINK_ARROW_CLEARANCE);
-  const adjustedTargetLimit = Math.max(0, targetApproachLimit - PE_LINK_ARROW_LENGTH);
-  const targetClearance = Math.max(0, Math.min(distance / 2, adjustedTargetLimit));
+  const targetClearance = Math.max(
+    0,
+    Math.min(
+      distance / 2,
+      boundaryDistance + PE_LINK_TARGET_DETACHMENT + PE_LINK_ARROW_LENGTH + PE_LINK_ARROW_CLEARANCE
+    )
+  );
 
-  const sourceRetreatLimit = Math.max(0, (PE_RADIUS - PE_LINK_SOURCE_PADDING) / maxComponent);
   const sourceClearance = Math.max(
     0,
-    Math.min(distance - targetClearance, Math.min(distance / 2, sourceRetreatLimit))
+    Math.min(
+      distance - targetClearance,
+      Math.min(distance / 2, boundaryDistance + PE_LINK_SOURCE_DETACHMENT)
+    )
   );
 
   return {
