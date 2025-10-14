@@ -13,6 +13,7 @@ const CGRA_STROKE = 'rgba(96, 165, 250, 0.6)';
 const CGRA_SELECTED_STROKE = '#f97316';
 const CGRA_LABEL_FILL = '#bae6fd';
 const CGRA_LABEL_SELECTED_FILL = '#f8fafc';
+const CGRA_LABEL_FONT_SIZE = 20;
 const CGRA_LABEL_HIDE_ZOOM_THRESHOLD = 0.65;
 const CGRA_LABEL_SHOW_ZOOM_THRESHOLD = 1.6;
 const CGRA_ROUTER_RADIUS = 14;
@@ -316,7 +317,7 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
         .attr('y', -12)
         .attr('fill', CGRA_LABEL_FILL)
         .attr('font-family', '"Fira Code", monospace')
-        .attr('font-size', 14)
+        .attr('font-size', CGRA_LABEL_FONT_SIZE)
         .attr('font-weight', 500)
         .attr('text-anchor', 'middle')
         .attr('dominant-baseline', 'central')
