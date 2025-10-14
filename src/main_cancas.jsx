@@ -11,6 +11,9 @@ const CGRA_FILL = 'rgba(30, 64, 175, 0.18)';
 const CGRA_SELECTED_FILL = 'rgba(249, 115, 22, 0.22)';
 const CGRA_STROKE = 'rgba(96, 165, 250, 0.6)';
 const CGRA_SELECTED_STROKE = '#f97316';
+const CGRA_LABEL_FILL = '#bae6fd';
+const CGRA_LABEL_SELECTED_FILL = '#f8fafc';
+const CGRA_LABEL_FONT_SIZE = 20;
 const CGRA_ROUTER_RADIUS = 14;
 const CGRA_ROUTER_OFFSET = 28;
 const CGRA_ROUTER_FILL = '#0ea5e9';
@@ -26,6 +29,173 @@ const PE_SELECTED_STROKE = '#fb923c';
 const PE_LABEL_FILL = '#e2e8f0';
 const PE_LABEL_DISABLED_FILL = 'rgba(226, 232, 240, 0.6)';
 const PE_LABEL_SELECTED_FILL = '#0f172a';
+const PE_LABEL_MAX_CHARS_PER_LINE = 6;
+const PE_LABEL_MAX_LINES = 2;
+const PE_LABEL_VISIBILITY_THRESHOLD = 1.2;
+const PE_LABEL_LINE_HEIGHT_EM = 1.1;
+
+function normalizeLabelText(raw) {
+  if (raw == null) return '';
+  return String(raw).replace(/\s+/g, ' ').trim();
+}
+
+function splitLabelIntoLines(label) {
+  const normalized = normalizeLabelText(label);
+  if (!normalized) return [];
+
+  const tokens = normalized
+    .split(' ')
+    .filter(Boolean)
+    .flatMap((word) => {
+      if (word.length <= PE_LABEL_MAX_CHARS_PER_LINE) {
+        return [word];
+      }
+
+      const segments = [];
+      for (let index = 0; index < word.length; index += PE_LABEL_MAX_CHARS_PER_LINE) {
+        segments.push(word.slice(index, index + PE_LABEL_MAX_CHARS_PER_LINE));
+      }
+      return segments;
+    });
+
+  const lines = [];
+  let current = '';
+  let truncated = false;
+
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    const separator = current ? ' ' : '';
+    const candidate = `${current}${separator}${token}`.trim();
+
+    if (candidate.length <= PE_LABEL_MAX_CHARS_PER_LINE) {
+      current = candidate;
+      continue;
+    }
+
+    if (current) {
+      lines.push(current);
+    }
+
+    if (lines.length >= PE_LABEL_MAX_LINES) {
+      truncated = true;
+      break;
+    }
+
+    current = token;
+  }
+
+  if (lines.length < PE_LABEL_MAX_LINES && current) {
+    lines.push(current);
+  } else if (!truncated && current && lines.length >= PE_LABEL_MAX_LINES) {
+    truncated = true;
+  }
+
+  if (tokens.length && lines.length === 0) {
+    lines.push(tokens[0].slice(0, PE_LABEL_MAX_CHARS_PER_LINE));
+    truncated = tokens.length > 1 || tokens[0].length > PE_LABEL_MAX_CHARS_PER_LINE;
+  }
+
+  if (lines.length > PE_LABEL_MAX_LINES) {
+    lines.length = PE_LABEL_MAX_LINES;
+    truncated = true;
+  }
+
+  if (truncated) {
+    const lastIndex = lines.length - 1;
+    const lastLine = lines[lastIndex] ?? '';
+    const trimmed = lastLine.slice(0, Math.max(PE_LABEL_MAX_CHARS_PER_LINE - 1, 1)).trimEnd();
+    lines[lastIndex] = trimmed ? `${trimmed}…` : '…';
+  }
+
+  return lines;
+}
+
+function applyPeLabel(selection) {
+  selection.each(function applyLabel(data) {
+    const text = select(this);
+    const preferredLabel = normalizeLabelText(data?.label);
+    const lines = splitLabelIntoLines(preferredLabel || data?.id);
+
+    text.selectAll('tspan').remove();
+
+    if (!lines.length) {
+      return;
+    }
+
+    const initialDy =
+      lines.length === 1 ? '0em' : `${(-((lines.length - 1) / 2) * PE_LABEL_LINE_HEIGHT_EM).toFixed(2)}em`;
+
+    lines.forEach((line, index) => {
+      const tspan = text
+        .append('tspan')
+        .attr('x', PE_SIZE / 2)
+        .text(line);
+
+      if (index === 0) {
+        tspan.attr('dy', initialDy);
+      } else {
+        tspan.attr('dy', `${PE_LABEL_LINE_HEIGHT_EM}em`);
+      }
+    });
+  });
+}
+
+function updatePeLabelVisibility(svg, zoomLevel) {
+  const display = zoomLevel >= PE_LABEL_VISIBILITY_THRESHOLD ? null : 'none';
+  svg
+    .selectAll('g.pe text')
+    .attr('display', display)
+    .attr('aria-hidden', zoomLevel >= PE_LABEL_VISIBILITY_THRESHOLD ? null : 'true');
+}
+
+function updateCgraLabelVisibility(svg, transform, layout) {
+  const currentTransform = transform ?? zoomIdentity;
+  const viewWidth = layout?.width ?? 0;
+  const viewHeight = layout?.height ?? 0;
+
+  if (!(viewWidth > 0) || !(viewHeight > 0)) {
+    svg
+      .selectAll('g.cgra text.cgra-label')
+      .attr('display', null)
+      .attr('aria-hidden', null);
+    return;
+  }
+
+  const topLeftX = currentTransform.invertX(0);
+  const topLeftY = currentTransform.invertY(0);
+  const bottomRightX = currentTransform.invertX(viewWidth);
+  const bottomRightY = currentTransform.invertY(viewHeight);
+
+  const visibleMinX = Math.min(topLeftX, bottomRightX);
+  const visibleMaxX = Math.max(topLeftX, bottomRightX);
+  const visibleMinY = Math.min(topLeftY, bottomRightY);
+  const visibleMaxY = Math.max(topLeftY, bottomRightY);
+
+  svg.selectAll('g.cgra').each(function toggleCgraLabel() {
+    const group = select(this);
+    const label = group.select('text.cgra-label');
+
+    if (label.empty()) {
+      return;
+    }
+
+    const data = group.datum();
+    const cgraOriginX = data?.originX ?? 0;
+    const cgraOriginY = data?.originY ?? 0;
+    const cgraWidth = data?.width ?? 0;
+    const cgraHeight = data?.height ?? 0;
+    const cgraMaxX = cgraOriginX + cgraWidth;
+    const cgraMaxY = cgraOriginY + cgraHeight;
+
+    const fullyVisible =
+      cgraOriginX >= visibleMinX &&
+      cgraMaxX <= visibleMaxX &&
+      cgraOriginY >= visibleMinY &&
+      cgraMaxY <= visibleMaxY;
+
+    label.attr('display', fullyVisible ? null : 'none').attr('aria-hidden', fullyVisible ? null : 'true');
+  });
+}
 
 function computeRouterLinkEndpoints(source, target) {
   const dx = target.routerCenterX - source.routerCenterX;
@@ -151,6 +321,7 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
         .append('g')
         .attr('class', 'cgra')
         .attr('data-id', cgraLayout.id)
+        .datum(cgraLayout)
         .attr('transform', `translate(${cgraLayout.originX}, ${cgraLayout.originY})`)
         .style('cursor', 'pointer')
         .on('click', (event) => {
@@ -176,6 +347,20 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
         .attr('fill', CGRA_FILL)
         .attr('stroke', CGRA_STROKE)
         .attr('stroke-width', 2.5);
+
+      group
+        .append('text')
+        .attr('class', 'cgra-label')
+        .attr('x', cgraLayout.width / 2)
+        .attr('y', -12)
+        .attr('fill', CGRA_LABEL_FILL)
+        .attr('font-family', '"Fira Code", monospace')
+        .attr('font-size', CGRA_LABEL_FONT_SIZE)
+        .attr('font-weight', 500)
+        .attr('text-anchor', 'middle')
+        .attr('dominant-baseline', 'central')
+        .attr('pointer-events', 'none')
+        .text(cgraLayout.label || cgraLayout.id);
 
       const connectorStartX = cgraLayout.width - CGRA_ROUTER_CONNECTOR_INSET;
       const connectorStartY = cgraLayout.height - CGRA_ROUTER_CONNECTOR_INSET;
@@ -273,12 +458,13 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
       nodeGroups
         .append('text')
         .attr('x', PE_SIZE / 2)
-        .attr('y', PE_SIZE / 2 + 4)
+        .attr('y', PE_SIZE / 2)
         .attr('fill', (d) => (d.disabled ? PE_LABEL_DISABLED_FILL : PE_LABEL_FILL))
         .attr('font-family', '"Fira Code", monospace')
-        .attr('font-size', 12)
+        .attr('font-size', 11)
         .attr('text-anchor', 'middle')
-        .text((d) => d.label ?? d.id);
+        .attr('dominant-baseline', 'middle')
+        .call(applyPeLabel);
 
       group
         .append('circle')
@@ -335,6 +521,8 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
       .on('zoom', (event) => {
         zoomTransformRef.current = event.transform;
         zoomGroup.attr('transform', event.transform);
+        updatePeLabelVisibility(svg, event.transform.k);
+        updateCgraLabelVisibility(svg, event.transform, layout);
       });
 
     svg.call(zoomBehavior);
@@ -342,6 +530,11 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
     if (zoomTransformRef.current) {
       zoomGroup.attr('transform', zoomTransformRef.current);
       zoomBehavior.transform(svg, zoomTransformRef.current);
+      updatePeLabelVisibility(svg, zoomTransformRef.current.k);
+      updateCgraLabelVisibility(svg, zoomTransformRef.current, layout);
+    } else {
+      updatePeLabelVisibility(svg, 1);
+      updateCgraLabelVisibility(svg, zoomIdentity, layout);
     }
     svg.on('click', (event) => {
       if (event.defaultPrevented) return;
@@ -363,13 +556,21 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
       const group = select(this);
       const id = group.attr('data-id');
       const boundary = group.select('rect.cgra-boundary');
+      const label = group.select('text.cgra-label');
       const isSelected = selection?.type === 'cgra' && selection.id === id;
+      const data = group.datum();
 
       boundary
         .attr('fill', isSelected ? CGRA_SELECTED_FILL : CGRA_FILL)
         .attr('stroke', isSelected ? CGRA_SELECTED_STROKE : CGRA_STROKE)
         .attr('stroke-width', isSelected ? 3.5 : 2.5)
         .attr('stroke-opacity', isSelected ? 0.95 : 1);
+
+      if (!label.empty()) {
+        label
+          .text(data?.label || data?.id || id)
+          .attr('fill', isSelected ? CGRA_LABEL_SELECTED_FILL : CGRA_LABEL_FILL);
+      }
     });
 
     svg.selectAll('g.pe').each(function updatePe() {
@@ -394,7 +595,7 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
           if (isSelected) return PE_LABEL_SELECTED_FILL;
           return isDisabled ? PE_LABEL_DISABLED_FILL : PE_LABEL_FILL;
         })
-        .text((d) => d.label ?? d.id);
+        .call(applyPeLabel);
     });
   }, [layout, selection]);
 
