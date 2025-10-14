@@ -11,6 +11,10 @@ const CGRA_FILL = 'rgba(30, 64, 175, 0.18)';
 const CGRA_SELECTED_FILL = 'rgba(249, 115, 22, 0.22)';
 const CGRA_STROKE = 'rgba(96, 165, 250, 0.6)';
 const CGRA_SELECTED_STROKE = '#f97316';
+const CGRA_LABEL_FILL = '#bae6fd';
+const CGRA_LABEL_SELECTED_FILL = '#f8fafc';
+const CGRA_LABEL_HIDE_ZOOM_THRESHOLD = 0.65;
+const CGRA_LABEL_SHOW_ZOOM_THRESHOLD = 1.6;
 const CGRA_ROUTER_RADIUS = 14;
 const CGRA_ROUTER_OFFSET = 28;
 const CGRA_ROUTER_FILL = '#0ea5e9';
@@ -145,6 +149,15 @@ function updatePeLabelVisibility(svg, zoomLevel) {
     .attr('aria-hidden', zoomLevel >= PE_LABEL_VISIBILITY_THRESHOLD ? null : 'true');
 }
 
+function updateCgraLabelVisibility(svg, zoomLevel) {
+  const shouldShow =
+    zoomLevel >= CGRA_LABEL_HIDE_ZOOM_THRESHOLD && zoomLevel <= CGRA_LABEL_SHOW_ZOOM_THRESHOLD;
+  svg
+    .selectAll('g.cgra text.cgra-label')
+    .attr('display', shouldShow ? null : 'none')
+    .attr('aria-hidden', shouldShow ? null : 'true');
+}
+
 function computeRouterLinkEndpoints(source, target) {
   const dx = target.routerCenterX - source.routerCenterX;
   const dy = target.routerCenterY - source.routerCenterY;
@@ -269,6 +282,7 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
         .append('g')
         .attr('class', 'cgra')
         .attr('data-id', cgraLayout.id)
+        .datum(cgraLayout)
         .attr('transform', `translate(${cgraLayout.originX}, ${cgraLayout.originY})`)
         .style('cursor', 'pointer')
         .on('click', (event) => {
@@ -294,6 +308,20 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
         .attr('fill', CGRA_FILL)
         .attr('stroke', CGRA_STROKE)
         .attr('stroke-width', 2.5);
+
+      group
+        .append('text')
+        .attr('class', 'cgra-label')
+        .attr('x', cgraLayout.width / 2)
+        .attr('y', -12)
+        .attr('fill', CGRA_LABEL_FILL)
+        .attr('font-family', '"Fira Code", monospace')
+        .attr('font-size', 14)
+        .attr('font-weight', 500)
+        .attr('text-anchor', 'middle')
+        .attr('dominant-baseline', 'central')
+        .attr('pointer-events', 'none')
+        .text(cgraLayout.label || cgraLayout.id);
 
       const connectorStartX = cgraLayout.width - CGRA_ROUTER_CONNECTOR_INSET;
       const connectorStartY = cgraLayout.height - CGRA_ROUTER_CONNECTOR_INSET;
@@ -455,6 +483,7 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
         zoomTransformRef.current = event.transform;
         zoomGroup.attr('transform', event.transform);
         updatePeLabelVisibility(svg, event.transform.k);
+        updateCgraLabelVisibility(svg, event.transform.k);
       });
 
     svg.call(zoomBehavior);
@@ -463,8 +492,10 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
       zoomGroup.attr('transform', zoomTransformRef.current);
       zoomBehavior.transform(svg, zoomTransformRef.current);
       updatePeLabelVisibility(svg, zoomTransformRef.current.k);
+      updateCgraLabelVisibility(svg, zoomTransformRef.current.k);
     } else {
       updatePeLabelVisibility(svg, 1);
+      updateCgraLabelVisibility(svg, 1);
     }
     svg.on('click', (event) => {
       if (event.defaultPrevented) return;
@@ -486,13 +517,21 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
       const group = select(this);
       const id = group.attr('data-id');
       const boundary = group.select('rect.cgra-boundary');
+      const label = group.select('text.cgra-label');
       const isSelected = selection?.type === 'cgra' && selection.id === id;
+      const data = group.datum();
 
       boundary
         .attr('fill', isSelected ? CGRA_SELECTED_FILL : CGRA_FILL)
         .attr('stroke', isSelected ? CGRA_SELECTED_STROKE : CGRA_STROKE)
         .attr('stroke-width', isSelected ? 3.5 : 2.5)
         .attr('stroke-opacity', isSelected ? 0.95 : 1);
+
+      if (!label.empty()) {
+        label
+          .text(data?.label || data?.id || id)
+          .attr('fill', isSelected ? CGRA_LABEL_SELECTED_FILL : CGRA_LABEL_FILL);
+      }
     });
 
     svg.selectAll('g.pe').each(function updatePe() {
