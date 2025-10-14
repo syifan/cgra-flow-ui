@@ -33,6 +33,18 @@ const PE_LABEL_MAX_CHARS_PER_LINE = 6;
 const PE_LABEL_MAX_LINES = 2;
 const PE_LABEL_VISIBILITY_THRESHOLD = 1.2;
 const PE_LABEL_LINE_HEIGHT_EM = 1.1;
+const PE_LINK_BOUNDARY_OFFSET = Math.max(PE_SIZE / 2 - 6, 0);
+
+const PE_DIRECTION_OFFSETS = {
+  n: { dx: 0, dy: -1 },
+  s: { dx: 0, dy: 1 },
+  e: { dx: 1, dy: 0 },
+  w: { dx: -1, dy: 0 },
+  ne: { dx: 1, dy: -1 },
+  nw: { dx: -1, dy: -1 },
+  se: { dx: 1, dy: 1 },
+  sw: { dx: -1, dy: 1 }
+};
 
 function normalizeLabelText(raw) {
   if (raw == null) return '';
@@ -212,7 +224,35 @@ function computeRouterLinkEndpoints(source, target) {
   };
 }
 
+function computePeLinkEndpoints(source, target) {
+  const dx = target.cx - source.cx;
+  const dy = target.cy - source.cy;
+  const distance = Math.sqrt(dx * dx + dy * dy) || 1;
+  const ux = dx / distance;
+  const uy = dy / distance;
+  const targetClearance = Math.max(0, Math.min(distance / 2, PE_LINK_BOUNDARY_OFFSET + 6));
+  const sourceClearance = Math.max(
+    0,
+    Math.min(distance - targetClearance, Math.min(distance / 2, PE_LINK_BOUNDARY_OFFSET))
+  );
+
+  return {
+    x1: source.cx + ux * sourceClearance,
+    y1: source.cy + uy * sourceClearance,
+    x2: target.cx - ux * targetClearance,
+    y2: target.cy - uy * targetClearance
+  };
+}
+
 function buildLayout(architecture) {
+  if (!architecture || !Array.isArray(architecture.CGRAs)) {
+    return {
+      layouts: [],
+      width: MARGIN * 2,
+      height: MARGIN * 2
+    };
+  }
+
   const layouts = architecture.CGRAs.map((cgra) => {
     const peXs = cgra.PEs.map((pe) => pe.x);
     const peYs = cgra.PEs.map((pe) => pe.y);
@@ -303,6 +343,44 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
       .attr('viewBox', `0 0 ${layout.width} ${layout.height}`)
       .attr('width', '100%')
       .attr('height', '100%');
+
+    const defs = svg.append('defs');
+
+    const peArrowMarker = defs
+      .append('marker')
+      .attr('id', 'pe-arrow')
+      .attr('viewBox', '0 0 10 10')
+      .attr('refX', 8)
+      .attr('refY', 5)
+      .attr('markerWidth', 7)
+      .attr('markerHeight', 7)
+      .attr('orient', 'auto')
+      .attr('markerUnits', 'strokeWidth');
+
+    peArrowMarker
+      .append('path')
+      .attr('d', 'M 0 0 L 10 5 L 0 10 z')
+      .attr('fill', '#60a5fa')
+      .attr('fill-opacity', 0.85)
+      .attr('stroke', 'none');
+
+    const cgraArrowMarker = defs
+      .append('marker')
+      .attr('id', 'cgra-arrow')
+      .attr('viewBox', '0 0 10 10')
+      .attr('refX', 8)
+      .attr('refY', 5)
+      .attr('markerWidth', 7)
+      .attr('markerHeight', 7)
+      .attr('orient', 'auto')
+      .attr('markerUnits', 'strokeWidth');
+
+    cgraArrowMarker
+      .append('path')
+      .attr('d', 'M 0 0 L 10 5 L 0 10 z')
+      .attr('fill', '#7dd3fc')
+      .attr('fill-opacity', 0.85)
+      .attr('stroke', 'none');
 
     const zoomGroup = svg.append('g').attr('class', 'zoom-group');
 
@@ -403,20 +481,26 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
 
       const peLinks = [];
       positionMap.forEach((pe) => {
-        const rightNeighbor = positionMap.get(`${pe.x + 1},${pe.y}`);
-        const downNeighbor = positionMap.get(`${pe.x},${pe.y + 1}`);
-        if (rightNeighbor) {
+        const outgoing = pe?.outgoingLinks || {};
+
+        Object.entries(PE_DIRECTION_OFFSETS).forEach(([direction, offset]) => {
+          if (!outgoing[direction]) {
+            return;
+          }
+
+          const neighbor = positionMap.get(`${pe.x + offset.dx},${pe.y + offset.dy}`);
+          if (!neighbor) {
+            return;
+          }
+
+          const endpoints = computePeLinkEndpoints(pe, neighbor);
           peLinks.push({
             source: pe,
-            target: rightNeighbor
+            target: neighbor,
+            direction,
+            ...endpoints
           });
-        }
-        if (downNeighbor) {
-          peLinks.push({
-            source: pe,
-            target: downNeighbor
-          });
-        }
+        });
       });
 
       peLinkLayer
@@ -424,10 +508,12 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
         .data(peLinks)
         .enter()
         .append('line')
-        .attr('x1', (d) => d.source.cx)
-        .attr('y1', (d) => d.source.cy)
-        .attr('x2', (d) => d.target.cx)
-        .attr('y2', (d) => d.target.cy);
+        .attr('x1', (d) => d.x1)
+        .attr('y1', (d) => d.y1)
+        .attr('x2', (d) => d.x2)
+        .attr('y2', (d) => d.y2)
+        .attr('marker-end', 'url(#pe-arrow)')
+        .attr('stroke-linecap', 'round');
 
       const peNodes = Array.from(positionMap.values());
 
@@ -514,7 +600,8 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
       .attr('y1', (d) => d.y1)
       .attr('x2', (d) => d.x2)
       .attr('y2', (d) => d.y2)
-      .attr('stroke-linecap', 'round');
+      .attr('stroke-linecap', 'round')
+      .attr('marker-end', 'url(#cgra-arrow)');
 
     const zoomBehavior = zoom()
       .scaleExtent([0.5, 4])
