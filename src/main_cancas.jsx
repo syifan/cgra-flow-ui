@@ -14,6 +14,8 @@ const CGRA_SELECTED_STROKE = '#f97316';
 const CGRA_LABEL_FILL = '#bae6fd';
 const CGRA_LABEL_SELECTED_FILL = '#f8fafc';
 const CGRA_LABEL_FONT_SIZE = 20;
+const CGRA_LABEL_VISIBILITY_THRESHOLD = 0.65;
+const CGRA_LABEL_MAX_SCALE = 1.75;
 const CGRA_ROUTER_RADIUS = 14;
 const CGRA_ROUTER_OFFSET = 28;
 const CGRA_ROUTER_FILL = '#0ea5e9';
@@ -36,6 +38,8 @@ const PE_LABEL_LINE_HEIGHT_EM = 1.1;
 const PE_RADIUS = PE_SIZE / 2;
 const PE_LINK_SOURCE_PADDING = 6;
 const PE_LINK_ARROW_CLEARANCE = 3;
+const PE_LINK_ARROW_LENGTH = 7;
+const PE_LINK_VISIBILITY_THRESHOLD = 0.85;
 
 const PE_DIRECTION_OFFSETS = {
   n: { dx: 0, dy: -1 },
@@ -162,53 +166,25 @@ function updatePeLabelVisibility(svg, zoomLevel) {
     .attr('aria-hidden', zoomLevel >= PE_LABEL_VISIBILITY_THRESHOLD ? null : 'true');
 }
 
-function updateCgraLabelVisibility(svg, transform, layout) {
-  const currentTransform = transform ?? zoomIdentity;
-  const viewWidth = layout?.width ?? 0;
-  const viewHeight = layout?.height ?? 0;
+function updatePeLinkVisibility(svg, zoomLevel) {
+  const visible = zoomLevel >= PE_LINK_VISIBILITY_THRESHOLD;
+  svg
+    .selectAll('g.pe-links')
+    .attr('display', visible ? null : 'none')
+    .attr('aria-hidden', visible ? null : 'true');
+}
 
-  if (!(viewWidth > 0) || !(viewHeight > 0)) {
-    svg
-      .selectAll('g.cgra text.cgra-label')
-      .attr('display', null)
-      .attr('aria-hidden', null);
-    return;
-  }
+function updateCgraLabelVisibility(svg, zoomLevel = 1) {
+  const k = Number.isFinite(zoomLevel) ? zoomLevel : 1;
+  const visible = k >= CGRA_LABEL_VISIBILITY_THRESHOLD;
+  const fontScale = Math.min(CGRA_LABEL_MAX_SCALE, Math.max(1, 1 / Math.max(k, 1e-6)));
+  const fontSize = CGRA_LABEL_FONT_SIZE * fontScale;
 
-  const topLeftX = currentTransform.invertX(0);
-  const topLeftY = currentTransform.invertY(0);
-  const bottomRightX = currentTransform.invertX(viewWidth);
-  const bottomRightY = currentTransform.invertY(viewHeight);
-
-  const visibleMinX = Math.min(topLeftX, bottomRightX);
-  const visibleMaxX = Math.max(topLeftX, bottomRightX);
-  const visibleMinY = Math.min(topLeftY, bottomRightY);
-  const visibleMaxY = Math.max(topLeftY, bottomRightY);
-
-  svg.selectAll('g.cgra').each(function toggleCgraLabel() {
-    const group = select(this);
-    const label = group.select('text.cgra-label');
-
-    if (label.empty()) {
-      return;
-    }
-
-    const data = group.datum();
-    const cgraOriginX = data?.originX ?? 0;
-    const cgraOriginY = data?.originY ?? 0;
-    const cgraWidth = data?.width ?? 0;
-    const cgraHeight = data?.height ?? 0;
-    const cgraMaxX = cgraOriginX + cgraWidth;
-    const cgraMaxY = cgraOriginY + cgraHeight;
-
-    const fullyVisible =
-      cgraOriginX >= visibleMinX &&
-      cgraMaxX <= visibleMaxX &&
-      cgraOriginY >= visibleMinY &&
-      cgraMaxY <= visibleMaxY;
-
-    label.attr('display', fullyVisible ? null : 'none').attr('aria-hidden', fullyVisible ? null : 'true');
-  });
+  svg
+    .selectAll('g.cgra text.cgra-label')
+    .attr('display', visible ? null : 'none')
+    .attr('aria-hidden', visible ? null : 'true')
+    .attr('font-size', fontSize);
 }
 
 function computeRouterLinkEndpoints(source, target) {
@@ -235,7 +211,8 @@ function computePeLinkEndpoints(source, target) {
   const maxComponent = Math.max(Math.abs(ux), Math.abs(uy)) || 1;
 
   const targetApproachLimit = Math.max(0, PE_RADIUS / maxComponent - PE_LINK_ARROW_CLEARANCE);
-  const targetClearance = Math.max(0, Math.min(distance / 2, targetApproachLimit));
+  const adjustedTargetLimit = Math.max(0, targetApproachLimit - PE_LINK_ARROW_LENGTH);
+  const targetClearance = Math.max(0, Math.min(distance / 2, adjustedTargetLimit));
 
   const sourceRetreatLimit = Math.max(0, (PE_RADIUS - PE_LINK_SOURCE_PADDING) / maxComponent);
   const sourceClearance = Math.max(
@@ -617,7 +594,8 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
         zoomTransformRef.current = event.transform;
         zoomGroup.attr('transform', event.transform);
         updatePeLabelVisibility(svg, event.transform.k);
-        updateCgraLabelVisibility(svg, event.transform, layout);
+        updatePeLinkVisibility(svg, event.transform.k);
+        updateCgraLabelVisibility(svg, event.transform.k);
       });
 
     svg.call(zoomBehavior);
@@ -626,10 +604,12 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
       zoomGroup.attr('transform', zoomTransformRef.current);
       zoomBehavior.transform(svg, zoomTransformRef.current);
       updatePeLabelVisibility(svg, zoomTransformRef.current.k);
-      updateCgraLabelVisibility(svg, zoomTransformRef.current, layout);
+      updatePeLinkVisibility(svg, zoomTransformRef.current.k);
+      updateCgraLabelVisibility(svg, zoomTransformRef.current.k);
     } else {
       updatePeLabelVisibility(svg, 1);
-      updateCgraLabelVisibility(svg, zoomIdentity, layout);
+      updatePeLinkVisibility(svg, 1);
+      updateCgraLabelVisibility(svg, 1);
     }
     svg.on('click', (event) => {
       if (event.defaultPrevented) return;
