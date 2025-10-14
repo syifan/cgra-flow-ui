@@ -26,6 +26,124 @@ const PE_SELECTED_STROKE = '#fb923c';
 const PE_LABEL_FILL = '#e2e8f0';
 const PE_LABEL_DISABLED_FILL = 'rgba(226, 232, 240, 0.6)';
 const PE_LABEL_SELECTED_FILL = '#0f172a';
+const PE_LABEL_MAX_CHARS_PER_LINE = 6;
+const PE_LABEL_MAX_LINES = 2;
+const PE_LABEL_VISIBILITY_THRESHOLD = 1.2;
+const PE_LABEL_LINE_HEIGHT_EM = 1.1;
+
+function normalizeLabelText(raw) {
+  if (raw == null) return '';
+  return String(raw).replace(/\s+/g, ' ').trim();
+}
+
+function splitLabelIntoLines(label) {
+  const normalized = normalizeLabelText(label);
+  if (!normalized) return [];
+
+  const tokens = normalized
+    .split(' ')
+    .filter(Boolean)
+    .flatMap((word) => {
+      if (word.length <= PE_LABEL_MAX_CHARS_PER_LINE) {
+        return [word];
+      }
+
+      const segments = [];
+      for (let index = 0; index < word.length; index += PE_LABEL_MAX_CHARS_PER_LINE) {
+        segments.push(word.slice(index, index + PE_LABEL_MAX_CHARS_PER_LINE));
+      }
+      return segments;
+    });
+
+  const lines = [];
+  let current = '';
+  let truncated = false;
+
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    const separator = current ? ' ' : '';
+    const candidate = `${current}${separator}${token}`.trim();
+
+    if (candidate.length <= PE_LABEL_MAX_CHARS_PER_LINE) {
+      current = candidate;
+      continue;
+    }
+
+    if (current) {
+      lines.push(current);
+    }
+
+    if (lines.length >= PE_LABEL_MAX_LINES) {
+      truncated = true;
+      break;
+    }
+
+    current = token;
+  }
+
+  if (lines.length < PE_LABEL_MAX_LINES && current) {
+    lines.push(current);
+  } else if (!truncated && current && lines.length >= PE_LABEL_MAX_LINES) {
+    truncated = true;
+  }
+
+  if (tokens.length && lines.length === 0) {
+    lines.push(tokens[0].slice(0, PE_LABEL_MAX_CHARS_PER_LINE));
+    truncated = tokens.length > 1 || tokens[0].length > PE_LABEL_MAX_CHARS_PER_LINE;
+  }
+
+  if (lines.length > PE_LABEL_MAX_LINES) {
+    lines.length = PE_LABEL_MAX_LINES;
+    truncated = true;
+  }
+
+  if (truncated) {
+    const lastIndex = lines.length - 1;
+    const lastLine = lines[lastIndex] ?? '';
+    const trimmed = lastLine.slice(0, Math.max(PE_LABEL_MAX_CHARS_PER_LINE - 1, 1)).trimEnd();
+    lines[lastIndex] = trimmed ? `${trimmed}…` : '…';
+  }
+
+  return lines;
+}
+
+function applyPeLabel(selection) {
+  selection.each(function applyLabel(data) {
+    const text = select(this);
+    const preferredLabel = normalizeLabelText(data?.label);
+    const lines = splitLabelIntoLines(preferredLabel || data?.id);
+
+    text.selectAll('tspan').remove();
+
+    if (!lines.length) {
+      return;
+    }
+
+    const initialDy =
+      lines.length === 1 ? '0em' : `${(-((lines.length - 1) / 2) * PE_LABEL_LINE_HEIGHT_EM).toFixed(2)}em`;
+
+    lines.forEach((line, index) => {
+      const tspan = text
+        .append('tspan')
+        .attr('x', PE_SIZE / 2)
+        .text(line);
+
+      if (index === 0) {
+        tspan.attr('dy', initialDy);
+      } else {
+        tspan.attr('dy', `${PE_LABEL_LINE_HEIGHT_EM}em`);
+      }
+    });
+  });
+}
+
+function updatePeLabelVisibility(svg, zoomLevel) {
+  const display = zoomLevel >= PE_LABEL_VISIBILITY_THRESHOLD ? null : 'none';
+  svg
+    .selectAll('g.pe text')
+    .attr('display', display)
+    .attr('aria-hidden', zoomLevel >= PE_LABEL_VISIBILITY_THRESHOLD ? null : 'true');
+}
 
 function computeRouterLinkEndpoints(source, target) {
   const dx = target.routerCenterX - source.routerCenterX;
@@ -273,12 +391,13 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
       nodeGroups
         .append('text')
         .attr('x', PE_SIZE / 2)
-        .attr('y', PE_SIZE / 2 + 4)
+        .attr('y', PE_SIZE / 2)
         .attr('fill', (d) => (d.disabled ? PE_LABEL_DISABLED_FILL : PE_LABEL_FILL))
         .attr('font-family', '"Fira Code", monospace')
-        .attr('font-size', 12)
+        .attr('font-size', 11)
         .attr('text-anchor', 'middle')
-        .text((d) => d.label ?? d.id);
+        .attr('dominant-baseline', 'middle')
+        .call(applyPeLabel);
 
       group
         .append('circle')
@@ -335,6 +454,7 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
       .on('zoom', (event) => {
         zoomTransformRef.current = event.transform;
         zoomGroup.attr('transform', event.transform);
+        updatePeLabelVisibility(svg, event.transform.k);
       });
 
     svg.call(zoomBehavior);
@@ -342,6 +462,9 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
     if (zoomTransformRef.current) {
       zoomGroup.attr('transform', zoomTransformRef.current);
       zoomBehavior.transform(svg, zoomTransformRef.current);
+      updatePeLabelVisibility(svg, zoomTransformRef.current.k);
+    } else {
+      updatePeLabelVisibility(svg, 1);
     }
     svg.on('click', (event) => {
       if (event.defaultPrevented) return;
@@ -394,7 +517,7 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
           if (isSelected) return PE_LABEL_SELECTED_FILL;
           return isDisabled ? PE_LABEL_DISABLED_FILL : PE_LABEL_FILL;
         })
-        .text((d) => d.label ?? d.id);
+        .call(applyPeLabel);
     });
   }, [layout, selection]);
 
