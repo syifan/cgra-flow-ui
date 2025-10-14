@@ -3,7 +3,7 @@ import { Box } from '@mui/material';
 import { select, zoom, zoomIdentity } from 'd3';
 
 const PE_SIZE = 42;
-const PE_GAP = 16;
+const PE_GAP = 26;
 const CGRA_PADDING = 32;
 const CGRA_GAP = 160;
 const MARGIN = 48;
@@ -33,7 +33,9 @@ const PE_LABEL_MAX_CHARS_PER_LINE = 6;
 const PE_LABEL_MAX_LINES = 2;
 const PE_LABEL_VISIBILITY_THRESHOLD = 1.2;
 const PE_LABEL_LINE_HEIGHT_EM = 1.1;
-const PE_LINK_BOUNDARY_OFFSET = Math.max(PE_SIZE / 2 - 6, 0);
+const PE_RADIUS = PE_SIZE / 2;
+const PE_LINK_SOURCE_PADDING = 6;
+const PE_LINK_ARROW_CLEARANCE = 3;
 
 const PE_DIRECTION_OFFSETS = {
   n: { dx: 0, dy: -1 },
@@ -230,10 +232,15 @@ function computePeLinkEndpoints(source, target) {
   const distance = Math.sqrt(dx * dx + dy * dy) || 1;
   const ux = dx / distance;
   const uy = dy / distance;
-  const targetClearance = Math.max(0, Math.min(distance / 2, PE_LINK_BOUNDARY_OFFSET + 6));
+  const maxComponent = Math.max(Math.abs(ux), Math.abs(uy)) || 1;
+
+  const targetApproachLimit = Math.max(0, PE_RADIUS / maxComponent - PE_LINK_ARROW_CLEARANCE);
+  const targetClearance = Math.max(0, Math.min(distance / 2, targetApproachLimit));
+
+  const sourceRetreatLimit = Math.max(0, (PE_RADIUS - PE_LINK_SOURCE_PADDING) / maxComponent);
   const sourceClearance = Math.max(
     0,
-    Math.min(distance - targetClearance, Math.min(distance / 2, PE_LINK_BOUNDARY_OFFSET))
+    Math.min(distance - targetClearance, Math.min(distance / 2, sourceRetreatLimit))
   );
 
   return {
@@ -407,14 +414,6 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
           onSelectionChange?.({ type: 'cgra', id: cgraLayout.id, cgraId: cgraLayout.id });
         });
 
-      const peLinkLayer = group
-        .append('g')
-        .attr('class', 'pe-links')
-        .attr('stroke', '#60a5fa')
-        .attr('stroke-width', 2)
-        .attr('stroke-opacity', 0.4)
-        .attr('fill', 'none');
-
       group
         .append('rect')
         .attr('class', 'cgra-boundary')
@@ -503,18 +502,6 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
         });
       });
 
-      peLinkLayer
-        .selectAll('line')
-        .data(peLinks)
-        .enter()
-        .append('line')
-        .attr('x1', (d) => d.x1)
-        .attr('y1', (d) => d.y1)
-        .attr('x2', (d) => d.x2)
-        .attr('y2', (d) => d.y2)
-        .attr('marker-end', 'url(#pe-arrow)')
-        .attr('stroke-linecap', 'round');
-
       const peNodes = Array.from(positionMap.values());
 
       const nodeGroups = peLayer
@@ -551,6 +538,27 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
         .attr('text-anchor', 'middle')
         .attr('dominant-baseline', 'middle')
         .call(applyPeLabel);
+
+      const peLinkLayer = group
+        .append('g')
+        .attr('class', 'pe-links')
+        .attr('stroke', '#60a5fa')
+        .attr('stroke-width', 2)
+        .attr('stroke-opacity', 0.4)
+        .attr('fill', 'none')
+        .attr('pointer-events', 'none');
+
+      peLinkLayer
+        .selectAll('line')
+        .data(peLinks)
+        .enter()
+        .append('line')
+        .attr('x1', (d) => d.x1)
+        .attr('y1', (d) => d.y1)
+        .attr('x2', (d) => d.x2)
+        .attr('y2', (d) => d.y2)
+        .attr('marker-end', 'url(#pe-arrow)')
+        .attr('stroke-linecap', 'round');
 
       group
         .append('circle')
