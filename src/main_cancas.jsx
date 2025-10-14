@@ -14,8 +14,6 @@ const CGRA_SELECTED_STROKE = '#f97316';
 const CGRA_LABEL_FILL = '#bae6fd';
 const CGRA_LABEL_SELECTED_FILL = '#f8fafc';
 const CGRA_LABEL_FONT_SIZE = 20;
-const CGRA_LABEL_HIDE_ZOOM_THRESHOLD = 0.65;
-const CGRA_LABEL_SHOW_ZOOM_THRESHOLD = 1.6;
 const CGRA_ROUTER_RADIUS = 14;
 const CGRA_ROUTER_OFFSET = 28;
 const CGRA_ROUTER_FILL = '#0ea5e9';
@@ -150,13 +148,33 @@ function updatePeLabelVisibility(svg, zoomLevel) {
     .attr('aria-hidden', zoomLevel >= PE_LABEL_VISIBILITY_THRESHOLD ? null : 'true');
 }
 
-function updateCgraLabelVisibility(svg, zoomLevel) {
-  const shouldShow =
-    zoomLevel >= CGRA_LABEL_HIDE_ZOOM_THRESHOLD && zoomLevel <= CGRA_LABEL_SHOW_ZOOM_THRESHOLD;
-  svg
-    .selectAll('g.cgra text.cgra-label')
-    .attr('display', shouldShow ? null : 'none')
-    .attr('aria-hidden', shouldShow ? null : 'true');
+function updateCgraLabelVisibility(svg, zoomLevel, layout) {
+  const viewWidth = layout?.width ?? 0;
+  const viewHeight = layout?.height ?? 0;
+
+  svg.selectAll('g.cgra').each(function toggleCgraLabel() {
+    const group = select(this);
+    const label = group.select('text.cgra-label');
+
+    if (label.empty()) {
+      return;
+    }
+
+    const data = group.datum();
+    const cgraWidth = data?.width ?? 0;
+    const cgraHeight = data?.height ?? 0;
+    const horizontalLimit = cgraWidth > 0 && viewWidth > 0 ? viewWidth / cgraWidth : Infinity;
+    const verticalLimit = cgraHeight > 0 && viewHeight > 0 ? viewHeight / cgraHeight : Infinity;
+    let maxScaleBeforeOverflow = Math.min(horizontalLimit, verticalLimit);
+
+    if (!Number.isFinite(maxScaleBeforeOverflow) || maxScaleBeforeOverflow <= 0) {
+      maxScaleBeforeOverflow = Infinity;
+    }
+
+    const shouldShow = zoomLevel <= maxScaleBeforeOverflow;
+
+    label.attr('display', shouldShow ? null : 'none').attr('aria-hidden', shouldShow ? null : 'true');
+  });
 }
 
 function computeRouterLinkEndpoints(source, target) {
@@ -484,7 +502,7 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
         zoomTransformRef.current = event.transform;
         zoomGroup.attr('transform', event.transform);
         updatePeLabelVisibility(svg, event.transform.k);
-        updateCgraLabelVisibility(svg, event.transform.k);
+        updateCgraLabelVisibility(svg, event.transform.k, layout);
       });
 
     svg.call(zoomBehavior);
@@ -493,10 +511,10 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
       zoomGroup.attr('transform', zoomTransformRef.current);
       zoomBehavior.transform(svg, zoomTransformRef.current);
       updatePeLabelVisibility(svg, zoomTransformRef.current.k);
-      updateCgraLabelVisibility(svg, zoomTransformRef.current.k);
+      updateCgraLabelVisibility(svg, zoomTransformRef.current.k, layout);
     } else {
       updatePeLabelVisibility(svg, 1);
-      updateCgraLabelVisibility(svg, 1);
+      updateCgraLabelVisibility(svg, 1, layout);
     }
     svg.on('click', (event) => {
       if (event.defaultPrevented) return;
