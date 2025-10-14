@@ -3,7 +3,7 @@ import { Box } from '@mui/material';
 import { select, zoom, zoomIdentity } from 'd3';
 
 const PE_SIZE = 42;
-const PE_GAP = 34;
+const PE_GAP = 48;
 const CGRA_PADDING = 32;
 const CGRA_GAP = 160;
 const MARGIN = 48;
@@ -36,9 +36,9 @@ const PE_LABEL_MAX_LINES = 2;
 const PE_LABEL_VISIBILITY_THRESHOLD = 1.2;
 const PE_LABEL_LINE_HEIGHT_EM = 1.1;
 const PE_RADIUS = PE_SIZE / 2;
-const PE_LINK_SOURCE_DETACHMENT = 8;
-const PE_LINK_TARGET_DETACHMENT = 6;
-const PE_LINK_ARROW_CLEARANCE = 4;
+const PE_LINK_SOURCE_DETACHMENT = 12;
+const PE_LINK_TARGET_DETACHMENT = 10;
+const PE_LINK_ARROW_CLEARANCE = 6;
 const PE_LINK_ARROW_LENGTH = 12;
 const PE_LINK_VISIBILITY_THRESHOLD = 0.85;
 
@@ -211,26 +211,28 @@ function computePeLinkEndpoints(source, target) {
   const uy = dy / distance;
   const absUx = Math.abs(ux);
   const absUy = Math.abs(uy);
+
   const limitX = absUx > 1e-6 ? PE_RADIUS / absUx : Infinity;
   const limitY = absUy > 1e-6 ? PE_RADIUS / absUy : Infinity;
   const boundaryDistance = Math.min(limitX, limitY, distance / 2);
 
-  const desiredSourceOffset = Math.max(0, PE_LINK_SOURCE_DETACHMENT);
-  const desiredTargetOffset = Math.max(
-    0,
-    PE_LINK_TARGET_DETACHMENT + PE_LINK_ARROW_LENGTH + PE_LINK_ARROW_CLEARANCE
+  const desiredSourceClearance = boundaryDistance + Math.max(0, PE_LINK_SOURCE_DETACHMENT);
+  const minimumTargetClearance = boundaryDistance + Math.max(0, PE_LINK_ARROW_CLEARANCE);
+  const desiredTargetClearance = boundaryDistance + Math.max(
+    PE_LINK_ARROW_CLEARANCE,
+    PE_LINK_TARGET_DETACHMENT
   );
 
-  const maxReach = Math.max(boundaryDistance, distance - boundaryDistance);
+  let sourceClearance = Math.min(desiredSourceClearance, distance - minimumTargetClearance);
+  sourceClearance = Math.max(boundaryDistance, sourceClearance);
 
-  let sourceClearance = Math.min(boundaryDistance + desiredSourceOffset, maxReach);
-  let targetClearance = Math.min(boundaryDistance + desiredTargetOffset, maxReach);
+  let targetClearance = Math.min(desiredTargetClearance, distance - sourceClearance);
+  targetClearance = Math.max(targetClearance, minimumTargetClearance);
 
-  const combined = sourceClearance + targetClearance;
-  if (combined > distance) {
-    const overlap = combined - distance;
+  if (sourceClearance + targetClearance > distance) {
+    const overlap = sourceClearance + targetClearance - distance;
     const sourceAdjustable = Math.max(0, sourceClearance - boundaryDistance);
-    const targetAdjustable = Math.max(0, targetClearance - boundaryDistance);
+    const targetAdjustable = Math.max(0, targetClearance - minimumTargetClearance);
     const totalAdjustable = sourceAdjustable + targetAdjustable;
 
     if (totalAdjustable > 1e-6) {
@@ -245,8 +247,9 @@ function computePeLinkEndpoints(source, target) {
     }
   }
 
-  sourceClearance = Math.max(boundaryDistance, Math.min(sourceClearance, distance));
-  targetClearance = Math.max(boundaryDistance, Math.min(targetClearance, distance - sourceClearance));
+  sourceClearance = Math.max(boundaryDistance, Math.min(sourceClearance, distance - minimumTargetClearance));
+  const remaining = Math.max(distance - sourceClearance, 0);
+  targetClearance = Math.max(minimumTargetClearance, Math.min(targetClearance, remaining));
 
   return {
     x1: source.cx + ux * sourceClearance,
@@ -361,17 +364,20 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
     const peArrowMarker = defs
       .append('marker')
       .attr('id', 'pe-arrow')
-      .attr('viewBox', '0 0 12 12')
-      .attr('refX', 12)
-      .attr('refY', 6)
-      .attr('markerWidth', 12)
-      .attr('markerHeight', 12)
+      .attr('viewBox', `0 0 ${PE_LINK_ARROW_LENGTH} ${PE_LINK_ARROW_LENGTH}`)
+      .attr('refX', PE_LINK_ARROW_LENGTH)
+      .attr('refY', PE_LINK_ARROW_LENGTH / 2)
+      .attr('markerWidth', PE_LINK_ARROW_LENGTH)
+      .attr('markerHeight', PE_LINK_ARROW_LENGTH)
       .attr('orient', 'auto')
       .attr('markerUnits', 'userSpaceOnUse');
 
     peArrowMarker
       .append('path')
-      .attr('d', 'M 0 0 L 12 6 L 0 12 z')
+      .attr(
+        'd',
+        `M 0 0 L ${PE_LINK_ARROW_LENGTH} ${PE_LINK_ARROW_LENGTH / 2} L 0 ${PE_LINK_ARROW_LENGTH} z`
+      )
       .attr('fill', '#60a5fa')
       .attr('fill-opacity', 0.85)
       .attr('stroke', 'none');
