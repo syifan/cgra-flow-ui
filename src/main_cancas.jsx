@@ -3,7 +3,7 @@ import { Box } from '@mui/material';
 import { select, zoom, zoomIdentity } from 'd3';
 
 const PE_SIZE = 42;
-const PE_GAP = 16;
+const PE_GAP = 48;
 const CGRA_PADDING = 32;
 const CGRA_GAP = 160;
 const MARGIN = 48;
@@ -14,6 +14,8 @@ const CGRA_SELECTED_STROKE = '#f97316';
 const CGRA_LABEL_FILL = '#bae6fd';
 const CGRA_LABEL_SELECTED_FILL = '#f8fafc';
 const CGRA_LABEL_FONT_SIZE = 20;
+const CGRA_LABEL_VISIBILITY_THRESHOLD = 0.65;
+const CGRA_LABEL_MAX_SCALE = 1.75;
 const CGRA_ROUTER_RADIUS = 14;
 const CGRA_ROUTER_OFFSET = 28;
 const CGRA_ROUTER_FILL = '#0ea5e9';
@@ -33,6 +35,23 @@ const PE_LABEL_MAX_CHARS_PER_LINE = 6;
 const PE_LABEL_MAX_LINES = 2;
 const PE_LABEL_VISIBILITY_THRESHOLD = 1.2;
 const PE_LABEL_LINE_HEIGHT_EM = 1.1;
+const PE_RADIUS = PE_SIZE / 2;
+const PE_LINK_SOURCE_DETACHMENT = 12;
+const PE_LINK_TARGET_DETACHMENT = 10;
+const PE_LINK_ARROW_CLEARANCE = 6;
+const PE_LINK_ARROW_LENGTH = 12;
+const PE_LINK_VISIBILITY_THRESHOLD = 0.85;
+
+const PE_DIRECTION_OFFSETS = {
+  n: { dx: 0, dy: -1 },
+  s: { dx: 0, dy: 1 },
+  e: { dx: 1, dy: 0 },
+  w: { dx: -1, dy: 0 },
+  ne: { dx: 1, dy: -1 },
+  nw: { dx: -1, dy: -1 },
+  se: { dx: 1, dy: 1 },
+  sw: { dx: -1, dy: 1 }
+};
 
 function normalizeLabelText(raw) {
   if (raw == null) return '';
@@ -148,53 +167,25 @@ function updatePeLabelVisibility(svg, zoomLevel) {
     .attr('aria-hidden', zoomLevel >= PE_LABEL_VISIBILITY_THRESHOLD ? null : 'true');
 }
 
-function updateCgraLabelVisibility(svg, transform, layout) {
-  const currentTransform = transform ?? zoomIdentity;
-  const viewWidth = layout?.width ?? 0;
-  const viewHeight = layout?.height ?? 0;
+function updatePeLinkVisibility(svg, zoomLevel) {
+  const visible = zoomLevel >= PE_LINK_VISIBILITY_THRESHOLD;
+  svg
+    .selectAll('g.pe-links')
+    .attr('display', visible ? null : 'none')
+    .attr('aria-hidden', visible ? null : 'true');
+}
 
-  if (!(viewWidth > 0) || !(viewHeight > 0)) {
-    svg
-      .selectAll('g.cgra text.cgra-label')
-      .attr('display', null)
-      .attr('aria-hidden', null);
-    return;
-  }
+function updateCgraLabelVisibility(svg, zoomLevel = 1) {
+  const k = Number.isFinite(zoomLevel) ? zoomLevel : 1;
+  const visible = k >= CGRA_LABEL_VISIBILITY_THRESHOLD;
+  const fontScale = Math.min(CGRA_LABEL_MAX_SCALE, Math.max(1, 1 / Math.max(k, 1e-6)));
+  const fontSize = CGRA_LABEL_FONT_SIZE * fontScale;
 
-  const topLeftX = currentTransform.invertX(0);
-  const topLeftY = currentTransform.invertY(0);
-  const bottomRightX = currentTransform.invertX(viewWidth);
-  const bottomRightY = currentTransform.invertY(viewHeight);
-
-  const visibleMinX = Math.min(topLeftX, bottomRightX);
-  const visibleMaxX = Math.max(topLeftX, bottomRightX);
-  const visibleMinY = Math.min(topLeftY, bottomRightY);
-  const visibleMaxY = Math.max(topLeftY, bottomRightY);
-
-  svg.selectAll('g.cgra').each(function toggleCgraLabel() {
-    const group = select(this);
-    const label = group.select('text.cgra-label');
-
-    if (label.empty()) {
-      return;
-    }
-
-    const data = group.datum();
-    const cgraOriginX = data?.originX ?? 0;
-    const cgraOriginY = data?.originY ?? 0;
-    const cgraWidth = data?.width ?? 0;
-    const cgraHeight = data?.height ?? 0;
-    const cgraMaxX = cgraOriginX + cgraWidth;
-    const cgraMaxY = cgraOriginY + cgraHeight;
-
-    const fullyVisible =
-      cgraOriginX >= visibleMinX &&
-      cgraMaxX <= visibleMaxX &&
-      cgraOriginY >= visibleMinY &&
-      cgraMaxY <= visibleMaxY;
-
-    label.attr('display', fullyVisible ? null : 'none').attr('aria-hidden', fullyVisible ? null : 'true');
-  });
+  svg
+    .selectAll('g.cgra text.cgra-label')
+    .attr('display', visible ? null : 'none')
+    .attr('aria-hidden', visible ? null : 'true')
+    .attr('font-size', fontSize);
 }
 
 function computeRouterLinkEndpoints(source, target) {
@@ -212,7 +203,71 @@ function computeRouterLinkEndpoints(source, target) {
   };
 }
 
+function computePeLinkEndpoints(source, target) {
+  const dx = target.cx - source.cx;
+  const dy = target.cy - source.cy;
+  const distance = Math.sqrt(dx * dx + dy * dy) || 1;
+  const ux = dx / distance;
+  const uy = dy / distance;
+  const absUx = Math.abs(ux);
+  const absUy = Math.abs(uy);
+
+  const limitX = absUx > 1e-6 ? PE_RADIUS / absUx : Infinity;
+  const limitY = absUy > 1e-6 ? PE_RADIUS / absUy : Infinity;
+  const boundaryDistance = Math.min(limitX, limitY, distance / 2);
+
+  const desiredSourceClearance = boundaryDistance + Math.max(0, PE_LINK_SOURCE_DETACHMENT);
+  const minimumTargetClearance = boundaryDistance + Math.max(0, PE_LINK_ARROW_CLEARANCE);
+  const desiredTargetClearance = boundaryDistance + Math.max(
+    PE_LINK_ARROW_CLEARANCE,
+    PE_LINK_TARGET_DETACHMENT
+  );
+
+  let sourceClearance = Math.min(desiredSourceClearance, distance - minimumTargetClearance);
+  sourceClearance = Math.max(boundaryDistance, sourceClearance);
+
+  let targetClearance = Math.min(desiredTargetClearance, distance - sourceClearance);
+  targetClearance = Math.max(targetClearance, minimumTargetClearance);
+
+  if (sourceClearance + targetClearance > distance) {
+    const overlap = sourceClearance + targetClearance - distance;
+    const sourceAdjustable = Math.max(0, sourceClearance - boundaryDistance);
+    const targetAdjustable = Math.max(0, targetClearance - minimumTargetClearance);
+    const totalAdjustable = sourceAdjustable + targetAdjustable;
+
+    if (totalAdjustable > 1e-6) {
+      const sourceShare = sourceAdjustable / totalAdjustable;
+      const targetShare = targetAdjustable / totalAdjustable;
+      sourceClearance -= overlap * sourceShare;
+      targetClearance -= overlap * targetShare;
+    } else {
+      const halfOverlap = overlap / 2;
+      sourceClearance -= halfOverlap;
+      targetClearance -= halfOverlap;
+    }
+  }
+
+  sourceClearance = Math.max(boundaryDistance, Math.min(sourceClearance, distance - minimumTargetClearance));
+  const remaining = Math.max(distance - sourceClearance, 0);
+  targetClearance = Math.max(minimumTargetClearance, Math.min(targetClearance, remaining));
+
+  return {
+    x1: source.cx + ux * sourceClearance,
+    y1: source.cy + uy * sourceClearance,
+    x2: target.cx - ux * targetClearance,
+    y2: target.cy - uy * targetClearance
+  };
+}
+
 function buildLayout(architecture) {
+  if (!architecture || !Array.isArray(architecture.CGRAs)) {
+    return {
+      layouts: [],
+      width: MARGIN * 2,
+      height: MARGIN * 2
+    };
+  }
+
   const layouts = architecture.CGRAs.map((cgra) => {
     const peXs = cgra.PEs.map((pe) => pe.x);
     const peYs = cgra.PEs.map((pe) => pe.y);
@@ -304,6 +359,47 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
       .attr('width', '100%')
       .attr('height', '100%');
 
+    const defs = svg.append('defs');
+
+    const peArrowMarker = defs
+      .append('marker')
+      .attr('id', 'pe-arrow')
+      .attr('viewBox', `0 0 ${PE_LINK_ARROW_LENGTH} ${PE_LINK_ARROW_LENGTH}`)
+      .attr('refX', PE_LINK_ARROW_LENGTH)
+      .attr('refY', PE_LINK_ARROW_LENGTH / 2)
+      .attr('markerWidth', PE_LINK_ARROW_LENGTH)
+      .attr('markerHeight', PE_LINK_ARROW_LENGTH)
+      .attr('orient', 'auto')
+      .attr('markerUnits', 'userSpaceOnUse');
+
+    peArrowMarker
+      .append('path')
+      .attr(
+        'd',
+        `M 0 0 L ${PE_LINK_ARROW_LENGTH} ${PE_LINK_ARROW_LENGTH / 2} L 0 ${PE_LINK_ARROW_LENGTH} z`
+      )
+      .attr('fill', '#60a5fa')
+      .attr('fill-opacity', 0.85)
+      .attr('stroke', 'none');
+
+    const cgraArrowMarker = defs
+      .append('marker')
+      .attr('id', 'cgra-arrow')
+      .attr('viewBox', '0 0 10 10')
+      .attr('refX', 8)
+      .attr('refY', 5)
+      .attr('markerWidth', 7)
+      .attr('markerHeight', 7)
+      .attr('orient', 'auto')
+      .attr('markerUnits', 'strokeWidth');
+
+    cgraArrowMarker
+      .append('path')
+      .attr('d', 'M 0 0 L 10 5 L 0 10 z')
+      .attr('fill', '#7dd3fc')
+      .attr('fill-opacity', 0.85)
+      .attr('stroke', 'none');
+
     const zoomGroup = svg.append('g').attr('class', 'zoom-group');
 
     const cgraLinkLayer = zoomGroup
@@ -328,14 +424,6 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
           event.stopPropagation();
           onSelectionChange?.({ type: 'cgra', id: cgraLayout.id, cgraId: cgraLayout.id });
         });
-
-      const peLinkLayer = group
-        .append('g')
-        .attr('class', 'pe-links')
-        .attr('stroke', '#60a5fa')
-        .attr('stroke-width', 2)
-        .attr('stroke-opacity', 0.4)
-        .attr('fill', 'none');
 
       group
         .append('rect')
@@ -403,31 +491,27 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
 
       const peLinks = [];
       positionMap.forEach((pe) => {
-        const rightNeighbor = positionMap.get(`${pe.x + 1},${pe.y}`);
-        const downNeighbor = positionMap.get(`${pe.x},${pe.y + 1}`);
-        if (rightNeighbor) {
-          peLinks.push({
-            source: pe,
-            target: rightNeighbor
-          });
-        }
-        if (downNeighbor) {
-          peLinks.push({
-            source: pe,
-            target: downNeighbor
-          });
-        }
-      });
+        const outgoing = pe?.outgoingLinks || {};
 
-      peLinkLayer
-        .selectAll('line')
-        .data(peLinks)
-        .enter()
-        .append('line')
-        .attr('x1', (d) => d.source.cx)
-        .attr('y1', (d) => d.source.cy)
-        .attr('x2', (d) => d.target.cx)
-        .attr('y2', (d) => d.target.cy);
+        Object.entries(PE_DIRECTION_OFFSETS).forEach(([direction, offset]) => {
+          if (!outgoing[direction]) {
+            return;
+          }
+
+          const neighbor = positionMap.get(`${pe.x + offset.dx},${pe.y + offset.dy}`);
+          if (!neighbor) {
+            return;
+          }
+
+          const endpoints = computePeLinkEndpoints(pe, neighbor);
+          peLinks.push({
+            source: pe,
+            target: neighbor,
+            direction,
+            ...endpoints
+          });
+        });
+      });
 
       const peNodes = Array.from(positionMap.values());
 
@@ -465,6 +549,27 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
         .attr('text-anchor', 'middle')
         .attr('dominant-baseline', 'middle')
         .call(applyPeLabel);
+
+      const peLinkLayer = group
+        .append('g')
+        .attr('class', 'pe-links')
+        .attr('stroke', '#60a5fa')
+        .attr('stroke-width', 2)
+        .attr('stroke-opacity', 0.4)
+        .attr('fill', 'none')
+        .attr('pointer-events', 'none');
+
+      peLinkLayer
+        .selectAll('line')
+        .data(peLinks)
+        .enter()
+        .append('line')
+        .attr('x1', (d) => d.x1)
+        .attr('y1', (d) => d.y1)
+        .attr('x2', (d) => d.x2)
+        .attr('y2', (d) => d.y2)
+        .attr('marker-end', 'url(#pe-arrow)')
+        .attr('stroke-linecap', 'round');
 
       group
         .append('circle')
@@ -514,7 +619,8 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
       .attr('y1', (d) => d.y1)
       .attr('x2', (d) => d.x2)
       .attr('y2', (d) => d.y2)
-      .attr('stroke-linecap', 'round');
+      .attr('stroke-linecap', 'round')
+      .attr('marker-end', 'url(#cgra-arrow)');
 
     const zoomBehavior = zoom()
       .scaleExtent([0.5, 4])
@@ -522,7 +628,8 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
         zoomTransformRef.current = event.transform;
         zoomGroup.attr('transform', event.transform);
         updatePeLabelVisibility(svg, event.transform.k);
-        updateCgraLabelVisibility(svg, event.transform, layout);
+        updatePeLinkVisibility(svg, event.transform.k);
+        updateCgraLabelVisibility(svg, event.transform.k);
       });
 
     svg.call(zoomBehavior);
@@ -531,10 +638,12 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
       zoomGroup.attr('transform', zoomTransformRef.current);
       zoomBehavior.transform(svg, zoomTransformRef.current);
       updatePeLabelVisibility(svg, zoomTransformRef.current.k);
-      updateCgraLabelVisibility(svg, zoomTransformRef.current, layout);
+      updatePeLinkVisibility(svg, zoomTransformRef.current.k);
+      updateCgraLabelVisibility(svg, zoomTransformRef.current.k);
     } else {
       updatePeLabelVisibility(svg, 1);
-      updateCgraLabelVisibility(svg, zoomIdentity, layout);
+      updatePeLinkVisibility(svg, 1);
+      updateCgraLabelVisibility(svg, 1);
     }
     svg.on('click', (event) => {
       if (event.defaultPrevented) return;
