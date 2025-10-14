@@ -148,9 +148,28 @@ function updatePeLabelVisibility(svg, zoomLevel) {
     .attr('aria-hidden', zoomLevel >= PE_LABEL_VISIBILITY_THRESHOLD ? null : 'true');
 }
 
-function updateCgraLabelVisibility(svg, zoomLevel, layout) {
+function updateCgraLabelVisibility(svg, transform, layout) {
+  const currentTransform = transform ?? zoomIdentity;
   const viewWidth = layout?.width ?? 0;
   const viewHeight = layout?.height ?? 0;
+
+  if (!(viewWidth > 0) || !(viewHeight > 0)) {
+    svg
+      .selectAll('g.cgra text.cgra-label')
+      .attr('display', null)
+      .attr('aria-hidden', null);
+    return;
+  }
+
+  const topLeftX = currentTransform.invertX(0);
+  const topLeftY = currentTransform.invertY(0);
+  const bottomRightX = currentTransform.invertX(viewWidth);
+  const bottomRightY = currentTransform.invertY(viewHeight);
+
+  const visibleMinX = Math.min(topLeftX, bottomRightX);
+  const visibleMaxX = Math.max(topLeftX, bottomRightX);
+  const visibleMinY = Math.min(topLeftY, bottomRightY);
+  const visibleMaxY = Math.max(topLeftY, bottomRightY);
 
   svg.selectAll('g.cgra').each(function toggleCgraLabel() {
     const group = select(this);
@@ -161,19 +180,20 @@ function updateCgraLabelVisibility(svg, zoomLevel, layout) {
     }
 
     const data = group.datum();
+    const cgraOriginX = data?.originX ?? 0;
+    const cgraOriginY = data?.originY ?? 0;
     const cgraWidth = data?.width ?? 0;
     const cgraHeight = data?.height ?? 0;
-    const horizontalLimit = cgraWidth > 0 && viewWidth > 0 ? viewWidth / cgraWidth : Infinity;
-    const verticalLimit = cgraHeight > 0 && viewHeight > 0 ? viewHeight / cgraHeight : Infinity;
-    let maxScaleBeforeOverflow = Math.min(horizontalLimit, verticalLimit);
+    const cgraMaxX = cgraOriginX + cgraWidth;
+    const cgraMaxY = cgraOriginY + cgraHeight;
 
-    if (!Number.isFinite(maxScaleBeforeOverflow) || maxScaleBeforeOverflow <= 0) {
-      maxScaleBeforeOverflow = Infinity;
-    }
+    const fullyVisible =
+      cgraOriginX >= visibleMinX &&
+      cgraMaxX <= visibleMaxX &&
+      cgraOriginY >= visibleMinY &&
+      cgraMaxY <= visibleMaxY;
 
-    const shouldShow = zoomLevel <= maxScaleBeforeOverflow;
-
-    label.attr('display', shouldShow ? null : 'none').attr('aria-hidden', shouldShow ? null : 'true');
+    label.attr('display', fullyVisible ? null : 'none').attr('aria-hidden', fullyVisible ? null : 'true');
   });
 }
 
@@ -502,7 +522,7 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
         zoomTransformRef.current = event.transform;
         zoomGroup.attr('transform', event.transform);
         updatePeLabelVisibility(svg, event.transform.k);
-        updateCgraLabelVisibility(svg, event.transform.k, layout);
+        updateCgraLabelVisibility(svg, event.transform, layout);
       });
 
     svg.call(zoomBehavior);
@@ -511,10 +531,10 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
       zoomGroup.attr('transform', zoomTransformRef.current);
       zoomBehavior.transform(svg, zoomTransformRef.current);
       updatePeLabelVisibility(svg, zoomTransformRef.current.k);
-      updateCgraLabelVisibility(svg, zoomTransformRef.current.k, layout);
+      updateCgraLabelVisibility(svg, zoomTransformRef.current, layout);
     } else {
       updatePeLabelVisibility(svg, 1);
-      updateCgraLabelVisibility(svg, 1, layout);
+      updateCgraLabelVisibility(svg, zoomIdentity, layout);
     }
     svg.on('click', (event) => {
       if (event.defaultPrevented) return;
