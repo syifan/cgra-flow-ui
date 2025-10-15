@@ -302,8 +302,9 @@ function buildLayout(architecture) {
   const enhancedLayouts = layouts.map((layout) => {
     const displayColumn = layout.x - globalMinX;
     const displayRow = globalMaxY - layout.y;
+    const drawingRow = layout.y - globalMinY;
     const baseOriginX = MARGIN + displayColumn * (globalWidth + CGRA_GAP);
-    const baseOriginY = MARGIN + displayRow * (globalHeight + CGRA_GAP);
+    const baseOriginY = MARGIN + drawingRow * (globalHeight + CGRA_GAP);
     const originX = baseOriginX + (globalWidth - layout.width);
     const originY = baseOriginY + (globalHeight - layout.height);
     const routerLocalX = -CGRA_ROUTER_OFFSET;
@@ -499,8 +500,9 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
         const row = pe.y - cgraLayout.minY;
         const displayColumn = col;
         const displayRow = cgraLayout.rows - 1 - row;
+        const drawingRow = row;
         const px = CGRA_PADDING + displayColumn * (PE_SIZE + PE_GAP);
-        const py = CGRA_PADDING + displayRow * (PE_SIZE + PE_GAP);
+        const py = CGRA_PADDING + drawingRow * (PE_SIZE + PE_GAP);
         const defaultTopLabel = `PE (${row}, ${displayColumn})`;
         const legacyTopLabel = `PE (${pe.y}, ${pe.x})`;
         const fallbackLabel = `PE (${displayRow}, ${displayColumn})`;
