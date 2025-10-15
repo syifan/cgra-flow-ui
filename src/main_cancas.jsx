@@ -307,12 +307,13 @@ function buildLayout(architecture) {
   const globalMaxY = layouts.length ? Math.max(...layouts.map((layout) => layout.y)) : 0;
 
   const enhancedLayouts = layouts.map((layout) => {
-    const drawingColumn = layout.x - globalMinX;
+    const localColumnIndex = layout.x - globalMinX;
+    const drawingColumn = localColumnIndex;
     const drawingRow = layout.y - globalMinY;
-    const displayColumn = drawingColumn;
+    const displayColumn = layout.x;
     const displayRow = globalMaxY - layout.y;
     const baseOriginX = MARGIN + drawingColumn * (globalWidth + CGRA_GAP);
-    const baseOriginY = MARGIN + displayRow * (globalHeight + CGRA_GAP);
+    const baseOriginY = MARGIN + drawingRow * (globalHeight + CGRA_GAP);
     const originX = baseOriginX;
     const originY = baseOriginY + (globalHeight - layout.height);
     const routerLocalX = -CGRA_ROUTER_OFFSET;
@@ -324,7 +325,9 @@ function buildLayout(architecture) {
     const topColumnIndex = layout.x - globalMinX;
     const defaultTopLabel = `CGRA (${topRowIndex}, ${topColumnIndex})`;
     const legacyTopLabel = `CGRA (${layout.y}, ${layout.x})`;
-    const legacyDisplayLabel = `CGRA (${displayRow}, ${displayColumn})`;
+    const legacyDisplayLabel = `CGRA (${displayRow}, ${localColumnIndex})`;
+    const legacyBottomOriginLabel = `CGRA (${localColumnIndex}, ${displayRow})`;
+    const legacyBottomOriginLabelTight = `CGRA (${localColumnIndex},${displayRow})`;
     const coordinateLabelTopOrigin = `CGRA (${layout.x}, ${layout.y})`;
     const coordinateLabelTopOriginTight = `CGRA (${layout.x},${layout.y})`;
     const coordinateLabelBottomOrigin = `CGRA (${displayColumn}, ${displayRow})`;
@@ -335,6 +338,8 @@ function buildLayout(architecture) {
       normalizedOriginalLabel === normalizeLabelText(defaultTopLabel) ||
       normalizedOriginalLabel === normalizeLabelText(legacyTopLabel) ||
       normalizedOriginalLabel === normalizeLabelText(legacyDisplayLabel) ||
+      normalizedOriginalLabel === normalizeLabelText(legacyBottomOriginLabel) ||
+      normalizedOriginalLabel === normalizeLabelText(legacyBottomOriginLabelTight) ||
       normalizedOriginalLabel === normalizeLabelText(coordinateLabelTopOrigin) ||
       normalizedOriginalLabel === normalizeLabelText(coordinateLabelTopOriginTight) ||
       normalizedOriginalLabel === normalizeLabelText(coordinateLabelBottomOrigin) ||
@@ -520,24 +525,31 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
       cgraLayout.PEs.forEach((pe) => {
         const col = pe.x - cgraLayout.minX;
         const row = pe.y - cgraLayout.minY;
-        const displayColumn = col;
+        const gridColumn = col;
+        const displayColumn = pe.x;
         const displayRow = cgraLayout.rows - 1 - row;
         const drawingRow = row;
-        const px = CGRA_PADDING + displayColumn * (PE_SIZE + PE_GAP);
+        const px = CGRA_PADDING + gridColumn * (PE_SIZE + PE_GAP);
         const py = CGRA_PADDING + drawingRow * (PE_SIZE + PE_GAP);
-        const defaultTopLabel = `PE (${row}, ${displayColumn})`;
+        const defaultTopLabel = `PE (${row}, ${gridColumn})`;
         const legacyTopLabel = `PE (${pe.y}, ${pe.x})`;
         const coordinateLabel = `PE (${pe.x}, ${pe.y})`;
         const coordinateLabelTight = `PE (${pe.x},${pe.y})`;
+        const coordinateLabelBottomOrigin = `PE (${pe.x}, ${displayRow})`;
+        const coordinateLabelBottomOriginTight = `PE (${pe.x},${displayRow})`;
         const normalizedLabel = normalizeLabelText(pe.label);
         const isDefaultTopLabel =
           !normalizedLabel ||
           normalizedLabel === normalizeLabelText(defaultTopLabel) ||
           normalizedLabel === normalizeLabelText(legacyTopLabel) ||
           normalizedLabel === normalizeLabelText(coordinateLabel) ||
-          normalizedLabel === normalizeLabelText(coordinateLabelTight);
-        const displayLabel = isDefaultTopLabel ? coordinateLabel : pe.label || coordinateLabel;
-        const displayLabelLines = isDefaultTopLabel ? ['PE', `(${pe.x}, ${pe.y})`] : null;
+          normalizedLabel === normalizeLabelText(coordinateLabelTight) ||
+          normalizedLabel === normalizeLabelText(coordinateLabelBottomOrigin) ||
+          normalizedLabel === normalizeLabelText(coordinateLabelBottomOriginTight);
+        const displayLabel = isDefaultTopLabel
+          ? coordinateLabelBottomOrigin
+          : pe.label || coordinateLabelBottomOrigin;
+        const displayLabelLines = isDefaultTopLabel ? ['PE', `(${pe.x}, ${displayRow})`] : null;
         positionMap.set(`${pe.x},${pe.y}`, {
           ...pe,
           label: displayLabel,
