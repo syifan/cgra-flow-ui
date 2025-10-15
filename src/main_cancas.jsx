@@ -31,10 +31,11 @@ const PE_SELECTED_STROKE = '#fb923c';
 const PE_LABEL_FILL = '#e2e8f0';
 const PE_LABEL_DISABLED_FILL = 'rgba(226, 232, 240, 0.6)';
 const PE_LABEL_SELECTED_FILL = '#0f172a';
-const PE_LABEL_MAX_CHARS_PER_LINE = 6;
+const PE_LABEL_MAX_CHARS_PER_LINE = 8;
 const PE_LABEL_MAX_LINES = 2;
 const PE_LABEL_VISIBILITY_THRESHOLD = 1.2;
 const PE_LABEL_LINE_HEIGHT_EM = 1.1;
+const PE_LABEL_FONT_SIZE = 12;
 const PE_RADIUS = PE_SIZE / 2;
 const PE_LINK_SOURCE_DETACHMENT = 12;
 const PE_LINK_TARGET_DETACHMENT = 10;
@@ -134,7 +135,13 @@ function applyPeLabel(selection) {
     const text = select(this);
     const preferredLabel = normalizeLabelText(data?.label);
     const fallbackLabel = normalizeLabelText(data?.displayLabel);
-    const lines = splitLabelIntoLines(preferredLabel || fallbackLabel || data?.id);
+    const explicitLines = Array.isArray(data?.displayLabelLines)
+      ? data.displayLabelLines.filter((line) => normalizeLabelText(line))
+      : null;
+    const lines =
+      explicitLines && explicitLines.length
+        ? explicitLines
+        : splitLabelIntoLines(preferredLabel || fallbackLabel || data?.id);
 
     text.selectAll('tspan').remove();
 
@@ -317,9 +324,18 @@ function buildLayout(architecture) {
     const topColumnIndex = layout.x - globalMinX;
     const defaultTopLabel = `CGRA (${topRowIndex}, ${topColumnIndex})`;
     const legacyTopLabel = `CGRA (${layout.y}, ${layout.x})`;
-    const fallbackLabel = `CGRA (${displayRow}, ${displayColumn})`;
-    const isDefaultTopLabel = originalLabel === defaultTopLabel || originalLabel === legacyTopLabel;
-    const displayLabel = isDefaultTopLabel ? fallbackLabel : originalLabel || fallbackLabel;
+    const legacyDisplayLabel = `CGRA (${displayRow}, ${displayColumn})`;
+    const coordinateLabel = `CGRA (${layout.x}, ${layout.y})`;
+    const coordinateLabelTight = `CGRA (${layout.x},${layout.y})`;
+    const normalizedOriginalLabel = normalizeLabelText(originalLabel);
+    const isDefaultTopLabel =
+      !normalizedOriginalLabel ||
+      normalizedOriginalLabel === normalizeLabelText(defaultTopLabel) ||
+      normalizedOriginalLabel === normalizeLabelText(legacyTopLabel) ||
+      normalizedOriginalLabel === normalizeLabelText(legacyDisplayLabel) ||
+      normalizedOriginalLabel === normalizeLabelText(coordinateLabel) ||
+      normalizedOriginalLabel === normalizeLabelText(coordinateLabelTight);
+    const displayLabel = isDefaultTopLabel ? coordinateLabel : originalLabel || coordinateLabel;
 
     return {
       ...layout,
@@ -506,15 +522,24 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
         const py = CGRA_PADDING + drawingRow * (PE_SIZE + PE_GAP);
         const defaultTopLabel = `PE (${row}, ${displayColumn})`;
         const legacyTopLabel = `PE (${pe.y}, ${pe.x})`;
-        const fallbackLabel = `PE (${displayRow}, ${displayColumn})`;
-        const isDefaultTopLabel = pe.label === defaultTopLabel || pe.label === legacyTopLabel;
-        const displayLabel = isDefaultTopLabel ? fallbackLabel : pe.label || fallbackLabel;
+        const coordinateLabel = `PE (${pe.x}, ${pe.y})`;
+        const coordinateLabelTight = `PE (${pe.x},${pe.y})`;
+        const normalizedLabel = normalizeLabelText(pe.label);
+        const isDefaultTopLabel =
+          !normalizedLabel ||
+          normalizedLabel === normalizeLabelText(defaultTopLabel) ||
+          normalizedLabel === normalizeLabelText(legacyTopLabel) ||
+          normalizedLabel === normalizeLabelText(coordinateLabel) ||
+          normalizedLabel === normalizeLabelText(coordinateLabelTight);
+        const displayLabel = isDefaultTopLabel ? coordinateLabel : pe.label || coordinateLabel;
+        const displayLabelLines = isDefaultTopLabel ? ['PE', `(${pe.x}, ${pe.y})`] : null;
         positionMap.set(`${pe.x},${pe.y}`, {
           ...pe,
           label: displayLabel,
           displayColumn,
           displayRow,
           displayLabel,
+          displayLabelLines,
           px,
           py,
           cx: px + PE_SIZE / 2,
@@ -578,7 +603,7 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
         .attr('y', PE_SIZE / 2)
         .attr('fill', (d) => (d.disabled ? PE_LABEL_DISABLED_FILL : PE_LABEL_FILL))
         .attr('font-family', '"Fira Code", monospace')
-        .attr('font-size', 11)
+        .attr('font-size', PE_LABEL_FONT_SIZE)
         .attr('text-anchor', 'middle')
         .attr('dominant-baseline', 'middle')
         .call(applyPeLabel);
