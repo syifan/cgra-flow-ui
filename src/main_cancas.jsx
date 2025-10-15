@@ -133,7 +133,8 @@ function applyPeLabel(selection) {
   selection.each(function applyLabel(data) {
     const text = select(this);
     const preferredLabel = normalizeLabelText(data?.label);
-    const lines = splitLabelIntoLines(preferredLabel || data?.id);
+    const fallbackLabel = normalizeLabelText(data?.displayLabel);
+    const lines = splitLabelIntoLines(preferredLabel || fallbackLabel || data?.id);
 
     text.selectAll('tspan').remove();
 
@@ -294,19 +295,37 @@ function buildLayout(architecture) {
 
   const globalWidth = layouts.length ? Math.max(...layouts.map((layout) => layout.width)) : 0;
   const globalHeight = layouts.length ? Math.max(...layouts.map((layout) => layout.height)) : 0;
+  const globalMinX = layouts.length ? Math.min(...layouts.map((layout) => layout.x)) : 0;
+  const globalMinY = layouts.length ? Math.min(...layouts.map((layout) => layout.y)) : 0;
+  const globalMaxY = layouts.length ? Math.max(...layouts.map((layout) => layout.y)) : 0;
 
   const enhancedLayouts = layouts.map((layout) => {
-    const baseOriginX = MARGIN + layout.x * (globalWidth + CGRA_GAP);
-    const baseOriginY = MARGIN + layout.y * (globalHeight + CGRA_GAP);
+    const displayColumn = layout.x - globalMinX;
+    const displayRow = globalMaxY - layout.y;
+    const baseOriginX = MARGIN + displayColumn * (globalWidth + CGRA_GAP);
+    const baseOriginY = MARGIN + displayRow * (globalHeight + CGRA_GAP);
     const originX = baseOriginX + (globalWidth - layout.width);
     const originY = baseOriginY + (globalHeight - layout.height);
-    const routerLocalX = layout.width + CGRA_ROUTER_OFFSET;
+    const routerLocalX = -CGRA_ROUTER_OFFSET;
     const routerLocalY = layout.height + CGRA_ROUTER_OFFSET;
     const routerCenterX = originX + routerLocalX;
     const routerCenterY = originY + routerLocalY;
+    const originalLabel = layout.label;
+    const topRowIndex = layout.y - globalMinY;
+    const topColumnIndex = layout.x - globalMinX;
+    const defaultTopLabel = `CGRA (${topRowIndex}, ${topColumnIndex})`;
+    const legacyTopLabel = `CGRA (${layout.y}, ${layout.x})`;
+    const fallbackLabel = `CGRA (${displayRow}, ${displayColumn})`;
+    const isDefaultTopLabel = originalLabel === defaultTopLabel || originalLabel === legacyTopLabel;
+    const displayLabel = isDefaultTopLabel ? fallbackLabel : originalLabel || fallbackLabel;
 
     return {
       ...layout,
+      label: displayLabel,
+      originalLabel,
+      displayColumn,
+      displayRow,
+      displayLabel,
       originX,
       originY,
       centerX: originX + layout.width / 2,
@@ -448,9 +467,9 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
         .attr('text-anchor', 'middle')
         .attr('dominant-baseline', 'central')
         .attr('pointer-events', 'none')
-        .text(cgraLayout.label || cgraLayout.id);
+        .text(cgraLayout.displayLabel || cgraLayout.label || cgraLayout.id);
 
-      const connectorStartX = cgraLayout.width - CGRA_ROUTER_CONNECTOR_INSET;
+      const connectorStartX = CGRA_ROUTER_CONNECTOR_INSET;
       const connectorStartY = cgraLayout.height - CGRA_ROUTER_CONNECTOR_INSET;
       const connectorDx = cgraLayout.routerLocalX - connectorStartX;
       const connectorDy = cgraLayout.routerLocalY - connectorStartY;
@@ -478,10 +497,21 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
       cgraLayout.PEs.forEach((pe) => {
         const col = pe.x - cgraLayout.minX;
         const row = pe.y - cgraLayout.minY;
-        const px = CGRA_PADDING + col * (PE_SIZE + PE_GAP);
-        const py = CGRA_PADDING + row * (PE_SIZE + PE_GAP);
+        const displayColumn = col;
+        const displayRow = cgraLayout.rows - 1 - row;
+        const px = CGRA_PADDING + displayColumn * (PE_SIZE + PE_GAP);
+        const py = CGRA_PADDING + displayRow * (PE_SIZE + PE_GAP);
+        const defaultTopLabel = `PE (${row}, ${displayColumn})`;
+        const legacyTopLabel = `PE (${pe.y}, ${pe.x})`;
+        const fallbackLabel = `PE (${displayRow}, ${displayColumn})`;
+        const isDefaultTopLabel = pe.label === defaultTopLabel || pe.label === legacyTopLabel;
+        const displayLabel = isDefaultTopLabel ? fallbackLabel : pe.label || fallbackLabel;
         positionMap.set(`${pe.x},${pe.y}`, {
           ...pe,
+          label: displayLabel,
+          displayColumn,
+          displayRow,
+          displayLabel,
           px,
           py,
           cx: px + PE_SIZE / 2,
@@ -677,7 +707,7 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
 
       if (!label.empty()) {
         label
-          .text(data?.label || data?.id || id)
+          .text(data?.displayLabel || data?.label || data?.id || id)
           .attr('fill', isSelected ? CGRA_LABEL_SELECTED_FILL : CGRA_LABEL_FILL);
       }
     });
