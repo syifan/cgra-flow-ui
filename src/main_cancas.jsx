@@ -325,17 +325,22 @@ function buildLayout(architecture) {
     const defaultTopLabel = `CGRA (${topRowIndex}, ${topColumnIndex})`;
     const legacyTopLabel = `CGRA (${layout.y}, ${layout.x})`;
     const legacyDisplayLabel = `CGRA (${displayRow}, ${displayColumn})`;
-    const coordinateLabel = `CGRA (${layout.x}, ${layout.y})`;
-    const coordinateLabelTight = `CGRA (${layout.x},${layout.y})`;
+    const coordinateLabelTopOrigin = `CGRA (${layout.x}, ${layout.y})`;
+    const coordinateLabelTopOriginTight = `CGRA (${layout.x},${layout.y})`;
+    const coordinateLabelBottomOrigin = `CGRA (${displayColumn}, ${displayRow})`;
+    const coordinateLabelBottomOriginTight = `CGRA (${displayColumn},${displayRow})`;
     const normalizedOriginalLabel = normalizeLabelText(originalLabel);
     const isDefaultTopLabel =
       !normalizedOriginalLabel ||
       normalizedOriginalLabel === normalizeLabelText(defaultTopLabel) ||
       normalizedOriginalLabel === normalizeLabelText(legacyTopLabel) ||
       normalizedOriginalLabel === normalizeLabelText(legacyDisplayLabel) ||
-      normalizedOriginalLabel === normalizeLabelText(coordinateLabel) ||
-      normalizedOriginalLabel === normalizeLabelText(coordinateLabelTight);
-    const displayLabel = isDefaultTopLabel ? coordinateLabel : originalLabel || coordinateLabel;
+      normalizedOriginalLabel === normalizeLabelText(coordinateLabelTopOrigin) ||
+      normalizedOriginalLabel === normalizeLabelText(coordinateLabelTopOriginTight) ||
+      normalizedOriginalLabel === normalizeLabelText(coordinateLabelBottomOrigin) ||
+      normalizedOriginalLabel === normalizeLabelText(coordinateLabelBottomOriginTight);
+    const displayLabel =
+      isDefaultTopLabel ? coordinateLabelBottomOrigin : originalLabel || coordinateLabelBottomOrigin;
 
     return {
       ...layout,
