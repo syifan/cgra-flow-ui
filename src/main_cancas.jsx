@@ -31,10 +31,11 @@ const PE_SELECTED_STROKE = '#fb923c';
 const PE_LABEL_FILL = '#e2e8f0';
 const PE_LABEL_DISABLED_FILL = 'rgba(226, 232, 240, 0.6)';
 const PE_LABEL_SELECTED_FILL = '#0f172a';
-const PE_LABEL_MAX_CHARS_PER_LINE = 6;
+const PE_LABEL_MAX_CHARS_PER_LINE = 8;
 const PE_LABEL_MAX_LINES = 2;
 const PE_LABEL_VISIBILITY_THRESHOLD = 1.2;
 const PE_LABEL_LINE_HEIGHT_EM = 1.1;
+const PE_LABEL_FONT_SIZE = 12;
 const PE_RADIUS = PE_SIZE / 2;
 const PE_LINK_SOURCE_DETACHMENT = 12;
 const PE_LINK_TARGET_DETACHMENT = 10;
@@ -133,7 +134,14 @@ function applyPeLabel(selection) {
   selection.each(function applyLabel(data) {
     const text = select(this);
     const preferredLabel = normalizeLabelText(data?.label);
-    const lines = splitLabelIntoLines(preferredLabel || data?.id);
+    const fallbackLabel = normalizeLabelText(data?.displayLabel);
+    const explicitLines = Array.isArray(data?.displayLabelLines)
+      ? data.displayLabelLines.filter((line) => normalizeLabelText(line))
+      : null;
+    const lines =
+      explicitLines && explicitLines.length
+        ? explicitLines
+        : splitLabelIntoLines(preferredLabel || fallbackLabel || data?.id);
 
     text.selectAll('tspan').remove();
 
@@ -294,19 +302,58 @@ function buildLayout(architecture) {
 
   const globalWidth = layouts.length ? Math.max(...layouts.map((layout) => layout.width)) : 0;
   const globalHeight = layouts.length ? Math.max(...layouts.map((layout) => layout.height)) : 0;
+  const globalMinX = layouts.length ? Math.min(...layouts.map((layout) => layout.x)) : 0;
+  const globalMinY = layouts.length ? Math.min(...layouts.map((layout) => layout.y)) : 0;
+  const globalMaxY = layouts.length ? Math.max(...layouts.map((layout) => layout.y)) : 0;
 
   const enhancedLayouts = layouts.map((layout) => {
-    const baseOriginX = MARGIN + layout.x * (globalWidth + CGRA_GAP);
-    const baseOriginY = MARGIN + layout.y * (globalHeight + CGRA_GAP);
-    const originX = baseOriginX + (globalWidth - layout.width);
+    const localColumnIndex = layout.x - globalMinX;
+    const drawingColumn = localColumnIndex;
+    const drawingRow = layout.y - globalMinY;
+    const displayColumn = layout.x;
+    const displayRow = globalMaxY - layout.y;
+    const baseOriginX = MARGIN + drawingColumn * (globalWidth + CGRA_GAP);
+    const baseOriginY = MARGIN + drawingRow * (globalHeight + CGRA_GAP);
+    const originX = baseOriginX;
     const originY = baseOriginY + (globalHeight - layout.height);
-    const routerLocalX = layout.width + CGRA_ROUTER_OFFSET;
+    const routerLocalX = -CGRA_ROUTER_OFFSET;
     const routerLocalY = layout.height + CGRA_ROUTER_OFFSET;
     const routerCenterX = originX + routerLocalX;
     const routerCenterY = originY + routerLocalY;
+    const originalLabel = layout.label;
+    const topRowIndex = layout.y - globalMinY;
+    const topColumnIndex = layout.x - globalMinX;
+    const defaultTopLabel = `CGRA (${topRowIndex}, ${topColumnIndex})`;
+    const legacyTopLabel = `CGRA (${layout.y}, ${layout.x})`;
+    const legacyDisplayLabel = `CGRA (${displayRow}, ${localColumnIndex})`;
+    const legacyBottomOriginLabel = `CGRA (${localColumnIndex}, ${displayRow})`;
+    const legacyBottomOriginLabelTight = `CGRA (${localColumnIndex},${displayRow})`;
+    const coordinateLabelTopOrigin = `CGRA (${layout.x}, ${layout.y})`;
+    const coordinateLabelTopOriginTight = `CGRA (${layout.x},${layout.y})`;
+    const coordinateLabelBottomOrigin = `CGRA (${displayColumn}, ${displayRow})`;
+    const coordinateLabelBottomOriginTight = `CGRA (${displayColumn},${displayRow})`;
+    const normalizedOriginalLabel = normalizeLabelText(originalLabel);
+    const isDefaultTopLabel =
+      !normalizedOriginalLabel ||
+      normalizedOriginalLabel === normalizeLabelText(defaultTopLabel) ||
+      normalizedOriginalLabel === normalizeLabelText(legacyTopLabel) ||
+      normalizedOriginalLabel === normalizeLabelText(legacyDisplayLabel) ||
+      normalizedOriginalLabel === normalizeLabelText(legacyBottomOriginLabel) ||
+      normalizedOriginalLabel === normalizeLabelText(legacyBottomOriginLabelTight) ||
+      normalizedOriginalLabel === normalizeLabelText(coordinateLabelTopOrigin) ||
+      normalizedOriginalLabel === normalizeLabelText(coordinateLabelTopOriginTight) ||
+      normalizedOriginalLabel === normalizeLabelText(coordinateLabelBottomOrigin) ||
+      normalizedOriginalLabel === normalizeLabelText(coordinateLabelBottomOriginTight);
+    const displayLabel =
+      isDefaultTopLabel ? coordinateLabelBottomOrigin : originalLabel || coordinateLabelBottomOrigin;
 
     return {
       ...layout,
+      label: displayLabel,
+      originalLabel,
+      displayColumn,
+      displayRow,
+      displayLabel,
       originX,
       originY,
       centerX: originX + layout.width / 2,
@@ -448,9 +495,9 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
         .attr('text-anchor', 'middle')
         .attr('dominant-baseline', 'central')
         .attr('pointer-events', 'none')
-        .text(cgraLayout.label || cgraLayout.id);
+        .text(cgraLayout.displayLabel || cgraLayout.label || cgraLayout.id);
 
-      const connectorStartX = cgraLayout.width - CGRA_ROUTER_CONNECTOR_INSET;
+      const connectorStartX = CGRA_ROUTER_CONNECTOR_INSET;
       const connectorStartY = cgraLayout.height - CGRA_ROUTER_CONNECTOR_INSET;
       const connectorDx = cgraLayout.routerLocalX - connectorStartX;
       const connectorDy = cgraLayout.routerLocalY - connectorStartY;
@@ -478,10 +525,38 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
       cgraLayout.PEs.forEach((pe) => {
         const col = pe.x - cgraLayout.minX;
         const row = pe.y - cgraLayout.minY;
-        const px = CGRA_PADDING + col * (PE_SIZE + PE_GAP);
-        const py = CGRA_PADDING + row * (PE_SIZE + PE_GAP);
+        const gridColumn = col;
+        const displayColumn = pe.x;
+        const displayRow = cgraLayout.rows - 1 - row;
+        const drawingRow = row;
+        const px = CGRA_PADDING + gridColumn * (PE_SIZE + PE_GAP);
+        const py = CGRA_PADDING + drawingRow * (PE_SIZE + PE_GAP);
+        const defaultTopLabel = `PE (${row}, ${gridColumn})`;
+        const legacyTopLabel = `PE (${pe.y}, ${pe.x})`;
+        const coordinateLabel = `PE (${pe.x}, ${pe.y})`;
+        const coordinateLabelTight = `PE (${pe.x},${pe.y})`;
+        const coordinateLabelBottomOrigin = `PE (${pe.x}, ${displayRow})`;
+        const coordinateLabelBottomOriginTight = `PE (${pe.x},${displayRow})`;
+        const normalizedLabel = normalizeLabelText(pe.label);
+        const isDefaultTopLabel =
+          !normalizedLabel ||
+          normalizedLabel === normalizeLabelText(defaultTopLabel) ||
+          normalizedLabel === normalizeLabelText(legacyTopLabel) ||
+          normalizedLabel === normalizeLabelText(coordinateLabel) ||
+          normalizedLabel === normalizeLabelText(coordinateLabelTight) ||
+          normalizedLabel === normalizeLabelText(coordinateLabelBottomOrigin) ||
+          normalizedLabel === normalizeLabelText(coordinateLabelBottomOriginTight);
+        const displayLabel = isDefaultTopLabel
+          ? coordinateLabelBottomOrigin
+          : pe.label || coordinateLabelBottomOrigin;
+        const displayLabelLines = isDefaultTopLabel ? ['PE', `(${pe.x}, ${displayRow})`] : null;
         positionMap.set(`${pe.x},${pe.y}`, {
           ...pe,
+          label: displayLabel,
+          displayColumn,
+          displayRow,
+          displayLabel,
+          displayLabelLines,
           px,
           py,
           cx: px + PE_SIZE / 2,
@@ -545,7 +620,7 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
         .attr('y', PE_SIZE / 2)
         .attr('fill', (d) => (d.disabled ? PE_LABEL_DISABLED_FILL : PE_LABEL_FILL))
         .attr('font-family', '"Fira Code", monospace')
-        .attr('font-size', 11)
+        .attr('font-size', PE_LABEL_FONT_SIZE)
         .attr('text-anchor', 'middle')
         .attr('dominant-baseline', 'middle')
         .call(applyPeLabel);
@@ -677,7 +752,7 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
 
       if (!label.empty()) {
         label
-          .text(data?.label || data?.id || id)
+          .text(data?.displayLabel || data?.label || data?.id || id)
           .attr('fill', isSelected ? CGRA_LABEL_SELECTED_FILL : CGRA_LABEL_FILL);
       }
     });
