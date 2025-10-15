@@ -300,12 +300,13 @@ function buildLayout(architecture) {
   const globalMaxY = layouts.length ? Math.max(...layouts.map((layout) => layout.y)) : 0;
 
   const enhancedLayouts = layouts.map((layout) => {
-    const displayColumn = layout.x - globalMinX;
-    const displayRow = globalMaxY - layout.y;
+    const drawingColumn = layout.x - globalMinX;
     const drawingRow = layout.y - globalMinY;
-    const baseOriginX = MARGIN + displayColumn * (globalWidth + CGRA_GAP);
-    const baseOriginY = MARGIN + drawingRow * (globalHeight + CGRA_GAP);
-    const originX = baseOriginX + (globalWidth - layout.width);
+    const displayColumn = drawingColumn;
+    const displayRow = globalMaxY - layout.y;
+    const baseOriginX = MARGIN + drawingColumn * (globalWidth + CGRA_GAP);
+    const baseOriginY = MARGIN + displayRow * (globalHeight + CGRA_GAP);
+    const originX = baseOriginX;
     const originY = baseOriginY + (globalHeight - layout.height);
     const routerLocalX = -CGRA_ROUTER_OFFSET;
     const routerLocalY = layout.height + CGRA_ROUTER_OFFSET;
