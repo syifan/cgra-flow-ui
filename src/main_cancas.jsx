@@ -1,399 +1,239 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Box } from '@mui/material';
 import { select, zoom, zoomIdentity } from 'd3';
+import {
+  AUTO_LAYER_LABEL_OPACITY_FLOOR,
+  CGRA_AUTO_FADE_OUT_END,
+  CGRA_AUTO_FADE_OUT_START,
+  CGRA_LABEL_EMPHASIS_END,
+  CGRA_LABEL_EMPHASIS_START,
+  CANVAS_ZOOM_MAX,
+  CANVAS_ZOOM_MIN,
+  PE_AUTO_FADE_IN_END,
+  PE_AUTO_FADE_IN_START,
+  PE_LABEL_EMPHASIS_END,
+  PE_LABEL_EMPHASIS_START,
+  PE_LINK_ARROW_LENGTH
+} from './canvas/constants';
+import { createCgraConnectionsLayer } from './canvas/cgraConnectionsLayer';
+import { createCgraNodesLayer } from './canvas/cgraNodesLayer';
+import { buildCanvasLayout } from './canvas/layout';
+import { createPeConnectionsLayer } from './canvas/peConnectionsLayer';
+import { createPeNodesLayer } from './canvas/peNodesLayer';
+import LayerControl from './components/LayerControl';
 
-const PE_SIZE = 42;
-const PE_GAP = 48;
-const CGRA_PADDING = 32;
-const CGRA_GAP = 160;
-const MARGIN = 48;
-const CGRA_FILL = 'rgba(30, 64, 175, 0.18)';
-const CGRA_SELECTED_FILL = 'rgba(249, 115, 22, 0.22)';
-const CGRA_STROKE = 'rgba(96, 165, 250, 0.6)';
-const CGRA_SELECTED_STROKE = '#f97316';
-const CGRA_LABEL_FILL = '#bae6fd';
-const CGRA_LABEL_SELECTED_FILL = '#f8fafc';
-const CGRA_LABEL_FONT_SIZE = 20;
-const CGRA_LABEL_VISIBILITY_THRESHOLD = 0.65;
-const CGRA_LABEL_MAX_SCALE = 1.75;
-const CGRA_ROUTER_RADIUS = 14;
-const CGRA_ROUTER_OFFSET = 28;
-const CGRA_ROUTER_FILL = '#0ea5e9';
-const CGRA_ROUTER_STROKE = '#38bdf8';
-const CGRA_ROUTER_SELECTED_FILL = '#f97316';
-const CGRA_ROUTER_SELECTED_STROKE = '#fb923c';
-const CGRA_ROUTER_CONNECTOR_INSET = 18;
-const PE_FILL = 'rgba(59, 130, 246, 0.6)';
-const PE_DISABLED_FILL = 'rgba(148, 163, 184, 0.45)';
-const PE_STROKE = '#1d4ed8';
-const PE_SELECTED_FILL = '#f97316';
-const PE_SELECTED_STROKE = '#fb923c';
-const PE_LABEL_FILL = '#e2e8f0';
-const PE_LABEL_DISABLED_FILL = 'rgba(226, 232, 240, 0.6)';
-const PE_LABEL_SELECTED_FILL = '#0f172a';
-const PE_LABEL_MAX_CHARS_PER_LINE = 8;
-const PE_LABEL_MAX_LINES = 2;
-const PE_LABEL_VISIBILITY_THRESHOLD = 1.2;
-const PE_LABEL_LINE_HEIGHT_EM = 1.1;
-const PE_LABEL_FONT_SIZE = 12;
-const PE_RADIUS = PE_SIZE / 2;
-const PE_LINK_SOURCE_DETACHMENT = 12;
-const PE_LINK_TARGET_DETACHMENT = 10;
-const PE_LINK_ARROW_CLEARANCE = 6;
-const PE_LINK_ARROW_LENGTH = 12;
-const PE_LINK_VISIBILITY_THRESHOLD = 0.85;
-
-const PE_DIRECTION_OFFSETS = {
-  n: { dx: 0, dy: -1 },
-  s: { dx: 0, dy: 1 },
-  e: { dx: 1, dy: 0 },
-  w: { dx: -1, dy: 0 },
-  ne: { dx: 1, dy: -1 },
-  nw: { dx: -1, dy: -1 },
-  se: { dx: 1, dy: 1 },
-  sw: { dx: -1, dy: 1 }
+const LAYER_VALUES = {
+  AUTO: 'auto',
+  CGRA_CONNECTIONS: 'cgraConnections',
+  CGRAS: 'cgras',
+  PE_CONNECTIONS: 'peConnections',
+  PES: 'pes'
 };
 
-function normalizeLabelText(raw) {
-  if (raw == null) return '';
-  return String(raw).replace(/\s+/g, ' ').trim();
-}
+const LAYER_GROUPS = {
+  CGRA: 'cgra',
+  PE: 'pe'
+};
 
-function splitLabelIntoLines(label) {
-  const normalized = normalizeLabelText(label);
-  if (!normalized) return [];
+const LAYER_OPTIONS = [
+  { value: LAYER_VALUES.AUTO, label: 'Auto' },
+  { value: LAYER_VALUES.CGRA_CONNECTIONS, label: 'CGRA Links' },
+  { value: LAYER_VALUES.CGRAS, label: 'CGRAs' },
+  { value: LAYER_VALUES.PE_CONNECTIONS, label: 'PE Links' },
+  { value: LAYER_VALUES.PES, label: 'PEs' }
+];
 
-  const tokens = normalized
-    .split(' ')
-    .filter(Boolean)
-    .flatMap((word) => {
-      if (word.length <= PE_LABEL_MAX_CHARS_PER_LINE) {
-        return [word];
-      }
+const LAYER_LABELS = {
+  [LAYER_VALUES.CGRA_CONNECTIONS]: 'CGRA Links',
+  [LAYER_VALUES.CGRAS]: 'CGRAs',
+  [LAYER_VALUES.PE_CONNECTIONS]: 'PE Links',
+  [LAYER_VALUES.PES]: 'PEs'
+};
 
-      const segments = [];
-      for (let index = 0; index < word.length; index += PE_LABEL_MAX_CHARS_PER_LINE) {
-        segments.push(word.slice(index, index + PE_LABEL_MAX_CHARS_PER_LINE));
-      }
-      return segments;
-    });
+const AUTO_LAYER_LABELS = {
+  [LAYER_GROUPS.CGRA]: 'CGRAs + Links',
+  [LAYER_GROUPS.PE]: 'PEs + Links'
+};
 
-  const lines = [];
-  let current = '';
-  let truncated = false;
+const ORDERED_LAYER_VALUES = [
+  LAYER_VALUES.CGRA_CONNECTIONS,
+  LAYER_VALUES.CGRAS,
+  LAYER_VALUES.PE_CONNECTIONS,
+  LAYER_VALUES.PES
+];
 
-  for (let index = 0; index < tokens.length; index += 1) {
-    const token = tokens[index];
-    const separator = current ? ' ' : '';
-    const candidate = `${current}${separator}${token}`.trim();
+const clamp01 = (value) => Math.max(0, Math.min(1, value));
 
-    if (candidate.length <= PE_LABEL_MAX_CHARS_PER_LINE) {
-      current = candidate;
-      continue;
-    }
+const smoothstep = (value, min, max) => {
+  if (value <= min) return 0;
+  if (value >= max) return 1;
+  const t = (value - min) / (max - min || 1);
+  return t * t * (3 - 2 * t);
+};
 
-    if (current) {
-      lines.push(current);
-    }
-
-    if (lines.length >= PE_LABEL_MAX_LINES) {
-      truncated = true;
-      break;
-    }
-
-    current = token;
-  }
-
-  if (lines.length < PE_LABEL_MAX_LINES && current) {
-    lines.push(current);
-  } else if (!truncated && current && lines.length >= PE_LABEL_MAX_LINES) {
-    truncated = true;
-  }
-
-  if (tokens.length && lines.length === 0) {
-    lines.push(tokens[0].slice(0, PE_LABEL_MAX_CHARS_PER_LINE));
-    truncated = tokens.length > 1 || tokens[0].length > PE_LABEL_MAX_CHARS_PER_LINE;
-  }
-
-  if (lines.length > PE_LABEL_MAX_LINES) {
-    lines.length = PE_LABEL_MAX_LINES;
-    truncated = true;
-  }
-
-  if (truncated) {
-    const lastIndex = lines.length - 1;
-    const lastLine = lines[lastIndex] ?? '';
-    const trimmed = lastLine.slice(0, Math.max(PE_LABEL_MAX_CHARS_PER_LINE - 1, 1)).trimEnd();
-    lines[lastIndex] = trimmed ? `${trimmed}…` : '…';
-  }
-
-  return lines;
-}
-
-function applyPeLabel(selection) {
-  selection.each(function applyLabel(data) {
-    const text = select(this);
-    const preferredLabel = normalizeLabelText(data?.label);
-    const fallbackLabel = normalizeLabelText(data?.displayLabel);
-    const explicitLines = Array.isArray(data?.displayLabelLines)
-      ? data.displayLabelLines.filter((line) => normalizeLabelText(line))
-      : null;
-    const lines =
-      explicitLines && explicitLines.length
-        ? explicitLines
-        : splitLabelIntoLines(preferredLabel || fallbackLabel || data?.id);
-
-    text.selectAll('tspan').remove();
-
-    if (!lines.length) {
-      return;
-    }
-
-    const initialDy =
-      lines.length === 1 ? '0em' : `${(-((lines.length - 1) / 2) * PE_LABEL_LINE_HEIGHT_EM).toFixed(2)}em`;
-
-    lines.forEach((line, index) => {
-      const tspan = text
-        .append('tspan')
-        .attr('x', PE_SIZE / 2)
-        .text(line);
-
-      if (index === 0) {
-        tspan.attr('dy', initialDy);
-      } else {
-        tspan.attr('dy', `${PE_LABEL_LINE_HEIGHT_EM}em`);
-      }
-    });
-  });
-}
-
-function updatePeLabelVisibility(svg, zoomLevel) {
-  const display = zoomLevel >= PE_LABEL_VISIBILITY_THRESHOLD ? null : 'none';
-  svg
-    .selectAll('g.pe text')
-    .attr('display', display)
-    .attr('aria-hidden', zoomLevel >= PE_LABEL_VISIBILITY_THRESHOLD ? null : 'true');
-}
-
-function updatePeLinkVisibility(svg, zoomLevel) {
-  const visible = zoomLevel >= PE_LINK_VISIBILITY_THRESHOLD;
-  svg
-    .selectAll('g.pe-links')
-    .attr('display', visible ? null : 'none')
-    .attr('aria-hidden', visible ? null : 'true');
-}
-
-function updateCgraLabelVisibility(svg, zoomLevel = 1) {
+const computeOpacityProfile = (zoomLevel) => {
   const k = Number.isFinite(zoomLevel) ? zoomLevel : 1;
-  const visible = k >= CGRA_LABEL_VISIBILITY_THRESHOLD;
-  const fontScale = Math.min(CGRA_LABEL_MAX_SCALE, Math.max(1, 1 / Math.max(k, 1e-6)));
-  const fontSize = CGRA_LABEL_FONT_SIZE * fontScale;
+  const cgraFadeOut = smoothstep(k, CGRA_AUTO_FADE_OUT_START, CGRA_AUTO_FADE_OUT_END);
+  const peFadeIn = smoothstep(k, PE_AUTO_FADE_IN_START, PE_AUTO_FADE_IN_END);
 
-  svg
-    .selectAll('g.cgra text.cgra-label')
-    .attr('display', visible ? null : 'none')
-    .attr('aria-hidden', visible ? null : 'true')
-    .attr('font-size', fontSize);
-}
+  const cgraOpacity = clamp01(1 - cgraFadeOut);
+  const peOpacity = clamp01(peFadeIn);
 
-function computeRouterLinkEndpoints(source, target) {
-  const dx = target.routerCenterX - source.routerCenterX;
-  const dy = target.routerCenterY - source.routerCenterY;
-  const distance = Math.sqrt(dx * dx + dy * dy) || 1;
-  const ux = dx / distance;
-  const uy = dy / distance;
+  const cgraLabelEmphasis = smoothstep(k, CGRA_LABEL_EMPHASIS_START, CGRA_LABEL_EMPHASIS_END);
+  const peLabelEmphasis = smoothstep(k, PE_LABEL_EMPHASIS_START, PE_LABEL_EMPHASIS_END);
 
-  return {
-    x1: source.routerCenterX + ux * CGRA_ROUTER_RADIUS,
-    y1: source.routerCenterY + uy * CGRA_ROUTER_RADIUS,
-    x2: target.routerCenterX - ux * CGRA_ROUTER_RADIUS,
-    y2: target.routerCenterY - uy * CGRA_ROUTER_RADIUS
-  };
-}
-
-function computePeLinkEndpoints(source, target) {
-  const dx = target.cx - source.cx;
-  const dy = target.cy - source.cy;
-  const distance = Math.sqrt(dx * dx + dy * dy) || 1;
-  const ux = dx / distance;
-  const uy = dy / distance;
-  const absUx = Math.abs(ux);
-  const absUy = Math.abs(uy);
-
-  const limitX = absUx > 1e-6 ? PE_RADIUS / absUx : Infinity;
-  const limitY = absUy > 1e-6 ? PE_RADIUS / absUy : Infinity;
-  const boundaryDistance = Math.min(limitX, limitY, distance / 2);
-
-  const desiredSourceClearance = boundaryDistance + Math.max(0, PE_LINK_SOURCE_DETACHMENT);
-  const minimumTargetClearance = boundaryDistance + Math.max(0, PE_LINK_ARROW_CLEARANCE);
-  const desiredTargetClearance = boundaryDistance + Math.max(
-    PE_LINK_ARROW_CLEARANCE,
-    PE_LINK_TARGET_DETACHMENT
+  const cgraLabelOpacity = clamp01(
+    Math.max(cgraOpacity, AUTO_LAYER_LABEL_OPACITY_FLOOR + (1 - AUTO_LAYER_LABEL_OPACITY_FLOOR) * cgraLabelEmphasis)
+  );
+  const peLabelOpacity = clamp01(
+    Math.max(peOpacity, AUTO_LAYER_LABEL_OPACITY_FLOOR + (1 - AUTO_LAYER_LABEL_OPACITY_FLOOR) * peLabelEmphasis)
   );
 
-  let sourceClearance = Math.min(desiredSourceClearance, distance - minimumTargetClearance);
-  sourceClearance = Math.max(boundaryDistance, sourceClearance);
-
-  let targetClearance = Math.min(desiredTargetClearance, distance - sourceClearance);
-  targetClearance = Math.max(targetClearance, minimumTargetClearance);
-
-  if (sourceClearance + targetClearance > distance) {
-    const overlap = sourceClearance + targetClearance - distance;
-    const sourceAdjustable = Math.max(0, sourceClearance - boundaryDistance);
-    const targetAdjustable = Math.max(0, targetClearance - minimumTargetClearance);
-    const totalAdjustable = sourceAdjustable + targetAdjustable;
-
-    if (totalAdjustable > 1e-6) {
-      const sourceShare = sourceAdjustable / totalAdjustable;
-      const targetShare = targetAdjustable / totalAdjustable;
-      sourceClearance -= overlap * sourceShare;
-      targetClearance -= overlap * targetShare;
-    } else {
-      const halfOverlap = overlap / 2;
-      sourceClearance -= halfOverlap;
-      targetClearance -= halfOverlap;
-    }
-  }
-
-  sourceClearance = Math.max(boundaryDistance, Math.min(sourceClearance, distance - minimumTargetClearance));
-  const remaining = Math.max(distance - sourceClearance, 0);
-  targetClearance = Math.max(minimumTargetClearance, Math.min(targetClearance, remaining));
-
   return {
-    x1: source.cx + ux * sourceClearance,
-    y1: source.cy + uy * sourceClearance,
-    x2: target.cx - ux * targetClearance,
-    y2: target.cy - uy * targetClearance
+    cgraOpacity,
+    peOpacity,
+    cgraLabelOpacity,
+    peLabelOpacity
   };
-}
+};
 
-function buildLayout(architecture) {
-  if (!architecture || !Array.isArray(architecture.CGRAs)) {
-    return {
-      layouts: [],
-      width: MARGIN * 2,
-      height: MARGIN * 2
-    };
-  }
+const pickLayerForZoom = (zoomLevel) => {
+  const { cgraOpacity, peOpacity } = computeOpacityProfile(zoomLevel);
+  return peOpacity > cgraOpacity ? LAYER_GROUPS.PE : LAYER_GROUPS.CGRA;
+};
 
-  const layouts = architecture.CGRAs.map((cgra) => {
-    const peXs = cgra.PEs.map((pe) => pe.x);
-    const peYs = cgra.PEs.map((pe) => pe.y);
-    const minX = Math.min(...peXs);
-    const maxX = Math.max(...peXs);
-    const minY = Math.min(...peYs);
-    const maxY = Math.max(...peYs);
-    const columns = maxX - minX + 1;
-    const rows = maxY - minY + 1;
-
-    const width = columns * PE_SIZE + (columns - 1) * PE_GAP + CGRA_PADDING * 2;
-    const height = rows * PE_SIZE + (rows - 1) * PE_GAP + CGRA_PADDING * 2;
-
-    return {
-      ...cgra,
-      minX,
-      minY,
-      width,
-      height,
-      columns,
-      rows
-    };
-  });
-
-  const globalWidth = layouts.length ? Math.max(...layouts.map((layout) => layout.width)) : 0;
-  const globalHeight = layouts.length ? Math.max(...layouts.map((layout) => layout.height)) : 0;
-  const globalMinX = layouts.length ? Math.min(...layouts.map((layout) => layout.x)) : 0;
-  const globalMinY = layouts.length ? Math.min(...layouts.map((layout) => layout.y)) : 0;
-  const globalMaxY = layouts.length ? Math.max(...layouts.map((layout) => layout.y)) : 0;
-
-  const enhancedLayouts = layouts.map((layout) => {
-    const localColumnIndex = layout.x - globalMinX;
-    const drawingColumn = localColumnIndex;
-    const drawingRow = layout.y - globalMinY;
-    const displayColumn = layout.x;
-    const displayRow = globalMaxY - layout.y;
-    const baseOriginX = MARGIN + drawingColumn * (globalWidth + CGRA_GAP);
-    const baseOriginY = MARGIN + drawingRow * (globalHeight + CGRA_GAP);
-    const originX = baseOriginX;
-    const originY = baseOriginY + (globalHeight - layout.height);
-    const routerLocalX = -CGRA_ROUTER_OFFSET;
-    const routerLocalY = layout.height + CGRA_ROUTER_OFFSET;
-    const routerCenterX = originX + routerLocalX;
-    const routerCenterY = originY + routerLocalY;
-    const originalLabel = layout.label;
-    const topRowIndex = layout.y - globalMinY;
-    const topColumnIndex = layout.x - globalMinX;
-    const defaultTopLabel = `CGRA (${topRowIndex}, ${topColumnIndex})`;
-    const legacyTopLabel = `CGRA (${layout.y}, ${layout.x})`;
-    const legacyDisplayLabel = `CGRA (${displayRow}, ${localColumnIndex})`;
-    const legacyBottomOriginLabel = `CGRA (${localColumnIndex}, ${displayRow})`;
-    const legacyBottomOriginLabelTight = `CGRA (${localColumnIndex},${displayRow})`;
-    const coordinateLabelTopOrigin = `CGRA (${layout.x}, ${layout.y})`;
-    const coordinateLabelTopOriginTight = `CGRA (${layout.x},${layout.y})`;
-    const coordinateLabelBottomOrigin = `CGRA (${displayColumn}, ${displayRow})`;
-    const coordinateLabelBottomOriginTight = `CGRA (${displayColumn},${displayRow})`;
-    const normalizedOriginalLabel = normalizeLabelText(originalLabel);
-    const isDefaultTopLabel =
-      !normalizedOriginalLabel ||
-      normalizedOriginalLabel === normalizeLabelText(defaultTopLabel) ||
-      normalizedOriginalLabel === normalizeLabelText(legacyTopLabel) ||
-      normalizedOriginalLabel === normalizeLabelText(legacyDisplayLabel) ||
-      normalizedOriginalLabel === normalizeLabelText(legacyBottomOriginLabel) ||
-      normalizedOriginalLabel === normalizeLabelText(legacyBottomOriginLabelTight) ||
-      normalizedOriginalLabel === normalizeLabelText(coordinateLabelTopOrigin) ||
-      normalizedOriginalLabel === normalizeLabelText(coordinateLabelTopOriginTight) ||
-      normalizedOriginalLabel === normalizeLabelText(coordinateLabelBottomOrigin) ||
-      normalizedOriginalLabel === normalizeLabelText(coordinateLabelBottomOriginTight);
-    const displayLabel =
-      isDefaultTopLabel ? coordinateLabelBottomOrigin : originalLabel || coordinateLabelBottomOrigin;
-
-    return {
-      ...layout,
-      label: displayLabel,
-      originalLabel,
-      displayColumn,
-      displayRow,
-      displayLabel,
-      originX,
-      originY,
-      centerX: originX + layout.width / 2,
-      centerY: originY + layout.height / 2,
-      routerLocalX,
-      routerLocalY,
-      routerCenterX,
-      routerCenterY
-    };
-  });
-
-  const totalWidth =
-    (enhancedLayouts.length
-      ? Math.max(
-          ...enhancedLayouts.map((layout) =>
-            Math.max(layout.originX + layout.width, layout.routerCenterX + CGRA_ROUTER_RADIUS)
-          )
-        ) + MARGIN
-      : MARGIN * 2);
-  const totalHeight =
-    (enhancedLayouts.length
-      ? Math.max(
-          ...enhancedLayouts.map((layout) =>
-            Math.max(layout.originY + layout.height, layout.routerCenterY + CGRA_ROUTER_RADIUS)
-          )
-        ) + MARGIN
-      : MARGIN * 2);
-
-  return {
-    layouts: enhancedLayouts,
-    width: totalWidth,
-    height: totalHeight
-  };
-}
+const orderLayers = (layers) =>
+  ORDERED_LAYER_VALUES.filter((layer) => layers.includes(layer));
 
 function MainCanvas({ architecture, selection, onSelectionChange }) {
   const svgRef = useRef(null);
+  const zoomGroupRef = useRef(null);
+  const zoomBehaviorRef = useRef(null);
   const zoomTransformRef = useRef(zoomIdentity);
+  const currentZoomRef = useRef(1);
+  const layerControllersRef = useRef(null);
+  const autoEnabledRef = useRef(true);
+  const autoLayerRef = useRef(pickLayerForZoom(1));
+  const manualLayersRef = useRef(ORDERED_LAYER_VALUES);
 
-  const layout = useMemo(() => buildLayout(architecture), [architecture]);
+  const [autoEnabled, setAutoEnabled] = useState(true);
+  const [autoLayer, setAutoLayer] = useState(() => pickLayerForZoom(1));
+  const [manualLayers, setManualLayers] = useState(() => ORDERED_LAYER_VALUES);
+
+  const layout = useMemo(() => buildCanvasLayout(architecture), [architecture]);
+
+  useEffect(() => {
+    autoEnabledRef.current = autoEnabled;
+  }, [autoEnabled]);
+
+  useEffect(() => {
+    autoLayerRef.current = autoLayer;
+  }, [autoLayer]);
+
+  useEffect(() => {
+    manualLayersRef.current = manualLayers;
+  }, [manualLayers]);
+
+  const applyLayerVisibility = useCallback((layerKeys) => {
+    const layers = layerControllersRef.current?.layers;
+    if (!layers) return;
+
+    const visible = new Set(Array.isArray(layerKeys) ? layerKeys : [layerKeys]);
+
+    Object.entries(layers).forEach(([key, controller]) => {
+      controller?.setVisibility?.(visible.has(key));
+    });
+  }, []);
+
+  const updateGroupOpacities = useCallback((zoomLevel) => {
+    const { groups, layers } = layerControllersRef.current ?? {};
+    if (!groups || !layers) return;
+
+    const k = Number.isFinite(zoomLevel) ? zoomLevel : 1;
+
+    if (autoEnabledRef.current) {
+      const {
+        cgraOpacity,
+        peOpacity,
+        cgraLabelOpacity,
+        peLabelOpacity
+      } = computeOpacityProfile(k);
+
+      groups[LAYER_GROUPS.CGRA]?.setOpacity?.(cgraOpacity);
+      groups[LAYER_GROUPS.CGRA]?.setLabelOpacity?.(cgraLabelOpacity);
+      groups[LAYER_GROUPS.PE]?.setOpacity?.(peOpacity);
+      groups[LAYER_GROUPS.PE]?.setLabelOpacity?.(peLabelOpacity);
+      return;
+    }
+
+    ORDERED_LAYER_VALUES.forEach((layerKey) => {
+      const controller = layers[layerKey];
+      if (!controller) return;
+      const isVisible = manualLayersRef.current.includes(layerKey);
+      const opacity = isVisible ? 1 : 0;
+      controller.setOpacity?.(opacity);
+      if (layerKey === LAYER_VALUES.CGRAS || layerKey === LAYER_VALUES.PES) {
+        controller.setLabelOpacity?.(opacity);
+      }
+    });
+  }, []);
+
+  const handleLayerToggle = useCallback(
+    (event) => {
+      const value = event.currentTarget.value;
+
+      if (value === LAYER_VALUES.AUTO) {
+        const enableAuto = !autoEnabledRef.current;
+        setAutoEnabled(enableAuto);
+
+        if (enableAuto) {
+          const nextLayer = pickLayerForZoom(currentZoomRef.current);
+          autoLayerRef.current = nextLayer;
+          setAutoLayer(nextLayer);
+          applyLayerVisibility(ORDERED_LAYER_VALUES);
+          updateGroupOpacities(currentZoomRef.current);
+        } else {
+          const nextManual = manualLayersRef.current.length
+            ? manualLayersRef.current
+            : ORDERED_LAYER_VALUES;
+          manualLayersRef.current = nextManual;
+          setManualLayers(nextManual);
+          applyLayerVisibility(nextManual);
+          updateGroupOpacities(currentZoomRef.current);
+        }
+
+        return;
+      }
+
+      if (autoEnabledRef.current) {
+        setAutoEnabled(false);
+        const nextManual = manualLayersRef.current.includes(value)
+          ? manualLayersRef.current
+          : orderLayers([...manualLayersRef.current, value]);
+        manualLayersRef.current = nextManual;
+        setManualLayers(nextManual);
+        applyLayerVisibility(nextManual);
+        updateGroupOpacities(currentZoomRef.current);
+        return;
+      }
+
+      const isSelected = manualLayersRef.current.includes(value);
+
+      if (isSelected && manualLayersRef.current.length === 1) {
+        return;
+      }
+
+      const nextManual = isSelected
+        ? orderLayers(manualLayersRef.current.filter((layer) => layer !== value))
+        : orderLayers([...manualLayersRef.current, value]);
+
+      manualLayersRef.current = nextManual;
+      setManualLayers(nextManual);
+      applyLayerVisibility(nextManual);
+      updateGroupOpacities(currentZoomRef.current);
+    },
+    [applyLayerVisibility, updateGroupOpacities]
+  );
 
   useEffect(() => {
     if (!svgRef.current) return;
@@ -448,340 +288,161 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
       .attr('stroke', 'none');
 
     const zoomGroup = svg.append('g').attr('class', 'zoom-group');
+    zoomGroupRef.current = zoomGroup;
 
-    const cgraLinkLayer = zoomGroup
-      .append('g')
-      .attr('class', 'cgra-links')
-      .attr('stroke', '#7dd3fc')
-      .attr('stroke-width', 3)
-      .attr('stroke-opacity', 0.45)
-      .attr('fill', 'none');
+    const cgraConnectionsLayer = createCgraConnectionsLayer(zoomGroup, { onSelectionChange });
+    const cgraNodesLayer = createCgraNodesLayer(zoomGroup, { onSelectionChange });
+    const peConnectionsLayer = createPeConnectionsLayer(zoomGroup);
+    const peNodesLayer = createPeNodesLayer(zoomGroup, { onSelectionChange });
 
-    const cgraNodeLayer = zoomGroup.append('g').attr('class', 'cgra-nodes');
-
-    layout.layouts.forEach((cgraLayout) => {
-      const group = cgraNodeLayer
-        .append('g')
-        .attr('class', 'cgra')
-        .attr('data-id', cgraLayout.id)
-        .datum(cgraLayout)
-        .attr('transform', `translate(${cgraLayout.originX}, ${cgraLayout.originY})`)
-        .style('cursor', 'pointer')
-        .on('click', (event) => {
-          event.stopPropagation();
-          onSelectionChange?.({ type: 'cgra', id: cgraLayout.id, cgraId: cgraLayout.id });
-        });
-
-      group
-        .append('rect')
-        .attr('class', 'cgra-boundary')
-        .attr('width', cgraLayout.width)
-        .attr('height', cgraLayout.height)
-        .attr('rx', 18)
-        .attr('ry', 18)
-        .attr('fill', CGRA_FILL)
-        .attr('stroke', CGRA_STROKE)
-        .attr('stroke-width', 2.5);
-
-      group
-        .append('text')
-        .attr('class', 'cgra-label')
-        .attr('x', cgraLayout.width / 2)
-        .attr('y', -12)
-        .attr('fill', CGRA_LABEL_FILL)
-        .attr('font-family', '"Fira Code", monospace')
-        .attr('font-size', CGRA_LABEL_FONT_SIZE)
-        .attr('font-weight', 500)
-        .attr('text-anchor', 'middle')
-        .attr('dominant-baseline', 'central')
-        .attr('pointer-events', 'none')
-        .text(cgraLayout.displayLabel || cgraLayout.label || cgraLayout.id);
-
-      const connectorStartX = CGRA_ROUTER_CONNECTOR_INSET;
-      const connectorStartY = cgraLayout.height - CGRA_ROUTER_CONNECTOR_INSET;
-      const connectorDx = cgraLayout.routerLocalX - connectorStartX;
-      const connectorDy = cgraLayout.routerLocalY - connectorStartY;
-      const connectorLength = Math.sqrt(connectorDx * connectorDx + connectorDy * connectorDy) || 1;
-      const connectorEndX =
-        cgraLayout.routerLocalX - (connectorDx / connectorLength) * CGRA_ROUTER_RADIUS;
-      const connectorEndY =
-        cgraLayout.routerLocalY - (connectorDy / connectorLength) * CGRA_ROUTER_RADIUS;
-
-      group
-        .append('line')
-        .attr('class', 'cgra-router-connector')
-        .attr('x1', connectorStartX)
-        .attr('y1', connectorStartY)
-        .attr('x2', connectorEndX)
-        .attr('y2', connectorEndY)
-        .attr('stroke', CGRA_ROUTER_STROKE)
-        .attr('stroke-width', 3)
-        .attr('stroke-opacity', 0.85)
-        .attr('stroke-linecap', 'round');
-
-      const peLayer = group.append('g').attr('class', 'pe-nodes');
-
-      const positionMap = new Map();
-      cgraLayout.PEs.forEach((pe) => {
-        const col = pe.x - cgraLayout.minX;
-        const row = pe.y - cgraLayout.minY;
-        const gridColumn = col;
-        const displayColumn = pe.x;
-        const displayRow = cgraLayout.rows - 1 - row;
-        const drawingRow = row;
-        const px = CGRA_PADDING + gridColumn * (PE_SIZE + PE_GAP);
-        const py = CGRA_PADDING + drawingRow * (PE_SIZE + PE_GAP);
-        const defaultTopLabel = `PE (${row}, ${gridColumn})`;
-        const legacyTopLabel = `PE (${pe.y}, ${pe.x})`;
-        const coordinateLabel = `PE (${pe.x}, ${pe.y})`;
-        const coordinateLabelTight = `PE (${pe.x},${pe.y})`;
-        const coordinateLabelBottomOrigin = `PE (${pe.x}, ${displayRow})`;
-        const coordinateLabelBottomOriginTight = `PE (${pe.x},${displayRow})`;
-        const normalizedLabel = normalizeLabelText(pe.label);
-        const isDefaultTopLabel =
-          !normalizedLabel ||
-          normalizedLabel === normalizeLabelText(defaultTopLabel) ||
-          normalizedLabel === normalizeLabelText(legacyTopLabel) ||
-          normalizedLabel === normalizeLabelText(coordinateLabel) ||
-          normalizedLabel === normalizeLabelText(coordinateLabelTight) ||
-          normalizedLabel === normalizeLabelText(coordinateLabelBottomOrigin) ||
-          normalizedLabel === normalizeLabelText(coordinateLabelBottomOriginTight);
-        const displayLabel = isDefaultTopLabel
-          ? coordinateLabelBottomOrigin
-          : pe.label || coordinateLabelBottomOrigin;
-        const displayLabelLines = isDefaultTopLabel ? ['PE', `(${pe.x}, ${displayRow})`] : null;
-        positionMap.set(`${pe.x},${pe.y}`, {
-          ...pe,
-          label: displayLabel,
-          displayColumn,
-          displayRow,
-          displayLabel,
-          displayLabelLines,
-          px,
-          py,
-          cx: px + PE_SIZE / 2,
-          cy: py + PE_SIZE / 2
-        });
-      });
-
-      const peLinks = [];
-      positionMap.forEach((pe) => {
-        const outgoing = pe?.outgoingLinks || {};
-
-        Object.entries(PE_DIRECTION_OFFSETS).forEach(([direction, offset]) => {
-          if (!outgoing[direction]) {
-            return;
+    layerControllersRef.current = {
+      svg,
+      layers: {
+        [LAYER_VALUES.CGRA_CONNECTIONS]: cgraConnectionsLayer,
+        [LAYER_VALUES.CGRAS]: cgraNodesLayer,
+        [LAYER_VALUES.PE_CONNECTIONS]: peConnectionsLayer,
+        [LAYER_VALUES.PES]: peNodesLayer
+      },
+      groups: {
+        [LAYER_GROUPS.CGRA]: {
+          setVisibility: (visible) => {
+            cgraConnectionsLayer.setVisibility?.(visible);
+            cgraNodesLayer.setVisibility?.(visible);
+          },
+          setOpacity: (value) => {
+            cgraConnectionsLayer.setOpacity?.(value);
+            cgraNodesLayer.setOpacity?.(value);
+          },
+          setLabelOpacity: (value) => {
+            cgraNodesLayer.setLabelOpacity?.(value);
           }
-
-          const neighbor = positionMap.get(`${pe.x + offset.dx},${pe.y + offset.dy}`);
-          if (!neighbor) {
-            return;
+        },
+        [LAYER_GROUPS.PE]: {
+          setVisibility: (visible) => {
+            peConnectionsLayer.setVisibility?.(visible);
+            peNodesLayer.setVisibility?.(visible);
+          },
+          setOpacity: (value) => {
+            peConnectionsLayer.setOpacity?.(value);
+            peNodesLayer.setOpacity?.(value);
+          },
+          setLabelOpacity: (value) => {
+            peNodesLayer.setLabelOpacity?.(value);
           }
-
-          const endpoints = computePeLinkEndpoints(pe, neighbor);
-          peLinks.push({
-            source: pe,
-            target: neighbor,
-            direction,
-            ...endpoints
-          });
-        });
-      });
-
-      const peNodes = Array.from(positionMap.values());
-
-      const nodeGroups = peLayer
-        .selectAll('g.pe')
-        .data(peNodes)
-        .enter()
-        .append('g')
-        .attr('class', 'pe')
-        .attr('data-id', (d) => d.id)
-        .attr('transform', (d) => `translate(${d.px}, ${d.py})`)
-        .style('cursor', 'pointer')
-        .on('click', (event, d) => {
-          event.stopPropagation();
-          onSelectionChange?.({ type: 'pe', id: d.id, cgraId: cgraLayout.id });
-        });
-
-      nodeGroups
-        .append('rect')
-        .attr('width', PE_SIZE)
-        .attr('height', PE_SIZE)
-        .attr('rx', 8)
-        .attr('ry', 8)
-        .attr('fill', (d) => (d.disabled ? PE_DISABLED_FILL : PE_FILL))
-        .attr('stroke', PE_STROKE)
-        .attr('stroke-width', 1.5);
-
-      nodeGroups
-        .append('text')
-        .attr('x', PE_SIZE / 2)
-        .attr('y', PE_SIZE / 2)
-        .attr('fill', (d) => (d.disabled ? PE_LABEL_DISABLED_FILL : PE_LABEL_FILL))
-        .attr('font-family', '"Fira Code", monospace')
-        .attr('font-size', PE_LABEL_FONT_SIZE)
-        .attr('text-anchor', 'middle')
-        .attr('dominant-baseline', 'middle')
-        .call(applyPeLabel);
-
-      const peLinkLayer = group
-        .append('g')
-        .attr('class', 'pe-links')
-        .attr('stroke', '#60a5fa')
-        .attr('stroke-width', 2)
-        .attr('stroke-opacity', 0.4)
-        .attr('fill', 'none')
-        .attr('pointer-events', 'none');
-
-      peLinkLayer
-        .selectAll('line')
-        .data(peLinks)
-        .enter()
-        .append('line')
-        .attr('x1', (d) => d.x1)
-        .attr('y1', (d) => d.y1)
-        .attr('x2', (d) => d.x2)
-        .attr('y2', (d) => d.y2)
-        .attr('marker-end', 'url(#pe-arrow)')
-        .attr('stroke-linecap', 'round');
-
-      group
-        .append('circle')
-        .attr('class', 'cgra-router')
-        .attr('cx', cgraLayout.routerLocalX)
-        .attr('cy', cgraLayout.routerLocalY)
-        .attr('r', CGRA_ROUTER_RADIUS)
-        .attr('fill', CGRA_ROUTER_FILL)
-        .attr('stroke', CGRA_ROUTER_STROKE)
-        .attr('stroke-width', 3)
-        .attr('stroke-opacity', 0.85);
-    });
-
-    const cgraLinks = [];
-    const cgraMap = new Map();
-    layout.layouts.forEach((cgra) => {
-      cgraMap.set(`${cgra.x},${cgra.y}`, cgra);
-    });
-
-    layout.layouts.forEach((cgra) => {
-      const rightNeighbor = cgraMap.get(`${cgra.x + 1},${cgra.y}`);
-      const downNeighbor = cgraMap.get(`${cgra.x},${cgra.y + 1}`);
-      if (rightNeighbor) {
-        const endpoints = computeRouterLinkEndpoints(cgra, rightNeighbor);
-        cgraLinks.push({
-          source: cgra,
-          target: rightNeighbor,
-          ...endpoints
-        });
+        }
       }
-      if (downNeighbor) {
-        const endpoints = computeRouterLinkEndpoints(cgra, downNeighbor);
-        cgraLinks.push({
-          source: cgra,
-          target: downNeighbor,
-          ...endpoints
-        });
+    };
+
+    const handleBackgroundClick = (event) => {
+      if (event.defaultPrevented) return;
+      onSelectionChange?.(null);
+    };
+    svg.on('click', handleBackgroundClick);
+
+    const handleZoom = (event) => {
+      zoomTransformRef.current = event.transform;
+      currentZoomRef.current = event.transform.k;
+      zoomGroup.attr('transform', event.transform);
+
+      cgraNodesLayer.handleZoom?.(event.transform.k);
+      peNodesLayer.handleZoom?.(event.transform.k);
+      peConnectionsLayer.handleZoom?.(event.transform.k);
+      cgraConnectionsLayer.handleZoom?.(event.transform.k);
+      updateGroupOpacities(event.transform.k);
+
+      const nextAutoLayer = pickLayerForZoom(event.transform.k);
+      if (nextAutoLayer !== autoLayerRef.current) {
+        autoLayerRef.current = nextAutoLayer;
+        setAutoLayer(nextAutoLayer);
       }
-    });
+    };
 
-    cgraLinkLayer
-      .selectAll('line')
-      .data(cgraLinks)
-      .enter()
-      .append('line')
-      .attr('x1', (d) => d.x1)
-      .attr('y1', (d) => d.y1)
-      .attr('x2', (d) => d.x2)
-      .attr('y2', (d) => d.y2)
-      .attr('stroke-linecap', 'round')
-      .attr('marker-end', 'url(#cgra-arrow)');
-
-    const zoomBehavior = zoom()
-      .scaleExtent([0.5, 4])
-      .on('zoom', (event) => {
-        zoomTransformRef.current = event.transform;
-        zoomGroup.attr('transform', event.transform);
-        updatePeLabelVisibility(svg, event.transform.k);
-        updatePeLinkVisibility(svg, event.transform.k);
-        updateCgraLabelVisibility(svg, event.transform.k);
-      });
-
+    const zoomBehavior = zoom().scaleExtent([CANVAS_ZOOM_MIN, CANVAS_ZOOM_MAX]).on('zoom', handleZoom);
     svg.call(zoomBehavior);
+    zoomBehaviorRef.current = zoomBehavior;
 
     if (zoomTransformRef.current) {
       zoomGroup.attr('transform', zoomTransformRef.current);
       zoomBehavior.transform(svg, zoomTransformRef.current);
-      updatePeLabelVisibility(svg, zoomTransformRef.current.k);
-      updatePeLinkVisibility(svg, zoomTransformRef.current.k);
-      updateCgraLabelVisibility(svg, zoomTransformRef.current.k);
     } else {
-      updatePeLabelVisibility(svg, 1);
-      updatePeLinkVisibility(svg, 1);
-      updateCgraLabelVisibility(svg, 1);
+      zoomGroup.attr('transform', zoomIdentity);
     }
-    svg.on('click', (event) => {
-      if (event.defaultPrevented) return;
-      onSelectionChange?.(null);
-    });
+
+    handleZoom({ transform: zoomTransformRef.current ?? zoomIdentity });
+
+    const visibleLayers = autoEnabledRef.current
+      ? ORDERED_LAYER_VALUES
+      : manualLayersRef.current;
+    applyLayerVisibility(visibleLayers);
+    updateGroupOpacities(currentZoomRef.current);
 
     return () => {
       svg.on('.zoom', null);
       svg.on('click', null);
+      zoomBehaviorRef.current = null;
+      zoomGroupRef.current = null;
+
+      Object.values(layerControllersRef.current?.layers ?? {}).forEach((layer) => {
+        layer?.destroy?.();
+      });
+
+      layerControllersRef.current = null;
     };
-  }, [layout, onSelectionChange]);
+  }, [layout.width, layout.height, onSelectionChange, applyLayerVisibility, updateGroupOpacities]);
 
   useEffect(() => {
-    if (!svgRef.current) return;
+    const controllers = layerControllersRef.current?.layers;
+    const svg = layerControllersRef.current?.svg;
+    if (!controllers || !svg) return;
 
-    const svg = select(svgRef.current);
+    svg.attr('viewBox', `0 0 ${layout.width} ${layout.height}`);
 
-    svg.selectAll('g.cgra').each(function updateCgra() {
-      const group = select(this);
-      const id = group.attr('data-id');
-      const boundary = group.select('rect.cgra-boundary');
-      const label = group.select('text.cgra-label');
-      const isSelected = selection?.type === 'cgra' && selection.id === id;
-      const data = group.datum();
-
-      boundary
-        .attr('fill', isSelected ? CGRA_SELECTED_FILL : CGRA_FILL)
-        .attr('stroke', isSelected ? CGRA_SELECTED_STROKE : CGRA_STROKE)
-        .attr('stroke-width', isSelected ? 3.5 : 2.5)
-        .attr('stroke-opacity', isSelected ? 0.95 : 1);
-
-      if (!label.empty()) {
-        label
-          .text(data?.displayLabel || data?.label || data?.id || id)
-          .attr('fill', isSelected ? CGRA_LABEL_SELECTED_FILL : CGRA_LABEL_FILL);
-      }
+    controllers[LAYER_VALUES.CGRA_CONNECTIONS].render({
+      links: layout.cgraConnections,
+      connectors: layout.cgraSwitchConnectors,
+      switches: layout.cgraSwitches
     });
+    controllers[LAYER_VALUES.CGRAS].render(layout.cgras);
+    controllers[LAYER_VALUES.PES].render(layout.peNodes);
+    controllers[LAYER_VALUES.PE_CONNECTIONS].render(layout.peConnections);
 
-    svg.selectAll('g.pe').each(function updatePe() {
-      const node = select(this);
-      const id = node.attr('data-id');
-      const rect = node.select('rect');
-      const label = node.select('text');
-      const isSelected = selection?.type === 'pe' && selection.id === id;
-      const data = node.datum();
-      const isDisabled = Boolean(data?.disabled);
+    controllers[LAYER_VALUES.CGRAS].handleZoom?.(currentZoomRef.current);
+    controllers[LAYER_VALUES.PES].handleZoom?.(currentZoomRef.current);
+    controllers[LAYER_VALUES.PE_CONNECTIONS].handleZoom?.(currentZoomRef.current);
 
-      rect
-        .attr('fill', () => {
-          if (isSelected) return PE_SELECTED_FILL;
-          return isDisabled ? PE_DISABLED_FILL : PE_FILL;
-        })
-        .attr('stroke', isSelected ? PE_SELECTED_STROKE : PE_STROKE)
-        .attr('stroke-width', isSelected ? 2 : 1.5);
+    const visibleLayers = autoEnabled ? ORDERED_LAYER_VALUES : manualLayers;
+    applyLayerVisibility(visibleLayers);
+    updateGroupOpacities(currentZoomRef.current);
+  }, [layout, autoEnabled, manualLayers, applyLayerVisibility, updateGroupOpacities]);
 
-      label
-        .attr('fill', () => {
-          if (isSelected) return PE_LABEL_SELECTED_FILL;
-          return isDisabled ? PE_LABEL_DISABLED_FILL : PE_LABEL_FILL;
-        })
-        .call(applyPeLabel);
-    });
-  }, [layout, selection]);
+  useEffect(() => {
+    const controllers = layerControllersRef.current?.layers;
+    if (!controllers) return;
+    controllers[LAYER_VALUES.CGRAS].updateSelection?.(selection);
+    controllers[LAYER_VALUES.CGRA_CONNECTIONS].updateSelection?.(selection);
+    controllers[LAYER_VALUES.PES].updateSelection?.(selection);
+  }, [selection]);
+
+  useEffect(() => {
+    const visibleLayers = autoEnabled ? ORDERED_LAYER_VALUES : manualLayers;
+    applyLayerVisibility(visibleLayers);
+    updateGroupOpacities(currentZoomRef.current);
+  }, [autoEnabled, autoLayer, manualLayers, applyLayerVisibility, updateGroupOpacities]);
+
+  const selectedValues = useMemo(() => {
+    if (autoEnabled) {
+      return [LAYER_VALUES.AUTO, ...ORDERED_LAYER_VALUES];
+    }
+    return manualLayers;
+  }, [autoEnabled, manualLayers]);
+
+  const resolvedLayerLabel = useMemo(() => {
+    if (autoEnabled) {
+      return AUTO_LAYER_LABELS[autoLayer] ?? '';
+    }
+    const labels = manualLayers.map((layer) => LAYER_LABELS[layer]).filter(Boolean);
+    return labels.join(', ');
+  }, [autoEnabled, autoLayer, manualLayers]);
 
   return (
     <Box
@@ -794,7 +455,26 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
         boxShadow: 'inset 0 0 0 1px rgba(148,163,184,0.25)'
       }}
     >
-      <svg ref={svgRef} />
+      <Box
+        sx={{
+          position: 'relative',
+          width: '100%',
+          height: '100%'
+        }}
+      >
+        <svg ref={svgRef} style={{ width: '100%', height: '100%' }} />
+        <LayerControl
+          statusLabel={autoEnabled ? `Auto • ${resolvedLayerLabel}` : `Manual • ${resolvedLayerLabel}`}
+          selectedValues={selectedValues}
+          options={LAYER_OPTIONS}
+          onToggle={handleLayerToggle}
+          sx={{
+            position: 'absolute',
+            top: 16,
+            right: 16
+          }}
+        />
+      </Box>
     </Box>
   );
 }
