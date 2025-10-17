@@ -115,6 +115,7 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
   const autoEnabledRef = useRef(true);
   const autoLayerRef = useRef(pickLayerForZoom(1));
   const manualLayersRef = useRef(ORDERED_LAYER_VALUES);
+  const selectionRef = useRef(selection);
 
   const [autoEnabled, setAutoEnabled] = useState(true);
   const [autoLayer, setAutoLayer] = useState(() => pickLayerForZoom(1));
@@ -133,6 +134,10 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
   useEffect(() => {
     manualLayersRef.current = manualLayers;
   }, [manualLayers]);
+
+  useEffect(() => {
+    selectionRef.current = selection;
+  }, [selection]);
 
   const applyLayerVisibility = useCallback((layerKeys) => {
     const layers = layerControllersRef.current?.layers;
@@ -163,6 +168,12 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
       groups[LAYER_GROUPS.CGRA]?.setLabelOpacity?.(cgraLabelOpacity);
       groups[LAYER_GROUPS.PE]?.setOpacity?.(peOpacity);
       groups[LAYER_GROUPS.PE]?.setLabelOpacity?.(peLabelOpacity);
+      if (cgraOpacity <= 0 && selectionRef.current?.type === 'cgra') {
+        onSelectionChange?.(null);
+      }
+      if (peOpacity <= 0 && selectionRef.current?.type === 'pe') {
+        onSelectionChange?.(null);
+      }
       return;
     }
 
@@ -175,8 +186,15 @@ function MainCanvas({ architecture, selection, onSelectionChange }) {
       if (layerKey === LAYER_VALUES.CGRAS || layerKey === LAYER_VALUES.PES) {
         controller.setLabelOpacity?.(opacity);
       }
+      if (
+        !isVisible &&
+        ((layerKey === LAYER_VALUES.CGRAS && selectionRef.current?.type === 'cgra') ||
+          (layerKey === LAYER_VALUES.PES && selectionRef.current?.type === 'pe'))
+      ) {
+        onSelectionChange?.(null);
+      }
     });
-  }, []);
+  }, [onSelectionChange]);
 
   const handleLayerToggle = useCallback(
     (event) => {

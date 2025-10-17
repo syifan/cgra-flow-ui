@@ -11,11 +11,14 @@ import {
 } from './constants';
 
 export function createCgraNodesLayer(root, { onSelectionChange } = {}) {
-  const group = root.append('g').attr('class', 'layer-cgra-nodes');
+  const group = root.append('g').attr('class', 'layer-cgra-nodes').attr('pointer-events', 'all');
   const clampOpacity = (value) =>
     Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 1;
   let currentGroupOpacity = 1;
   let currentLabelOpacity = 1;
+  const updatePointerEvents = () => {
+    group.attr('pointer-events', currentGroupOpacity > 0 ? 'all' : 'none');
+  };
 
   const render = (cgras = []) => {
     const nodeSelection = group.selectAll('g.cgra-node').data(cgras, (d) => d.id);
@@ -106,6 +109,7 @@ export function createCgraNodesLayer(root, { onSelectionChange } = {}) {
   const setOpacity = (value) => {
     currentGroupOpacity = clampOpacity(value);
     group.attr('opacity', currentGroupOpacity);
+    updatePointerEvents();
   };
 
   const setLabelOpacity = (value) => {

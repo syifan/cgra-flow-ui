@@ -23,6 +23,9 @@ export function createPeNodesLayer(root, { onSelectionChange } = {}) {
   let currentGroupOpacity = 1;
   let currentLabelOpacity = 1;
   let currentZoomLevel = 1;
+  const updatePointerEvents = () => {
+    group.attr('pointer-events', currentGroupOpacity > 0 ? 'all' : 'none');
+  };
 
   const applyLabelFontSize = () => {
     const k = Number.isFinite(currentZoomLevel) ? currentZoomLevel : 1;
@@ -128,6 +131,7 @@ export function createPeNodesLayer(root, { onSelectionChange } = {}) {
   const setOpacity = (value) => {
     currentGroupOpacity = clampOpacity(value);
     group.attr('opacity', currentGroupOpacity);
+    updatePointerEvents();
   };
 
   const setLabelOpacity = (value) => {

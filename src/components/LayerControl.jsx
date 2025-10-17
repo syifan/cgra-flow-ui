@@ -12,7 +12,7 @@ import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 
 function LayerControl({ statusLabel, selectedValues, options, onToggle, sx }) {
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
 
   const handleCollapseToggle = () => {
     setExpanded((previous) => !previous);
