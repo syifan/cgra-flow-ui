@@ -40,8 +40,8 @@ export const PE_LINK_ARROW_CLEARANCE = 6;
 export const PE_LINK_ARROW_LENGTH = 12;
 
 // Zoom-based auto layering parameters
-export const CGRA_AUTO_FADE_OUT_START = 1.6;
-export const CGRA_AUTO_FADE_OUT_END = 2.0;
+export const CGRA_AUTO_FADE_OUT_START = 2.0;
+export const CGRA_AUTO_FADE_OUT_END = 2.4;
 export const PE_AUTO_FADE_IN_START = 0.45;
 export const PE_AUTO_FADE_IN_END = 0.75;
 export const CGRA_LABEL_EMPHASIS_START = 0.75;
