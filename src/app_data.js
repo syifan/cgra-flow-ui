@@ -18,15 +18,15 @@ const appData = (() => {
     mul: true
   };
 
-  const buildOutgoingLinks = (x, y, maxX, maxY) => ({
-    nw: x > 0 && y > 0,
-    sw: x > 0 && y < maxY,
-    ne: x < maxX && y > 0,
-    se: x < maxX && y < maxY,
-    n: y > 0,
-    s: y < maxY,
-    w: x > 0,
-    e: x < maxX
+  const buildOutgoingLinks = () => ({
+    nw: false,
+    sw: false,
+    ne: false,
+    se: false,
+    n: true,
+    s: true,
+    w: true,
+    e: true
   });
 
   const buildProcessingElements = (offsetY, offsetX) => {
@@ -61,7 +61,7 @@ const appData = (() => {
           label: `CGRA (${row}, ${col})`,
           x: col,
           y: row,
-          intraTopology: 'KingMesh',
+          intraTopology: 'Mesh',
           sramBanks: 16,
           perCgraRows: PE_ROWS,
           perCgraColumns: PE_COLUMNS,
@@ -82,7 +82,7 @@ const appData = (() => {
       id: 'device-reference',
       name: 'Reference CGRA Device',
       totalSramKb: 1024,
-      interTopology: 'KingMesh',
+      interTopology: 'Mesh',
       multiCgraRows: MULTI_CGRA_ROWS,
       multiCgraColumns: MULTI_CGRA_COLUMNS,
       vectorLanes: 1,
@@ -93,5 +93,4 @@ const appData = (() => {
 })();
 
 export const defaultAppData = appData;
-
 

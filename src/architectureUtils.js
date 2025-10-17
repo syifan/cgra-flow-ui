@@ -26,15 +26,15 @@ const ensurePositiveInt = (value, fallback = 1) => {
   return 1;
 };
 
-const createOutgoingLinks = (x, y, maxX, maxY) => ({
-  nw: x > 0 && y > 0,
-  sw: x > 0 && y < maxY,
-  ne: x < maxX && y > 0,
-  se: x < maxX && y < maxY,
-  n: y > 0,
-  s: y < maxY,
-  w: x > 0,
-  e: x < maxX
+const createOutgoingLinks = () => ({
+  nw: false,
+  sw: false,
+  ne: false,
+  se: false,
+  n: true,
+  s: true,
+  w: true,
+  e: true
 });
 
 const normalizeFunctionalUnits = (units = {}) => ({

@@ -31,7 +31,7 @@ const ensureNumber = (value, fallback = 0) => {
   return Number.isFinite(numeric) ? numeric : fallback;
 };
 
-const DEFAULT_INTER_TOPOLOGY = 'KingMesh';
+const DEFAULT_INTER_TOPOLOGY = 'Mesh';
 
 const CGRA_DIRECTION_OFFSETS = {
   n: { dx: 0, dy: -1 },
@@ -270,6 +270,33 @@ export function buildCanvasLayout(architecture) {
   const cgraSwitchConnectors = [];
   const cgraSwitches = [];
   const cgraMap = new Map();
+  const globalPeMap = new Map();
+
+  const columnWidths = new Map();
+  const rowHeights = new Map();
+
+  layouts.forEach((layout) => {
+    columnWidths.set(layout.x, Math.max(columnWidths.get(layout.x) ?? 0, layout.columns));
+    rowHeights.set(layout.y, Math.max(rowHeights.get(layout.y) ?? 0, layout.rows));
+  });
+
+  const columnOffsets = new Map();
+  let accumulatedColumns = 0;
+  [...columnWidths.keys()]
+    .sort((a, b) => a - b)
+    .forEach((columnIndex) => {
+      columnOffsets.set(columnIndex, accumulatedColumns);
+      accumulatedColumns += columnWidths.get(columnIndex) ?? 0;
+    });
+
+  const rowOffsets = new Map();
+  let accumulatedRows = 0;
+  [...rowHeights.keys()]
+    .sort((a, b) => a - b)
+    .forEach((rowIndex) => {
+      rowOffsets.set(rowIndex, accumulatedRows);
+      accumulatedRows += rowHeights.get(rowIndex) ?? 0;
+    });
 
   layouts.forEach((layout) => {
     const localColumnIndex = layout.x - globalMinX;
@@ -301,6 +328,9 @@ export function buildCanvasLayout(architecture) {
       globalMaxY
     );
 
+    const globalColumnOffset = columnOffsets.get(layout.x) ?? 0;
+    const globalRowOffset = rowOffsets.get(layout.y) ?? 0;
+
     const cgraEntry = {
       id: layout.id,
       label: layout.label,
@@ -319,7 +349,9 @@ export function buildCanvasLayout(architecture) {
       routerCenterX,
       routerCenterY,
       rows: layout.rows,
-      columns: layout.columns
+      columns: layout.columns,
+      globalColumnOffset,
+      globalRowOffset
     };
 
     cgraData.push(cgraEntry);
@@ -343,8 +375,6 @@ export function buildCanvasLayout(architecture) {
       return;
     }
 
-    const positionMap = new Map();
-
     layout.PEs.forEach((pe) => {
       const col = ensureNumber(pe.x) - layout.minX;
       const row = ensureNumber(pe.y) - layout.minY;
@@ -353,6 +383,8 @@ export function buildCanvasLayout(architecture) {
       const py = CGRA_PADDING + row * (PE_SIZE + PE_GAP);
       const { displayLabel: peDisplayLabel, displayLabelLines, displayColumn, displayRow } =
         derivePeLabel(pe, gridColumn, row, layout.rows);
+      const globalColumn = globalColumnOffset + gridColumn;
+      const globalRow = globalRowOffset + row;
 
       const node = {
         ...pe,
@@ -371,36 +403,52 @@ export function buildCanvasLayout(architecture) {
         displayLabel: peDisplayLabel,
         displayLabelLines,
         displayColumn,
-        displayRow
+        displayRow,
+        globalColumn,
+        globalRow
       };
 
-      positionMap.set(`${node.gridX},${node.gridY}`, node);
+      const globalKey = `${globalColumn},${globalRow}`;
+      const existingGlobalNodes = globalPeMap.get(globalKey);
+      if (existingGlobalNodes) {
+        existingGlobalNodes.push(node);
+      } else {
+        globalPeMap.set(globalKey, [node]);
+      }
       peNodes.push(node);
     });
+  });
 
-    positionMap.forEach((node) => {
-      const outgoing = node?.outgoingLinks || {};
+  peNodes.forEach((node) => {
+    const outgoing = node?.outgoingLinks || {};
 
-      Object.entries(PE_DIRECTION_OFFSETS).forEach(([direction, offset]) => {
-        if (!outgoing[direction]) {
-          return;
-        }
+    Object.entries(PE_DIRECTION_OFFSETS).forEach(([direction, offset]) => {
+      if (!outgoing[direction]) {
+        return;
+      }
 
-        const neighbor = positionMap.get(`${node.gridX + offset.dx},${node.gridY + offset.dy}`);
-        if (!neighbor) {
-          return;
-        }
+      const neighborKey = `${node.globalColumn + offset.dx},${node.globalRow + offset.dy}`;
+      const candidates = globalPeMap.get(neighborKey);
+      if (!candidates || candidates.length === 0) {
+        return;
+      }
 
-        const endpoints = computePeLinkEndpoints(node, neighbor);
+      const neighbor =
+        candidates.find((candidate) => candidate.id !== node.id) ?? candidates[0];
 
-        peConnections.push({
-          id: `${node.id}->${neighbor.id}`,
-          sourceId: node.id,
-          targetId: neighbor.id,
-          cgraId: layout.id,
-          direction,
-          ...endpoints
-        });
+      if (!neighbor || neighbor.id === node.id) {
+        return;
+      }
+
+      const endpoints = computePeLinkEndpoints(node, neighbor);
+
+      peConnections.push({
+        id: `${node.id}->${neighbor.id}`,
+        sourceId: node.id,
+        targetId: neighbor.id,
+        cgraId: node.cgraId,
+        direction,
+        ...endpoints
       });
     });
   });
