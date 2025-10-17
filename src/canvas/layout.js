@@ -31,6 +31,24 @@ const ensureNumber = (value, fallback = 0) => {
   return Number.isFinite(numeric) ? numeric : fallback;
 };
 
+const DEFAULT_INTER_TOPOLOGY = 'KingMesh';
+
+const CGRA_DIRECTION_OFFSETS = {
+  n: { dx: 0, dy: -1 },
+  ne: { dx: 1, dy: -1 },
+  e: { dx: 1, dy: 0 },
+  se: { dx: 1, dy: 1 },
+  s: { dx: 0, dy: 1 },
+  sw: { dx: -1, dy: 1 },
+  w: { dx: -1, dy: 0 },
+  nw: { dx: -1, dy: -1 }
+};
+
+const TOPOLOGY_DIRECTION_MAP = {
+  KingMesh: ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'],
+  Mesh: ['n', 'e', 's', 'w']
+};
+
 function deriveCgraLabel(layout, globalMinX, globalMinY, globalMaxY) {
   const originalLabel = layout.label;
   const localColumnIndex = layout.x - globalMinX;
@@ -138,6 +156,95 @@ function buildCgraLayouts(architecture) {
       rows
     };
   });
+}
+
+function computeDirectionalCgraConnections(cgraData, cgraMap, directions) {
+  if (!Array.isArray(directions) || directions.length === 0) {
+    return [];
+  }
+
+  const connections = [];
+
+  cgraData.forEach((cgra) => {
+    if (!cgra) return;
+
+    directions.forEach((direction) => {
+      const offset = CGRA_DIRECTION_OFFSETS[direction];
+      if (!offset) return;
+
+      const neighbor = cgraMap.get(`${cgra.x + offset.dx},${cgra.y + offset.dy}`);
+      if (!neighbor) return;
+
+      const endpoints = computeRouterLinkEndpoints(cgra, neighbor);
+
+      connections.push({
+        id: `${cgra.id}->${neighbor.id}`,
+        sourceId: cgra.id,
+        targetId: neighbor.id,
+        ...endpoints
+      });
+    });
+  });
+
+  return connections;
+}
+
+function computeRingCgraConnections(cgraData) {
+  const count = Array.isArray(cgraData) ? cgraData.length : 0;
+  if (count <= 1) {
+    return [];
+  }
+
+  const ordered = [...cgraData].sort((a, b) => {
+    if (a.y === b.y) {
+      return a.x - b.x;
+    }
+    return a.y - b.y;
+  });
+
+  const connections = [];
+
+  for (let index = 0; index < count; index += 1) {
+    const current = ordered[index];
+    const next = ordered[(index + 1) % count];
+    const prev = ordered[(index - 1 + count) % count];
+
+    const nextEndpoints = computeRouterLinkEndpoints(current, next);
+    connections.push({
+      id: `${current.id}->${next.id}`,
+      sourceId: current.id,
+      targetId: next.id,
+      ...nextEndpoints
+    });
+
+    if (prev.id !== next.id) {
+      const prevEndpoints = computeRouterLinkEndpoints(current, prev);
+      connections.push({
+        id: `${current.id}->${prev.id}`,
+        sourceId: current.id,
+        targetId: prev.id,
+        ...prevEndpoints
+      });
+    }
+  }
+
+  return connections;
+}
+
+function computeCgraConnections(architecture, cgraData, cgraMap) {
+  if (!Array.isArray(cgraData) || cgraData.length === 0) {
+    return [];
+  }
+
+  const topology = architecture?.interTopology;
+  if (topology === 'Ring') {
+    return computeRingCgraConnections(cgraData);
+  }
+
+  const directions =
+    TOPOLOGY_DIRECTION_MAP[topology] ?? TOPOLOGY_DIRECTION_MAP[DEFAULT_INTER_TOPOLOGY];
+
+  return computeDirectionalCgraConnections(cgraData, cgraMap, directions);
 }
 
 export function buildCanvasLayout(architecture) {
@@ -298,25 +405,7 @@ export function buildCanvasLayout(architecture) {
     });
   });
 
-  const cgraConnections = [];
-
-  cgraData.forEach((cgra) => {
-    const rightNeighbor = cgraMap.get(`${cgra.displayColumn + 1},${cgra.displayRow}`);
-    const downNeighbor = cgraMap.get(`${cgra.displayColumn},${cgra.displayRow - 1}`);
-    const eastNeighbor = cgraMap.get(`${cgra.x + 1},${cgra.y}`);
-    const southNeighbor = cgraMap.get(`${cgra.x},${cgra.y + 1}`);
-
-    const consideredNeighbors = [eastNeighbor, southNeighbor, rightNeighbor, downNeighbor].filter(Boolean);
-    consideredNeighbors.forEach((neighbor) => {
-      const endpoints = computeRouterLinkEndpoints(cgra, neighbor);
-      cgraConnections.push({
-        id: `${cgra.id}->${neighbor.id}`,
-        sourceId: cgra.id,
-        targetId: neighbor.id,
-        ...endpoints
-      });
-    });
-  });
+  const cgraConnections = computeCgraConnections(architecture, cgraData, cgraMap);
 
   const totalWidth =
     Math.max(
