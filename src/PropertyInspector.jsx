@@ -9,6 +9,7 @@ import {
   Typography
 } from '@mui/material';
 import { PROPERTY_SCHEMAS, PROPERTY_TITLES } from './propertySchemas';
+import { deriveOutgoingLinksForPe } from './peConnections.js';
 
 const getValueAtPath = (object, keyPath) => {
   if (!object || !keyPath) return undefined;
@@ -79,8 +80,13 @@ function PropertyInspector({ architecture, selection, onPropertyChange }) {
         };
       }
 
+      const outgoingLinks = deriveOutgoingLinksForPe(
+        found?.id,
+        architecture?.PEConnections
+      );
+
       return {
-        entity: found,
+        entity: { ...found, outgoingLinks },
         schema: PROPERTY_SCHEMAS.pe,
         target: selection,
         title: PROPERTY_TITLES.pe,

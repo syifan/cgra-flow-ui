@@ -46,6 +46,20 @@ export function createPeNodesLayer(root, { onSelectionChange } = {}) {
       .style('cursor', 'pointer')
       .on('click', (event, datum) => {
         event.stopPropagation();
+        const allConnections = Array.isArray(datum.connections) ? datum.connections : [];
+        const incoming = allConnections.filter((connection) => connection.orientation === 'incoming');
+        const outgoing = allConnections.filter((connection) => connection.orientation === 'outgoing');
+
+        console.groupCollapsed('PE selected:', datum.id);
+        console.log('PE data:', datum);
+        console.groupCollapsed('Outgoing connections');
+        outgoing.forEach((connection) => console.log(connection));
+        console.groupEnd();
+        console.groupCollapsed('Incoming connections');
+        incoming.forEach((connection) => console.log(connection));
+        console.groupEnd();
+        console.groupEnd();
+        console.log('All PE connections:', allConnections);
         onSelectionChange?.({ type: 'pe', id: datum.id, cgraId: datum.cgraId });
       });
 

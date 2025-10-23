@@ -1,3 +1,5 @@
+import { createDefaultPeConnections } from './peConnections.js';
+
 const appData = (() => {
   const MULTI_CGRA_ROWS = 4;
   const MULTI_CGRA_COLUMNS = 4;
@@ -18,17 +20,6 @@ const appData = (() => {
     mul: true
   };
 
-  const buildOutgoingLinks = () => ({
-    nw: false,
-    sw: false,
-    ne: false,
-    se: false,
-    n: true,
-    s: true,
-    w: true,
-    e: true
-  });
-
   const buildProcessingElements = (offsetY, offsetX) => {
     const pes = [];
     for (let row = 0; row < PE_ROWS; row += 1) {
@@ -39,13 +30,7 @@ const appData = (() => {
           x: col,
           y: row,
           disabled: false,
-          tileFunctionalUnits: { ...functionalUnitDefaults },
-          outgoingLinks: buildOutgoingLinks(
-            col,
-            row,
-            PE_COLUMNS - 1,
-            PE_ROWS - 1
-          )
+          tileFunctionalUnits: { ...functionalUnitDefaults }
         });
       }
     }
@@ -76,7 +61,7 @@ const appData = (() => {
     return arrays;
   };
 
-  return {
+  const architecture = {
     version: 1,
     architecture: {
       id: 'device-reference',
@@ -90,7 +75,11 @@ const appData = (() => {
       CGRAs: buildCgras()
     }
   };
+
+  const peConnections = createDefaultPeConnections(architecture.architecture);
+  architecture.architecture.PEConnections = peConnections;
+
+  return architecture;
 })();
 
 export const defaultAppData = appData;
-

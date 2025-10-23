@@ -85,16 +85,5 @@ export function computePeLinkEndpoints(source, target) {
   };
 }
 
-export const PE_DIRECTION_OFFSETS = {
-  n: { dx: 0, dy: -1 },
-  s: { dx: 0, dy: 1 },
-  e: { dx: 1, dy: 0 },
-  w: { dx: -1, dy: 0 },
-  ne: { dx: 1, dy: -1 },
-  nw: { dx: -1, dy: -1 },
-  se: { dx: 1, dy: 1 },
-  sw: { dx: -1, dy: 1 }
-};
-
 export const PE_ARROW_MARKER_ID = 'pe-arrow';
 export const CGRA_ARROW_MARKER_ID = 'cgra-arrow';
