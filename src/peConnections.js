@@ -543,22 +543,35 @@ export const reconcilePeConnectionsAfterCgraResize = ({
     PEConnections: nextConnections
   };
 
+  const directionQueue = new Map();
+  const enqueueDirection = (peId, direction) => {
+    if (!peId || !direction) return;
+    if (removedSet.has(peId)) return;
+    directionQueue.set(`${peId}:${direction}`, { peId, direction });
+  };
+
   const uniqueAdded = Array.from(new Set(addedPeIds));
 
   uniqueAdded.forEach((peId) => {
     defaultDirections.forEach((direction) => {
-      const updated = updatePeConnectionsForDirection(workingArchitecture, peId, direction, true);
-      workingArchitecture.PEConnections = updated;
+      enqueueDirection(peId, direction);
+      const neighbor =
+        direction && index.peById.size > 0 ? findNeighborPe(peId, direction, index) : null;
+      if (!neighbor || removedSet.has(neighbor.id)) {
+        return;
+      }
+      const opposite = getOppositeDirection(direction);
+      if (opposite) {
+        enqueueDirection(neighbor.id, opposite);
+      }
     });
   });
 
-  const uniqueRestores = new Map();
   directionsToRestore.forEach(({ peId, direction }) => {
-    if (!peId || !direction) return;
-    uniqueRestores.set(`${peId}:${direction}`, { peId, direction });
+    enqueueDirection(peId, direction);
   });
 
-  uniqueRestores.forEach(({ peId, direction }) => {
+  directionQueue.forEach(({ peId, direction }) => {
     const updated = updatePeConnectionsForDirection(workingArchitecture, peId, direction, true);
     workingArchitecture.PEConnections = updated;
   });
