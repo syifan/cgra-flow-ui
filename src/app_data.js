@@ -43,7 +43,7 @@ const appData = (() => {
       for (let col = 0; col < MULTI_CGRA_COLUMNS; col += 1) {
         arrays.push({
           id: `cgra-${row}-${col}`,
-          label: `CGRA (${row}, ${col})`,
+          label: `CGRA (${col}, ${row})`,
           x: col,
           y: row,
           intraTopology: 'Mesh',

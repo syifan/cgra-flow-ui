@@ -48,34 +48,50 @@ const TOPOLOGY_DIRECTION_MAP = {
 function deriveCgraLabel(layout, globalMinX, globalMinY, globalMaxY) {
   const originalLabel = layout.label;
   const localColumnIndex = layout.x - globalMinX;
+  const localRowIndex = layout.y - globalMinY;
   const displayColumn = layout.x;
-  const drawingRow = layout.y - globalMinY;
-  const displayRow = globalMaxY - layout.y;
-  const topRowIndex = layout.y - globalMinY;
-  const defaultTopLabel = `CGRA (${topRowIndex}, ${localColumnIndex})`;
-  const legacyTopLabel = `CGRA (${layout.y}, ${layout.x})`;
-  const legacyDisplayLabel = `CGRA (${displayRow}, ${localColumnIndex})`;
-  const legacyBottomOriginLabel = `CGRA (${localColumnIndex}, ${displayRow})`;
-  const legacyBottomOriginLabelTight = `CGRA (${localColumnIndex},${displayRow})`;
+  const displayRow = layout.y;
+  const drawingRow = globalMaxY - layout.y;
+  const invertedRowIndex = globalMaxY - layout.y;
+  const legacyRowColumnLabel = `CGRA (${layout.y}, ${layout.x})`;
+  const legacyRowColumnLabelTight = `CGRA (${layout.y},${layout.x})`;
+  const legacyDisplayLabel = `CGRA (${invertedRowIndex}, ${localColumnIndex})`;
+  const legacyDisplayLabelTight = `CGRA (${invertedRowIndex},${localColumnIndex})`;
+  const legacyBottomOriginLabel = `CGRA (${localColumnIndex}, ${invertedRowIndex})`;
+  const legacyBottomOriginLabelTight = `CGRA (${localColumnIndex},${invertedRowIndex})`;
+  const localRowColumnLabel = `CGRA (${localRowIndex}, ${localColumnIndex})`;
+  const localRowColumnLabelTight = `CGRA (${localRowIndex},${localColumnIndex})`;
+  const localColumnRowLabel = `CGRA (${localColumnIndex}, ${localRowIndex})`;
+  const localColumnRowLabelTight = `CGRA (${localColumnIndex},${localRowIndex})`;
   const coordinateLabelTopOrigin = `CGRA (${layout.x}, ${layout.y})`;
   const coordinateLabelTopOriginTight = `CGRA (${layout.x},${layout.y})`;
   const coordinateLabelBottomOrigin = `CGRA (${displayColumn}, ${displayRow})`;
   const coordinateLabelBottomOriginTight = `CGRA (${displayColumn},${displayRow})`;
   const normalizedOriginalLabel = normalizeLabelText(originalLabel);
-  const isDefaultTopLabel =
+  const defaultLabelCandidates = [
+    coordinateLabelBottomOrigin,
+    coordinateLabelBottomOriginTight,
+    coordinateLabelTopOrigin,
+    coordinateLabelTopOriginTight,
+    legacyRowColumnLabel,
+    legacyRowColumnLabelTight,
+    legacyDisplayLabel,
+    legacyDisplayLabelTight,
+    legacyBottomOriginLabel,
+    legacyBottomOriginLabelTight,
+    localRowColumnLabel,
+    localRowColumnLabelTight,
+    localColumnRowLabel,
+    localColumnRowLabelTight
+  ];
+  const isDefaultLabel =
     !normalizedOriginalLabel ||
-    normalizedOriginalLabel === normalizeLabelText(defaultTopLabel) ||
-    normalizedOriginalLabel === normalizeLabelText(legacyTopLabel) ||
-    normalizedOriginalLabel === normalizeLabelText(legacyDisplayLabel) ||
-    normalizedOriginalLabel === normalizeLabelText(legacyBottomOriginLabel) ||
-    normalizedOriginalLabel === normalizeLabelText(legacyBottomOriginLabelTight) ||
-    normalizedOriginalLabel === normalizeLabelText(coordinateLabelTopOrigin) ||
-    normalizedOriginalLabel === normalizeLabelText(coordinateLabelTopOriginTight) ||
-    normalizedOriginalLabel === normalizeLabelText(coordinateLabelBottomOrigin) ||
-    normalizedOriginalLabel === normalizeLabelText(coordinateLabelBottomOriginTight);
+    defaultLabelCandidates.some(
+      (candidate) => normalizedOriginalLabel === normalizeLabelText(candidate)
+    );
 
   return {
-    displayLabel: isDefaultTopLabel
+    displayLabel: isDefaultLabel
       ? coordinateLabelBottomOrigin
       : originalLabel || coordinateLabelBottomOrigin,
     displayColumn,
