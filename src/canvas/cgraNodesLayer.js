@@ -3,7 +3,6 @@ import {
   CGRA_FILL,
   CGRA_LABEL_FILL,
   CGRA_LABEL_FONT_SIZE,
-  CGRA_LABEL_MAX_SCALE,
   CGRA_LABEL_SELECTED_FILL,
   CGRA_SELECTED_FILL,
   CGRA_SELECTED_STROKE,
@@ -93,9 +92,8 @@ export function createCgraNodesLayer(root, { onSelectionChange } = {}) {
   };
 
   const handleZoom = (zoomLevel) => {
-    const k = Number.isFinite(zoomLevel) ? zoomLevel : 1;
-    const fontScale = Math.min(CGRA_LABEL_MAX_SCALE, Math.max(1, 1 / Math.max(k, 1e-6)));
-    const fontSize = CGRA_LABEL_FONT_SIZE * fontScale;
+    const k = Number.isFinite(zoomLevel) ? Math.max(zoomLevel, 1e-6) : 1;
+    const fontSize = CGRA_LABEL_FONT_SIZE / k;
 
     group
       .selectAll('text.cgra-label')
