@@ -1,3 +1,8 @@
+import {
+  buildConnectionsFromLegacyOutgoing,
+  sanitizePeConnections
+} from './peConnections.js';
+
 const FUNCTIONAL_UNIT_DEFAULTS = {
   phi: true,
   shift: true,
@@ -26,16 +31,38 @@ const ensurePositiveInt = (value, fallback = 1) => {
   return 1;
 };
 
-const createOutgoingLinks = (x, y, maxX, maxY) => ({
-  nw: x > 0 && y > 0,
-  sw: x > 0 && y < maxY,
-  ne: x < maxX && y > 0,
-  se: x < maxX && y < maxY,
-  n: y > 0,
-  s: y < maxY,
-  w: x > 0,
-  e: x < maxX
-});
+const normalizeCoordinate = (value) => {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) {
+    return null;
+  }
+  return Math.floor(numeric);
+};
+
+const coordinateKey = (column, row) => `${column},${row}`;
+
+const deriveAxisPositions = (count, sortedExistingValues) => {
+  if (count <= 0) {
+    return [];
+  }
+
+  const hasExisting = Array.isArray(sortedExistingValues) && sortedExistingValues.length > 0;
+  const values = hasExisting ? [...sortedExistingValues] : [];
+
+  if (!hasExisting) {
+    return Array.from({ length: count }, (_, index) => index);
+  }
+
+  while (values.length > count) {
+    values.pop();
+  }
+
+  while (values.length < count) {
+    values.push(values[values.length - 1] + 1);
+  }
+
+  return values;
+};
 
 const normalizeFunctionalUnits = (units = {}) => ({
   ...FUNCTIONAL_UNIT_DEFAULTS,
@@ -57,33 +84,48 @@ export const buildProcessingElements = ({
   const safeRows = ensurePositiveInt(rows);
   const safeColumns = ensurePositiveInt(columns);
   const existingMap = new Map();
+  const existingColumns = new Set();
+  const existingRows = new Set();
+
   existing.forEach((pe) => {
-    if (typeof pe?.x !== 'number' || typeof pe?.y !== 'number') return;
-    existingMap.set(`${pe.x},${pe.y}`, pe);
+    const columnValue = normalizeCoordinate(pe?.x);
+    const rowValue = normalizeCoordinate(pe?.y);
+    if (columnValue == null || rowValue == null) return;
+    existingMap.set(coordinateKey(columnValue, rowValue), pe);
+    existingColumns.add(columnValue);
+    existingRows.add(rowValue);
   });
 
-  const rowMax = safeRows - 1;
-  const columnMax = safeColumns - 1;
+  const sortedExistingColumns = [...existingColumns].sort((a, b) => a - b);
+  const sortedExistingRows = [...existingRows].sort((a, b) => a - b);
+  const columnPositions = deriveAxisPositions(safeColumns, sortedExistingColumns);
+  const rowPositions = deriveAxisPositions(safeRows, sortedExistingRows);
+
   const nextPEs = [];
 
-  for (let row = 0; row < safeRows; row += 1) {
-    for (let column = 0; column < safeColumns; column += 1) {
-      const existingPe = existingMap.get(`${column},${row}`) ?? null;
+  for (let rowIndex = 0; rowIndex < safeRows; rowIndex += 1) {
+    const rowValue = rowPositions[rowIndex];
 
-      const id = existingPe?.id ?? createPeId(cgraRow, cgraColumn, row, column);
-      const label = existingPe?.label ?? createPeLabel(row, column);
+    for (let columnIndex = 0; columnIndex < safeColumns; columnIndex += 1) {
+      const columnValue = columnPositions[columnIndex];
+      const existingPe =
+        existingMap.get(coordinateKey(columnValue, rowValue)) ?? null;
+      const { outgoingLinks: _, ...existingRest } = existingPe ?? {};
+
+      const id =
+        existingPe?.id ?? createPeId(cgraRow, cgraColumn, rowValue, columnValue);
+      const label = existingPe?.label ?? createPeLabel(rowValue, columnValue);
       const disabled = Boolean(existingPe?.disabled);
       const tileFunctionalUnits = normalizeFunctionalUnits(existingPe?.tileFunctionalUnits);
 
       nextPEs.push({
-        ...existingPe,
+        ...existingRest,
         id,
         label,
-        x: column,
-        y: row,
+        x: columnValue,
+        y: rowValue,
         disabled,
-        tileFunctionalUnits,
-        outgoingLinks: createOutgoingLinks(column, row, columnMax, rowMax)
+        tileFunctionalUnits
       });
     }
   }
@@ -188,5 +230,57 @@ export const resizeArchitectureGrid = (architecture, rows, columns) => {
     multiCgraRows: nextRows,
     multiCgraColumns: nextColumns,
     CGRAs: nextCgras
+  };
+};
+
+export const normalizeArchitecture = (architecture) => {
+  if (!architecture || typeof architecture !== 'object') {
+    return architecture;
+  }
+
+  const legacyOutgoing = new Map();
+
+  const normalizedCgras = Array.isArray(architecture.CGRAs)
+    ? architecture.CGRAs.map((cgra) => {
+        if (!cgra || !Array.isArray(cgra.PEs)) {
+          return {
+            ...cgra,
+            PEs: []
+          };
+        }
+
+        const nextPEs = cgra.PEs.map((pe) => {
+          if (!pe) return pe;
+          if (pe.outgoingLinks && pe.id) {
+            legacyOutgoing.set(pe.id, { ...pe.outgoingLinks });
+          }
+
+          const { outgoingLinks, ...rest } = pe;
+          return { ...rest };
+        });
+
+        return {
+          ...cgra,
+          PEs: nextPEs
+        };
+      })
+    : [];
+
+  const normalizedArchitecture = {
+    ...architecture,
+    CGRAs: normalizedCgras
+  };
+
+  let peConnections = sanitizePeConnections(architecture.PEConnections);
+
+  if ((!peConnections || peConnections.length === 0) && legacyOutgoing.size > 0) {
+    peConnections = sanitizePeConnections(
+      buildConnectionsFromLegacyOutgoing(legacyOutgoing, normalizedArchitecture)
+    );
+  }
+
+  return {
+    ...normalizedArchitecture,
+    PEConnections: peConnections ?? []
   };
 };

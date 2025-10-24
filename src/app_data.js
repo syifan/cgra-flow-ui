@@ -1,3 +1,5 @@
+import { createDefaultPeConnections } from './peConnections.js';
+
 const appData = (() => {
   const MULTI_CGRA_ROWS = 4;
   const MULTI_CGRA_COLUMNS = 4;
@@ -18,17 +20,6 @@ const appData = (() => {
     mul: true
   };
 
-  const buildOutgoingLinks = (x, y, maxX, maxY) => ({
-    nw: x > 0 && y > 0,
-    sw: x > 0 && y < maxY,
-    ne: x < maxX && y > 0,
-    se: x < maxX && y < maxY,
-    n: y > 0,
-    s: y < maxY,
-    w: x > 0,
-    e: x < maxX
-  });
-
   const buildProcessingElements = (offsetY, offsetX) => {
     const pes = [];
     for (let row = 0; row < PE_ROWS; row += 1) {
@@ -39,13 +30,7 @@ const appData = (() => {
           x: col,
           y: row,
           disabled: false,
-          tileFunctionalUnits: { ...functionalUnitDefaults },
-          outgoingLinks: buildOutgoingLinks(
-            col,
-            row,
-            PE_COLUMNS - 1,
-            PE_ROWS - 1
-          )
+          tileFunctionalUnits: { ...functionalUnitDefaults }
         });
       }
     }
@@ -61,7 +46,7 @@ const appData = (() => {
           label: `CGRA (${row}, ${col})`,
           x: col,
           y: row,
-          intraTopology: 'KingMesh',
+          intraTopology: 'Mesh',
           sramBanks: 16,
           perCgraRows: PE_ROWS,
           perCgraColumns: PE_COLUMNS,
@@ -76,13 +61,13 @@ const appData = (() => {
     return arrays;
   };
 
-  return {
+  const architecture = {
     version: 1,
     architecture: {
       id: 'device-reference',
       name: 'Reference CGRA Device',
       totalSramKb: 1024,
-      interTopology: 'KingMesh',
+      interTopology: 'Mesh',
       multiCgraRows: MULTI_CGRA_ROWS,
       multiCgraColumns: MULTI_CGRA_COLUMNS,
       vectorLanes: 1,
@@ -90,8 +75,11 @@ const appData = (() => {
       CGRAs: buildCgras()
     }
   };
+
+  const peConnections = createDefaultPeConnections(architecture.architecture);
+  architecture.architecture.PEConnections = peConnections;
+
+  return architecture;
 })();
 
 export const defaultAppData = appData;
-
-

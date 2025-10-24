@@ -8,11 +8,7 @@ import {
   PE_GAP,
   PE_SIZE
 } from './constants';
-import {
-  computePeLinkEndpoints,
-  computeRouterLinkEndpoints,
-  PE_DIRECTION_OFFSETS
-} from './geometry';
+import { computePeLinkEndpoints, computeRouterLinkEndpoints } from './geometry';
 import { normalizeLabelText } from './utils';
 
 const BASE_LAYOUT = {
@@ -31,7 +27,7 @@ const ensureNumber = (value, fallback = 0) => {
   return Number.isFinite(numeric) ? numeric : fallback;
 };
 
-const DEFAULT_INTER_TOPOLOGY = 'KingMesh';
+const DEFAULT_INTER_TOPOLOGY = 'Mesh';
 
 const CGRA_DIRECTION_OFFSETS = {
   n: { dx: 0, dy: -1 },
@@ -88,32 +84,31 @@ function deriveCgraLabel(layout, globalMinX, globalMinY, globalMaxY) {
   };
 }
 
-function derivePeLabel(pe, gridColumn, drawingRow, rows) {
-  const displayRow = rows - 1 - drawingRow;
-  const displayColumn = pe.x;
-  const defaultTopLabel = `PE (${drawingRow}, ${gridColumn})`;
-  const legacyTopLabel = `PE (${pe.y}, ${pe.x})`;
-  const coordinateLabel = `PE (${pe.x}, ${pe.y})`;
-  const coordinateLabelTight = `PE (${pe.x},${pe.y})`;
-  const coordinateLabelBottomOrigin = `PE (${pe.x}, ${displayRow})`;
-  const coordinateLabelBottomOriginTight = `PE (${pe.x},${displayRow})`;
+function derivePeLabel(pe, gridColumn, dataRow, rows) {
+  const displayColumn = ensureNumber(pe.x);
+  const displayRow = ensureNumber(pe.y);
+  const bottomOriginRow = rows - 1 - dataRow;
+  const topOriginLabel = `PE (${displayRow}, ${displayColumn})`;
+  const topOriginLabelTight = `PE (${displayRow},${displayColumn})`;
+  const bottomOriginLabel = `PE (${displayColumn}, ${bottomOriginRow})`;
+  const bottomOriginLabelTight = `PE (${displayColumn},${bottomOriginRow})`;
+  const gridAlignedLabel = `PE (${dataRow}, ${gridColumn})`;
+  const gridAlignedLabelTight = `PE (${dataRow},${gridColumn})`;
   const normalizedLabel = normalizeLabelText(pe.label);
-  const isDefaultTopLabel =
+  const isDefaultLabel =
     !normalizedLabel ||
-    normalizedLabel === normalizeLabelText(defaultTopLabel) ||
-    normalizedLabel === normalizeLabelText(legacyTopLabel) ||
-    normalizedLabel === normalizeLabelText(coordinateLabel) ||
-    normalizedLabel === normalizeLabelText(coordinateLabelTight) ||
-    normalizedLabel === normalizeLabelText(coordinateLabelBottomOrigin) ||
-    normalizedLabel === normalizeLabelText(coordinateLabelBottomOriginTight);
+    normalizedLabel === normalizeLabelText(topOriginLabel) ||
+    normalizedLabel === normalizeLabelText(topOriginLabelTight) ||
+    normalizedLabel === normalizeLabelText(bottomOriginLabel) ||
+    normalizedLabel === normalizeLabelText(bottomOriginLabelTight) ||
+    normalizedLabel === normalizeLabelText(gridAlignedLabel) ||
+    normalizedLabel === normalizeLabelText(gridAlignedLabelTight);
 
-  const displayLabel = isDefaultTopLabel
-    ? coordinateLabelBottomOrigin
-    : pe.label || coordinateLabelBottomOrigin;
+  const displayLabel = isDefaultLabel ? topOriginLabel : pe.label || topOriginLabel;
 
   return {
     displayLabel,
-    displayLabelLines: isDefaultTopLabel ? ['PE', `(${pe.x}, ${displayRow})`] : null,
+    displayLabelLines: isDefaultLabel ? ['PE', `(${displayRow}, ${displayColumn})`] : null,
     displayColumn,
     displayRow
   };
@@ -266,14 +261,41 @@ export function buildCanvasLayout(architecture) {
 
   const cgraData = [];
   const peNodes = [];
+  const peNodeById = new Map();
   const peConnections = [];
   const cgraSwitchConnectors = [];
   const cgraSwitches = [];
   const cgraMap = new Map();
 
+  const columnWidths = new Map();
+  const rowHeights = new Map();
+
+  layouts.forEach((layout) => {
+    columnWidths.set(layout.x, Math.max(columnWidths.get(layout.x) ?? 0, layout.columns));
+    rowHeights.set(layout.y, Math.max(rowHeights.get(layout.y) ?? 0, layout.rows));
+  });
+
+  const columnOffsets = new Map();
+  let accumulatedColumns = 0;
+  [...columnWidths.keys()]
+    .sort((a, b) => a - b)
+    .forEach((columnIndex) => {
+      columnOffsets.set(columnIndex, accumulatedColumns);
+      accumulatedColumns += columnWidths.get(columnIndex) ?? 0;
+    });
+
+  const rowOffsets = new Map();
+  let accumulatedRows = 0;
+  [...rowHeights.keys()]
+    .sort((a, b) => a - b)
+    .forEach((rowIndex) => {
+      rowOffsets.set(rowIndex, accumulatedRows);
+      accumulatedRows += rowHeights.get(rowIndex) ?? 0;
+    });
+
   layouts.forEach((layout) => {
     const localColumnIndex = layout.x - globalMinX;
-    const drawingRow = layout.y - globalMinY;
+    const drawingRow = globalMaxY - layout.y;
 
     const baseOriginX = MARGIN + localColumnIndex * (globalWidth + CGRA_GAP);
     const baseOriginY = MARGIN + drawingRow * (globalHeight + CGRA_GAP);
@@ -301,6 +323,13 @@ export function buildCanvasLayout(architecture) {
       globalMaxY
     );
 
+    const columnSpan = columnWidths.get(layout.x) ?? layout.columns;
+    const rowSpan = rowHeights.get(layout.y) ?? layout.rows;
+    const rowAlignmentOffset = Math.max(rowSpan - layout.rows, 0);
+
+    const globalColumnOffset = columnOffsets.get(layout.x) ?? 0;
+    const globalRowOffset = (rowOffsets.get(layout.y) ?? 0) + rowAlignmentOffset;
+
     const cgraEntry = {
       id: layout.id,
       label: layout.label,
@@ -319,7 +348,9 @@ export function buildCanvasLayout(architecture) {
       routerCenterX,
       routerCenterY,
       rows: layout.rows,
-      columns: layout.columns
+      columns: layout.columns,
+      globalColumnOffset,
+      globalRowOffset
     };
 
     cgraData.push(cgraEntry);
@@ -343,16 +374,16 @@ export function buildCanvasLayout(architecture) {
       return;
     }
 
-    const positionMap = new Map();
-
     layout.PEs.forEach((pe) => {
-      const col = ensureNumber(pe.x) - layout.minX;
-      const row = ensureNumber(pe.y) - layout.minY;
-      const gridColumn = col;
+      const gridColumn = ensureNumber(pe.x) - layout.minX;
+      const dataRow = ensureNumber(pe.y) - layout.minY;
+      const drawingRow = layout.rows - 1 - dataRow;
       const px = CGRA_PADDING + gridColumn * (PE_SIZE + PE_GAP);
-      const py = CGRA_PADDING + row * (PE_SIZE + PE_GAP);
+      const py = CGRA_PADDING + drawingRow * (PE_SIZE + PE_GAP);
       const { displayLabel: peDisplayLabel, displayLabelLines, displayColumn, displayRow } =
-        derivePeLabel(pe, gridColumn, row, layout.rows);
+        derivePeLabel(pe, gridColumn, dataRow, layout.rows);
+      const globalColumn = globalColumnOffset + gridColumn;
+      const globalRow = globalRowOffset + dataRow;
 
       const node = {
         ...pe,
@@ -360,7 +391,7 @@ export function buildCanvasLayout(architecture) {
         gridX: ensureNumber(pe.x),
         gridY: ensureNumber(pe.y),
         localColumn: gridColumn,
-        localRow: row,
+        localRow: dataRow,
         px,
         py,
         x: originX + px,
@@ -371,38 +402,105 @@ export function buildCanvasLayout(architecture) {
         displayLabel: peDisplayLabel,
         displayLabelLines,
         displayColumn,
-        displayRow
+        displayRow,
+        globalColumn,
+        globalRow
       };
 
-      positionMap.set(`${node.gridX},${node.gridY}`, node);
       peNodes.push(node);
+      peNodeById.set(node.id, node);
+    });
+  });
+
+  const connections = Array.isArray(architecture?.PEConnections)
+    ? architecture.PEConnections
+    : [];
+
+  const peConnectionsByNode = new Map();
+
+  const addConnection = (nodeId, connection) => {
+    if (!nodeId || !connection) return;
+    const list = peConnectionsByNode.get(nodeId);
+    if (list) {
+      list.push(connection);
+    } else {
+      peConnectionsByNode.set(nodeId, [connection]);
+    }
+  };
+
+  connections.forEach((connection, index) => {
+    if (!connection) return;
+    const sourceNode = peNodeById.get(connection.source?.peId);
+    const destinationNode = peNodeById.get(connection.destination?.peId);
+    if (!sourceNode || !destinationNode) {
+      return;
+    }
+
+    const baseId =
+      connection.id ??
+      `${connection.source.peId}:${connection.source.direction}->${connection.destination.peId}:${connection.destination.direction}`;
+
+    const forwardEndpoints = computePeLinkEndpoints(sourceNode, destinationNode);
+    peConnections.push({
+      id: baseId,
+      sourceId: sourceNode.id,
+      targetId: destinationNode.id,
+      cgraId: sourceNode.cgraId,
+      direction: connection.source?.direction,
+      ...forwardEndpoints
+    });
+    addConnection(sourceNode.id, {
+      ...connection,
+      rendered: {
+        ...forwardEndpoints,
+        direction: connection.source?.direction,
+        sourceId: sourceNode.id,
+        targetId: destinationNode.id
+      },
+      orientation: 'outgoing'
+    });
+    addConnection(destinationNode.id, {
+      ...connection,
+      rendered: {
+        ...forwardEndpoints,
+        direction: connection.source?.direction,
+        sourceId: sourceNode.id,
+        targetId: destinationNode.id
+      },
+      orientation: 'incoming'
     });
 
-    positionMap.forEach((node) => {
-      const outgoing = node?.outgoingLinks || {};
-
-      Object.entries(PE_DIRECTION_OFFSETS).forEach(([direction, offset]) => {
-        if (!outgoing[direction]) {
-          return;
-        }
-
-        const neighbor = positionMap.get(`${node.gridX + offset.dx},${node.gridY + offset.dy}`);
-        if (!neighbor) {
-          return;
-        }
-
-        const endpoints = computePeLinkEndpoints(node, neighbor);
-
-        peConnections.push({
-          id: `${node.id}->${neighbor.id}`,
-          sourceId: node.id,
-          targetId: neighbor.id,
-          cgraId: layout.id,
-          direction,
-          ...endpoints
-        });
+    if (connection.bidirectional) {
+      const reverseEndpoints = computePeLinkEndpoints(destinationNode, sourceNode);
+      peConnections.push({
+        id: `${baseId}::reverse`,
+        sourceId: destinationNode.id,
+        targetId: sourceNode.id,
+        cgraId: destinationNode.cgraId,
+        direction: connection.destination?.direction,
+        ...reverseEndpoints
       });
-    });
+      addConnection(destinationNode.id, {
+        ...connection,
+        rendered: {
+          ...reverseEndpoints,
+          direction: connection.destination?.direction,
+          sourceId: destinationNode.id,
+          targetId: sourceNode.id
+        },
+        orientation: 'outgoing'
+      });
+      addConnection(sourceNode.id, {
+        ...connection,
+        rendered: {
+          ...reverseEndpoints,
+          direction: connection.destination?.direction,
+          sourceId: destinationNode.id,
+          targetId: sourceNode.id
+        },
+        orientation: 'incoming'
+      });
+    }
   });
 
   const cgraConnections = computeCgraConnections(architecture, cgraData, cgraMap);
@@ -428,7 +526,10 @@ export function buildCanvasLayout(architecture) {
     cgraConnections,
     cgraSwitchConnectors,
     cgraSwitches,
-    peNodes,
+    peNodes: peNodes.map((node) => ({
+      ...node,
+      connections: peConnectionsByNode.get(node.id) ?? []
+    })),
     peConnections
   };
 }

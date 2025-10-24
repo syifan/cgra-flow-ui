@@ -18,7 +18,15 @@ import 'flexlayout-react/style/dark.css';
 import MainCanvas from './main_cancas';
 import PropertyInspector from './PropertyInspector';
 import { defaultAppData } from './app_data';
-import { resizeArchitectureGrid, updateCgraDimensions } from './architectureUtils';
+import {
+  normalizeArchitecture,
+  resizeArchitectureGrid,
+  updateCgraDimensions
+} from './architectureUtils';
+import {
+  reconcilePeConnectionsAfterCgraResize,
+  updatePeConnectionsForDirection
+} from './peConnections.js';
 
 const NAVBAR_HEIGHT = 56;
 
@@ -93,7 +101,13 @@ const initialLayout = {
   }
 };
 
-const cloneAppData = (data) => JSON.parse(JSON.stringify(data));
+const cloneAppData = (data) => {
+  const cloned = JSON.parse(JSON.stringify(data));
+  if (cloned?.architecture) {
+    cloned.architecture = normalizeArchitecture(cloned.architecture);
+  }
+  return cloned;
+};
 
 function App() {
   const [model] = useState(() => Model.fromJson(initialLayout));
@@ -154,26 +168,84 @@ function App() {
           }
 
           if (target.type === 'cgra') {
+            let connectionDelta = null;
+
+            const nextCgras = currentArchitecture.CGRAs.map((cgra) => {
+              if (cgra.id !== target.id) return cgra;
+              const updatedCgra = setValueAtPath(cgra, key, value);
+
+              if (key === 'perCgraRows' || key === 'perCgraColumns') {
+                const previousPeIds = Array.isArray(cgra.PEs)
+                  ? cgra.PEs.map((pe) => pe.id)
+                  : [];
+
+                const nextRows =
+                  key === 'perCgraRows' ? value : updatedCgra.perCgraRows;
+                const nextColumns =
+                  key === 'perCgraColumns' ? value : updatedCgra.perCgraColumns;
+                const resizedCgra = updateCgraDimensions(updatedCgra, nextRows, nextColumns);
+
+                const nextPeIds = Array.isArray(resizedCgra.PEs)
+                  ? resizedCgra.PEs.map((pe) => pe.id)
+                  : [];
+
+                const previousSet = new Set(previousPeIds);
+                const nextSet = new Set(nextPeIds);
+
+                const removedPeIds = previousPeIds.filter((id) => !nextSet.has(id));
+                const addedPeIds = nextPeIds.filter((id) => !previousSet.has(id));
+
+                connectionDelta = {
+                  addedPeIds,
+                  removedPeIds
+                };
+
+                return resizedCgra;
+              }
+
+              return updatedCgra;
+            });
+
+            let nextConnections = currentArchitecture.PEConnections;
+
+            if (connectionDelta) {
+              const architectureForConnections = {
+                ...currentArchitecture,
+                CGRAs: nextCgras,
+                PEConnections: nextConnections
+              };
+
+              nextConnections = reconcilePeConnectionsAfterCgraResize({
+                architecture: architectureForConnections,
+                previousConnections: nextConnections,
+                addedPeIds: connectionDelta.addedPeIds,
+                removedPeIds: connectionDelta.removedPeIds
+              });
+            }
+
             return {
               ...currentArchitecture,
-              CGRAs: currentArchitecture.CGRAs.map((cgra) => {
-                if (cgra.id !== target.id) return cgra;
-                const updatedCgra = setValueAtPath(cgra, key, value);
-
-                if (key === 'perCgraRows' || key === 'perCgraColumns') {
-                  const nextRows =
-                    key === 'perCgraRows' ? value : updatedCgra.perCgraRows;
-                  const nextColumns =
-                    key === 'perCgraColumns' ? value : updatedCgra.perCgraColumns;
-                  return updateCgraDimensions(updatedCgra, nextRows, nextColumns);
-                }
-
-                return updatedCgra;
-              })
+              CGRAs: nextCgras,
+              PEConnections: nextConnections
             };
           }
 
           if (target.type === 'pe') {
+            if (typeof key === 'string' && key.startsWith('outgoingLinks.')) {
+              const direction = key.slice('outgoingLinks.'.length);
+              const nextConnections = updatePeConnectionsForDirection(
+                currentArchitecture,
+                target.id,
+                direction,
+                Boolean(value)
+              );
+
+              return {
+                ...currentArchitecture,
+                PEConnections: nextConnections
+              };
+            }
+
             return {
               ...currentArchitecture,
               CGRAs: currentArchitecture.CGRAs.map((cgra) => {
