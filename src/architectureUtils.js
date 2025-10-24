@@ -3,6 +3,11 @@ import {
   sanitizePeConnections
 } from './peConnections.js';
 
+const normalizeLabelText = (raw) => {
+  if (raw == null) return '';
+  return String(raw).replace(/\s+/g, ' ').trim();
+};
+
 const FUNCTIONAL_UNIT_DEFAULTS = {
   phi: true,
   shift: true,
@@ -153,7 +158,7 @@ export const createCgra = ({ row, column, architecture }) => {
 
   return {
     id: `cgra-${row}-${column}`,
-    label: `CGRA (${row}, ${column})`,
+    label: `CGRA (${column}, ${row})`,
     x: column,
     y: row,
     intraTopology: template?.intraTopology ?? 'Mesh',
@@ -204,11 +209,19 @@ export const resizeArchitectureGrid = (architecture, rows, columns) => {
       if (existing) {
         const perCgraRows = ensurePositiveInt(existing?.perCgraRows, 1);
         const perCgraColumns = ensurePositiveInt(existing?.perCgraColumns, 1);
+        const defaultLabel = `CGRA (${column}, ${row})`;
+        const legacyLabel = `CGRA (${row}, ${column})`;
+        const legacyLabelTight = `CGRA (${row},${column})`;
+        const normalizedExistingLabel = normalizeLabelText(existing.label);
+        const shouldUpdateLabel =
+          !normalizedExistingLabel ||
+          normalizedExistingLabel === normalizeLabelText(legacyLabel) ||
+          normalizedExistingLabel === normalizeLabelText(legacyLabelTight);
         nextCgras.push({
           ...existing,
           x: column,
           y: row,
-          label: existing.label ?? `CGRA (${row}, ${column})`,
+          label: shouldUpdateLabel ? defaultLabel : existing.label,
           perCgraRows,
           perCgraColumns,
           PEs: buildProcessingElements({

@@ -96,4 +96,63 @@ test.describe('Canvas rendering', () => {
     await columnsInput.fill('2');
     await expect(cgraNodes).toHaveCount(6);
   });
+
+  test('positions CGRAs using a bottom-left origin', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+
+    const cgraNodes = page.locator('svg .layer-cgra-nodes g.cgra-node');
+    await expect(cgraNodes).toHaveCount(16);
+
+    const nodeCount = await cgraNodes.count();
+    const nodes = [];
+    for (let index = 0; index < nodeCount; index += 1) {
+      const locator = cgraNodes.nth(index);
+      const textContent = await locator.locator('text.cgra-label').textContent();
+      expect(textContent, 'expected label text content').not.toBeNull();
+      const labelText = (textContent ?? '').trim();
+      const box = await locator.boundingBox();
+      expect(box, `expected bounding box for ${labelText}`).not.toBeNull();
+      if (!box) continue;
+      nodes.push({
+        label: labelText,
+        cx: box.x + box.width / 2,
+        cy: box.y + box.height / 2
+      });
+    }
+
+    expect(nodes).toHaveLength(16);
+
+    const tolerance = 5;
+    const rowCenters = [];
+    for (const node of [...nodes].sort((a, b) => b.cy - a.cy)) {
+      if (!rowCenters.some((cy) => Math.abs(cy - node.cy) <= tolerance)) {
+        rowCenters.push(node.cy);
+      }
+    }
+
+    expect(rowCenters).toHaveLength(4);
+
+    const nodesInRow = (targetCy) =>
+      nodes.filter((node) => Math.abs(node.cy - targetCy) <= tolerance);
+    const sortByCx = (list) => [...list].sort((a, b) => a.cx - b.cx);
+
+    const bottomRowNodes = nodesInRow(rowCenters[0]);
+    const bottomRowSorted = sortByCx(bottomRowNodes);
+    expect(bottomRowSorted.length).toBeGreaterThanOrEqual(2);
+
+    const secondRowNodes = nodesInRow(rowCenters[1]);
+    const secondRowSorted = sortByCx(secondRowNodes);
+    expect(secondRowSorted.length).toBeGreaterThan(0);
+    const secondRowLeft = secondRowSorted[0];
+
+    const topRowNodes = nodesInRow(rowCenters[rowCenters.length - 1]);
+    const topRowSorted = sortByCx(topRowNodes);
+    expect(topRowSorted.length).toBeGreaterThan(0);
+
+    expect(bottomRowSorted[0].label).toBe('CGRA (0, 0)');
+    expect(bottomRowSorted[1].label).toBe('CGRA (1, 0)');
+    expect(secondRowLeft.label).toBe('CGRA (0, 1)');
+    expect(topRowSorted[topRowSorted.length - 1].label).toBe('CGRA (3, 3)');
+  });
 });
