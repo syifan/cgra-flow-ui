@@ -301,6 +301,7 @@ function PropertyInspector({ architecture, selection, onPropertyChange }) {
             }
 
             const { isDisabled, value } = evaluateProperty(property);
+            const testId = `property-${property.key.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
             const commonProps = {
               fullWidth: true,
               size: 'small',
@@ -316,6 +317,7 @@ function PropertyInspector({ architecture, selection, onPropertyChange }) {
                   select
                   value={value ?? ''}
                   onChange={handleTextOrNumberChange(property)}
+                  inputProps={{ 'data-testid': testId }}
                 >
                   {property.options.map((option) => (
                     <MenuItem key={option} value={option}>
@@ -332,6 +334,7 @@ function PropertyInspector({ architecture, selection, onPropertyChange }) {
                   color="primary"
                   disabled={isDisabled}
                   size="small"
+                  inputProps={{ 'data-testid': testId }}
                 />
               );
             } else {
@@ -344,7 +347,8 @@ function PropertyInspector({ architecture, selection, onPropertyChange }) {
                   inputProps={{
                     min: property.min,
                     max: property.max,
-                    step: property.step
+                    step: property.step,
+                    'data-testid': testId
                   }}
                   multiline={property.multiline}
                   minRows={property.multiline ? 3 : undefined}
