@@ -70,4 +70,30 @@ test.describe('Canvas rendering', () => {
       await expect(locator).toBeVisible();
     }
   });
+
+  test('resizes CGRA grid when rows or columns change', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+
+    const cgraNodes = page.locator('svg .layer-cgra-nodes g.cgra-node');
+    await expect(cgraNodes).toHaveCount(16);
+
+    const rowsInput = page.getByTestId('property-multiCgraRows');
+    const columnsInput = page.getByTestId('property-multiCgraColumns');
+
+    await expect(rowsInput).toBeVisible();
+    await expect(columnsInput).toBeVisible();
+
+    await rowsInput.fill('5');
+    await expect(cgraNodes).toHaveCount(20);
+
+    await columnsInput.fill('5');
+    await expect(cgraNodes).toHaveCount(25);
+
+    await rowsInput.fill('3');
+    await expect(cgraNodes).toHaveCount(15);
+
+    await columnsInput.fill('2');
+    await expect(cgraNodes).toHaveCount(6);
+  });
 });
