@@ -140,3 +140,5 @@ vite.config.ts.timestamp-*
 
 .history
 .vscode
+playwright-report/
+test-results/
