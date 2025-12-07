@@ -279,7 +279,7 @@ function Workspace() {
         };
       });
     },
-    [resizeArchitectureGrid, setValueAtPath, updateCgraDimensions]
+    [setValueAtPath]
   );
 
   const handleOpenMenu = useCallback((event) => {
