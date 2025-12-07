@@ -55,7 +55,11 @@ function SignupPage() {
       return;
     }
 
-    navigate('/dashboard');
+    try {
+      await navigate('/dashboard');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

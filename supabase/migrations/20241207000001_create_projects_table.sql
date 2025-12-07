@@ -32,7 +32,8 @@ CREATE POLICY "Users can create projects"
 -- Policy: Users can update their own projects
 CREATE POLICY "Users can update own projects"
   ON projects FOR UPDATE
-  USING (auth.uid() IS NOT NULL AND auth.uid() = user_id);
+  USING (auth.uid() IS NOT NULL AND auth.uid() = user_id)
+  WITH CHECK (auth.uid() IS NOT NULL AND auth.uid() = user_id);
 
 -- Policy: Users can delete their own projects
 CREATE POLICY "Users can delete own projects"
