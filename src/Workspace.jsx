@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
+import { useNotification } from './contexts/NotificationContext';
 import {
   AppBar,
   Box,
@@ -115,6 +116,7 @@ function Workspace() {
   const [selection, setSelection] = useState(null);
   const [menuAnchorEl, setMenuAnchorEl] = useState(null);
   const fileInputRef = useRef(null);
+  const { showError } = useNotification();
 
   const architecture = appState.architecture;
 
@@ -329,7 +331,7 @@ function Workspace() {
           setSelection(null);
         } catch (error) {
           console.error('Failed to load app data', error);
-          window.alert('Unable to load the selected file. Please choose a valid CGRA Flow export.');
+          showError('Unable to load the selected file. Please choose a valid CGRA Flow export.');
         } finally {
           event.target.value = '';
         }
@@ -337,13 +339,13 @@ function Workspace() {
 
       reader.onerror = () => {
         console.error('Failed to read file', reader.error);
-        window.alert('Unable to read the selected file. Please try again.');
+        showError('Unable to read the selected file. Please try again.');
         event.target.value = '';
       };
 
       reader.readAsText(file);
     },
-    [setAppState, setSelection]
+    [setAppState, setSelection, showError]
   );
 
   const factory = useCallback(

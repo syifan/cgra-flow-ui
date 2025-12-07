@@ -25,11 +25,13 @@ import LogoutIcon from '@mui/icons-material/Logout';
 import GridViewIcon from '@mui/icons-material/GridView';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useNotification } from '../contexts/NotificationContext';
 import { supabase } from '../lib/supabase';
 
 function DashboardPage() {
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
+  const { showError, showConfirm } = useNotification();
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -76,7 +78,7 @@ function DashboardPage() {
 
     if (error) {
       console.error('Error creating project:', error);
-      alert('Failed to create project: ' + error.message);
+      showError('Failed to create project: ' + error.message);
     } else {
       setProjects([data, ...projects]);
       setCreateDialogOpen(false);
@@ -103,9 +105,12 @@ function DashboardPage() {
   const handleDeleteProject = async () => {
     if (!selectedProject) return;
 
-    const confirmed = window.confirm(
-      `Are you sure you want to delete "${selectedProject.name}"? This action cannot be undone.`
-    );
+    const confirmed = await showConfirm({
+      title: 'Delete Project',
+      message: `Are you sure you want to delete "${selectedProject.name}"? This action cannot be undone.`,
+      confirmText: 'Delete',
+      confirmColor: 'error'
+    });
 
     if (!confirmed) {
       handleMenuClose();
@@ -119,7 +124,7 @@ function DashboardPage() {
 
     if (error) {
       console.error('Error deleting project:', error);
-      alert('Failed to delete project: ' + error.message);
+      showError('Failed to delete project: ' + error.message);
     } else {
       setProjects(projects.filter((p) => p.id !== selectedProject.id));
     }
