@@ -1,9 +1,8 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures.js';
 
 test.describe('Initial layout', () => {
-  test('renders all expected tabs', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
+  test('renders all expected tabs', async ({ workspacePage: page }) => {
+    // workspacePage fixture already navigates to the workspace
 
     const expectedTabs = ['Canvas', 'Properties', 'GenAI', 'Mapping', 'Verification', 'Layout'];
 
