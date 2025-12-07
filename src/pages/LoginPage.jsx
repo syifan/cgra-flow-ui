@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import {
+  Alert,
   Box,
   Button,
   Container,
@@ -9,18 +10,30 @@ import {
   Link
 } from '@mui/material';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 
 function LoginPage() {
   const navigate = useNavigate();
+  const { signIn } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
-    // TODO: Implement actual authentication
-    console.log('Login attempt:', { email, password });
-    // For now, navigate to workspace after "login"
-    navigate('/workspace');
+    setError('');
+    setLoading(true);
+
+    const { error: signInError } = await signIn(email, password);
+
+    if (signInError) {
+      setError(signInError.message);
+      setLoading(false);
+      return;
+    }
+
+    navigate('/dashboard');
   };
 
   return (
@@ -69,6 +82,11 @@ function LoginPage() {
           >
             Sign in to your account
           </Typography>
+          {error && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {error}
+            </Alert>
+          )}
           <Box component="form" onSubmit={handleSubmit}>
             <TextField
               fullWidth
@@ -80,6 +98,7 @@ function LoginPage() {
               required
               autoComplete="email"
               autoFocus
+              disabled={loading}
             />
             <TextField
               fullWidth
@@ -90,12 +109,14 @@ function LoginPage() {
               margin="normal"
               required
               autoComplete="current-password"
+              disabled={loading}
             />
             <Button
               type="submit"
               fullWidth
               variant="contained"
               size="large"
+              disabled={loading}
               sx={{
                 mt: 3,
                 mb: 2,
@@ -103,10 +124,13 @@ function LoginPage() {
                 background: 'linear-gradient(135deg, #3aa8ff 0%, #5ad786 100%)',
                 '&:hover': {
                   background: 'linear-gradient(135deg, #2d8ad9 0%, #4bc274 100%)'
+                },
+                '&:disabled': {
+                  background: 'rgba(148, 163, 184, 0.3)'
                 }
               }}
             >
-              Sign In
+              {loading ? 'Signing in...' : 'Sign In'}
             </Button>
             <Box sx={{ textAlign: 'center' }}>
               <Typography variant="body2" sx={{ color: 'text.secondary' }}>

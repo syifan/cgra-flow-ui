@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import {
+  Alert,
   Box,
   Button,
   Container,
@@ -9,24 +10,52 @@ import {
   Link
 } from '@mui/material';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 
 function SignupPage() {
   const navigate = useNavigate();
+  const { signUp } = useAuth();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
+    setError('');
+    setSuccess('');
+
     if (password !== confirmPassword) {
-      alert('Passwords do not match');
+      setError('Passwords do not match');
       return;
     }
-    // TODO: Implement actual registration
-    console.log('Signup attempt:', { name, email, password });
-    // For now, navigate to workspace after "signup"
-    navigate('/workspace');
+
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters');
+      return;
+    }
+
+    setLoading(true);
+
+    const { data, error: signUpError } = await signUp(email, password, name);
+
+    if (signUpError) {
+      setError(signUpError.message);
+      setLoading(false);
+      return;
+    }
+
+    // Check if email confirmation is required
+    if (data?.user && !data?.session) {
+      setSuccess('Check your email for the confirmation link!');
+      setLoading(false);
+      return;
+    }
+
+    navigate('/dashboard');
   };
 
   return (
@@ -75,6 +104,16 @@ function SignupPage() {
           >
             Create your account
           </Typography>
+          {error && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {error}
+            </Alert>
+          )}
+          {success && (
+            <Alert severity="success" sx={{ mb: 2 }}>
+              {success}
+            </Alert>
+          )}
           <Box component="form" onSubmit={handleSubmit}>
             <TextField
               fullWidth
@@ -86,6 +125,7 @@ function SignupPage() {
               required
               autoComplete="name"
               autoFocus
+              disabled={loading}
             />
             <TextField
               fullWidth
@@ -96,6 +136,7 @@ function SignupPage() {
               margin="normal"
               required
               autoComplete="email"
+              disabled={loading}
             />
             <TextField
               fullWidth
@@ -106,6 +147,8 @@ function SignupPage() {
               margin="normal"
               required
               autoComplete="new-password"
+              disabled={loading}
+              helperText="Must be at least 6 characters"
             />
             <TextField
               fullWidth
@@ -116,12 +159,14 @@ function SignupPage() {
               margin="normal"
               required
               autoComplete="new-password"
+              disabled={loading}
             />
             <Button
               type="submit"
               fullWidth
               variant="contained"
               size="large"
+              disabled={loading}
               sx={{
                 mt: 3,
                 mb: 2,
@@ -129,10 +174,13 @@ function SignupPage() {
                 background: 'linear-gradient(135deg, #3aa8ff 0%, #5ad786 100%)',
                 '&:hover': {
                   background: 'linear-gradient(135deg, #2d8ad9 0%, #4bc274 100%)'
+                },
+                '&:disabled': {
+                  background: 'rgba(148, 163, 184, 0.3)'
                 }
               }}
             >
-              Create Account
+              {loading ? 'Creating account...' : 'Create Account'}
             </Button>
             <Box sx={{ textAlign: 'center' }}>
               <Typography variant="body2" sx={{ color: 'text.secondary' }}>

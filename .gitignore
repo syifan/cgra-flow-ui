@@ -142,3 +142,4 @@ vite.config.ts.timestamp-*
 .vscode
 playwright-report/
 test-results/
+test-smtp.js
