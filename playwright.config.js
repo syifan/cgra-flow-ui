@@ -1,5 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const AUTH_FILE = './tests/.auth/user.json';
+
 export default defineConfig({
   testDir: './tests',
   fullyParallel: true,
@@ -12,9 +14,21 @@ export default defineConfig({
     trace: 'on-first-retry',
   },
   projects: [
+    // Setup project - runs first to authenticate
+    {
+      name: 'setup',
+      testMatch: /auth\.setup\.js/,
+      use: { ...devices['Desktop Chrome'] },
+    },
+    // Main tests - depend on setup and use authenticated state
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: {
+        ...devices['Desktop Chrome'],
+        storageState: AUTH_FILE,
+      },
+      dependencies: ['setup'],
+      testIgnore: /auth\.setup\.js/,
     },
   ],
   webServer: {
@@ -24,5 +38,9 @@ export default defineConfig({
     stdout: 'pipe',
     stderr: 'pipe',
     timeout: 120 * 1000,
+    // Explicitly pass environment variables to ensure they're available to Vite
+    env: {
+      ...process.env,
+    },
   },
 });

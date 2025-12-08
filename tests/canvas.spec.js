@@ -1,9 +1,8 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures.js';
 
 test.describe('Canvas rendering', () => {
-  test('shows CGRAs and PEs on initial load', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
+  test('shows CGRAs and PEs on initial load', async ({ workspacePage: page }) => {
+    // workspacePage fixture already navigates to the workspace
 
     const cgraLayer = page.locator('svg .layer-cgra-nodes');
     await expect(cgraLayer).toBeVisible();
@@ -48,9 +47,8 @@ test.describe('Canvas rendering', () => {
     expect(peHasVisible).toBeTruthy();
   });
 
-  test('allows toggling individual layers on and off', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
+  test('allows toggling individual layers on and off', async ({ workspacePage: page }) => {
+    // workspacePage fixture already navigates to the workspace
 
     await page.getByTestId('ExpandMoreIcon').click();
     await page.getByRole('button', { name: 'Auto' }).click();
@@ -71,9 +69,8 @@ test.describe('Canvas rendering', () => {
     }
   });
 
-  test('resizes CGRA grid when rows or columns change', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
+  test('resizes CGRA grid when rows or columns change', async ({ workspacePage: page }) => {
+    // workspacePage fixture already navigates to the workspace
 
     const cgraNodes = page.locator('svg .layer-cgra-nodes g.cgra-node');
     await expect(cgraNodes).toHaveCount(16);
@@ -97,9 +94,8 @@ test.describe('Canvas rendering', () => {
     await expect(cgraNodes).toHaveCount(6);
   });
 
-  test('positions CGRAs using a bottom-left origin', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
+  test('positions CGRAs using a bottom-left origin', async ({ workspacePage: page }) => {
+    // workspacePage fixture already navigates to the workspace
 
     const cgraNodes = page.locator('svg .layer-cgra-nodes g.cgra-node');
     await expect(cgraNodes).toHaveCount(16);

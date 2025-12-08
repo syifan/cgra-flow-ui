@@ -23,8 +23,65 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Free up disk space to allow Docker image caching
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo docker image prune -af
+
+      # Cache Docker images for Supabase
+      - name: Cache Docker images
+        uses: ScribeMD/docker-cache@0.5.0
+        with:
+          key: docker-${{ runner.os }}-${{ hashFiles('supabase/config.toml') }}
+
       - name: Install Playwright browsers
         run: npx playwright install --with-deps
 
+      - name: Start Supabase
+        run: npx supabase start
+
+      - name: Get Supabase status
+        id: supabase
+        run: |
+          # Get Supabase connection info
+          echo "Full Supabase status:"
+          npx supabase status
+          echo ""
+          echo "JSON output:"
+          STATUS=$(npx supabase status --output json)
+          echo "$STATUS" | jq .
+          API_URL=$(echo "$STATUS" | jq -r '.API_URL')
+          PUBLISHABLE_KEY=$(echo "$STATUS" | jq -r '.PUBLISHABLE_KEY')
+          echo "Extracted API_URL: $API_URL"
+          echo "Extracted PUBLISHABLE_KEY: ${PUBLISHABLE_KEY:0:20}..."
+          if [ -z "$API_URL" ] || [ "$API_URL" = "null" ] || [ -z "$PUBLISHABLE_KEY" ] || [ "$PUBLISHABLE_KEY" = "null" ]; then
+            echo "Error: Supabase API_URL or PUBLISHABLE_KEY is empty or null." >&2
+            exit 1
+          fi
+          echo "api_url=$API_URL" >> $GITHUB_OUTPUT
+          echo "anon_key=$PUBLISHABLE_KEY" >> $GITHUB_OUTPUT
+
       - name: Run Playwright tests
-        run: npm run test:e2e
+        run: |
+          echo "Using VITE_SUPABASE_URL: $VITE_SUPABASE_URL"
+          echo "Using VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:0:20}..."
+          npm run test:e2e
+        env:
+          VITE_SUPABASE_URL: ${{ steps.supabase.outputs.api_url }}
+          VITE_SUPABASE_ANON_KEY: ${{ steps.supabase.outputs.anon_key }}
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 30
+
+      - name: Stop Supabase
+        if: always()
+        run: npx supabase stop
