@@ -29,25 +29,11 @@ jobs:
         with:
           key: docker-${{ runner.os }}-${{ hashFiles('supabase/config.toml') }}
 
-      - name: Start Supabase (background)
-        run: npx supabase start &
-
       - name: Install Playwright browsers
         run: npx playwright install --with-deps
 
-      - name: Wait for Supabase
-        run: |
-          echo "Waiting for Supabase to be ready..."
-          for i in {1..60}; do
-            if npx supabase status > /dev/null 2>&1; then
-              echo "Supabase is ready!"
-              exit 0
-            fi
-            echo "Waiting... ($i/60)"
-            sleep 2
-          done
-          echo "Supabase failed to start in time"
-          exit 1
+      - name: Start Supabase
+        run: npx supabase start
 
       - name: Get Supabase status
         id: supabase
