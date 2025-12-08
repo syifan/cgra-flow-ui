@@ -38,5 +38,9 @@ export default defineConfig({
     stdout: 'pipe',
     stderr: 'pipe',
     timeout: 120 * 1000,
+    // Explicitly pass environment variables to ensure they're available to Vite
+    env: {
+      ...process.env,
+    },
   },
 });
