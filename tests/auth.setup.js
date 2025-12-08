@@ -6,9 +6,10 @@ const AUTH_FILE = path.join(import.meta.dirname, '.auth', 'user.json');
 const PROJECT_FILE = path.join(import.meta.dirname, '.auth', 'project.json');
 
 // Test user credentials - these should match a user in your local Supabase
+// Password must meet complexity requirements: 12+ chars, uppercase, lowercase, number, special char
 const TEST_USER = {
   email: 'test@example.com',
-  password: 'testpassword123',
+  password: 'TestPassword123!',
   fullName: 'Test User'
 };
 
