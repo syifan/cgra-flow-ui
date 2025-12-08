@@ -13,24 +13,30 @@ const TEST_USER = {
   fullName: 'Test User'
 };
 
-setup('authenticate and create project', async ({ page }) => {
-  // Increase timeout for this setup test
-  setup.setTimeout(120000);
+// Helper function to wait for auth result (navigation or error)
+async function waitForAuthResult(page) {
+  await Promise.race([
+    page.waitForURL('**/dashboard', { timeout: 10000 }).catch(() => {}),
+    page.locator('[role="alert"]').waitFor({ state: 'visible', timeout: 10000 }).catch(() => {})
+  ]);
+}
 
-  // Ensure the .auth directory exists
-  const authDir = path.dirname(AUTH_FILE);
-  if (!fs.existsSync(authDir)) {
-    fs.mkdirSync(authDir, { recursive: true });
+// Helper function to check for error alerts
+async function getErrorMessage(page) {
+  const errorAlert = page.locator('[role="alert"]');
+  const hasError = await errorAlert.isVisible().catch(() => false);
+  if (hasError) {
+    return await errorAlert.textContent();
   }
+  return null;
+}
 
-  // First, try to sign up (in case user doesn't exist)
+// Helper function to attempt signup
+async function attemptSignup(page) {
   await page.goto('/signup');
   await page.waitForLoadState('networkidle');
-
-  // Wait for the form to be visible
   await expect(page.getByRole('heading', { name: 'CGRA FLOW' })).toBeVisible({ timeout: 10000 });
 
-  // Get form inputs by their role and accessible name
   const fullNameInput = page.getByRole('textbox', { name: /full name/i });
   const emailInput = page.getByRole('textbox', { name: /^email$/i });
   const passwordInputs = page.locator('input[type="password"]');
@@ -41,84 +47,67 @@ setup('authenticate and create project', async ({ page }) => {
   await passwordInputs.last().fill(TEST_USER.password);
   await page.getByRole('button', { name: 'Create Account' }).click();
 
-  // Wait for either navigation to dashboard or an error/success message
-  await Promise.race([
-    page.waitForURL('**/dashboard', { timeout: 10000 }).catch(() => {}),
-    page.locator('[role="alert"]').waitFor({ state: 'visible', timeout: 10000 }).catch(() => {})
-  ]);
+  await waitForAuthResult(page);
+  return page.url().includes('/dashboard');
+}
 
-  // Check for any error messages
-  const errorAlert = page.locator('[role="alert"]').filter({ hasText: /error/i });
-  const hasError = await errorAlert.isVisible().catch(() => false);
-  if (hasError) {
-    const errorText = await errorAlert.textContent();
-    console.error('Signup error:', errorText);
+// Helper function to attempt login
+async function attemptLogin(page) {
+  await page.goto('/login');
+  await page.waitForLoadState('networkidle');
+  await expect(page.getByRole('heading', { name: 'CGRA FLOW' })).toBeVisible({ timeout: 10000 });
+
+  const emailInput = page.getByRole('textbox', { name: /email/i });
+  const passwordInput = page.locator('input[type="password"]');
+
+  await emailInput.fill(TEST_USER.email);
+  await passwordInput.fill(TEST_USER.password);
+  await page.getByRole('button', { name: 'Sign In' }).click();
+
+  await waitForAuthResult(page);
+  return page.url().includes('/dashboard');
+}
+
+setup('authenticate and create project', async ({ page }) => {
+  // Increase timeout for this setup test
+  setup.setTimeout(120000);
+
+  // Ensure the .auth directory exists
+  const authDir = path.dirname(AUTH_FILE);
+  if (!fs.existsSync(authDir)) {
+    fs.mkdirSync(authDir, { recursive: true });
   }
 
-  // Check if we're on the dashboard (signup succeeded) or still on signup (user exists)
-  let currentUrl = page.url();
+  // Try signup first (in case user doesn't exist)
+  let authenticated = await attemptSignup(page);
 
-  if (!currentUrl.includes('/dashboard')) {
-    // User might already exist, try to login instead
+  if (!authenticated) {
+    const signupError = await getErrorMessage(page);
+    if (signupError) {
+      console.error('Signup error:', signupError);
+    }
+
+    // User might already exist, try login
     console.log('Signup may have failed (user exists?), trying login...');
-    await page.goto('/login');
-    await page.waitForLoadState('networkidle');
+    authenticated = await attemptLogin(page);
 
-    // Wait for the login form
-    await expect(page.getByRole('heading', { name: 'CGRA FLOW' })).toBeVisible({ timeout: 10000 });
+    if (!authenticated) {
+      const loginError = await getErrorMessage(page);
+      if (loginError) {
+        console.error('Login error:', loginError);
 
-    const loginEmail = page.getByRole('textbox', { name: /email/i });
-    const loginPassword = page.locator('input[type="password"]');
-
-    await loginEmail.fill(TEST_USER.email);
-    await loginPassword.fill(TEST_USER.password);
-    await page.getByRole('button', { name: 'Sign In' }).click();
-
-    // Wait for either navigation to dashboard or an error message
-    await Promise.race([
-      page.waitForURL('**/dashboard', { timeout: 10000 }).catch(() => {}),
-      page.locator('[role="alert"]').waitFor({ state: 'visible', timeout: 10000 }).catch(() => {})
-    ]);
-
-    // Check for error message
-    const loginError = page.locator('[role="alert"]');
-    const hasLoginError = await loginError.isVisible().catch(() => false);
-    if (hasLoginError) {
-      const loginErrorText = await loginError.textContent();
-      console.error('Login error:', loginErrorText);
-
-      // If login failed with "Invalid login credentials", we need to create the user
-      // This might happen if the database was reset
-      if (loginErrorText?.includes('Invalid')) {
-        console.log('User does not exist, creating via signup...');
-        await page.goto('/signup');
-        await page.waitForLoadState('networkidle');
-
-        const signupNameInput = page.getByRole('textbox', { name: /full name/i });
-        const signupEmailInput = page.getByRole('textbox', { name: /^email$/i });
-        const signupPasswordInputs = page.locator('input[type="password"]');
-
-        await signupNameInput.fill(TEST_USER.fullName);
-        await signupEmailInput.fill(TEST_USER.email);
-        await signupPasswordInputs.first().fill(TEST_USER.password);
-        await signupPasswordInputs.last().fill(TEST_USER.password);
-        await page.getByRole('button', { name: 'Create Account' }).click();
-
-        // Wait for either navigation to dashboard or an error message
-        await Promise.race([
-          page.waitForURL('**/dashboard', { timeout: 10000 }).catch(() => {}),
-          page.locator('[role="alert"]').waitFor({ state: 'visible', timeout: 10000 }).catch(() => {})
-        ]);
+        // If login failed with invalid credentials, try signup again (database may have been reset)
+        if (loginError.includes('Invalid')) {
+          console.log('User does not exist, creating via signup...');
+          authenticated = await attemptSignup(page);
+        }
       }
     }
+  }
 
-    // Check current URL
-    currentUrl = page.url();
-    if (!currentUrl.includes('/dashboard')) {
-      // Take a screenshot for debugging
-      await page.screenshot({ path: 'tests/.auth/debug-screenshot.png' });
-      throw new Error(`Failed to authenticate. Current URL: ${currentUrl}`);
-    }
+  if (!authenticated) {
+    await page.screenshot({ path: 'tests/.auth/debug-screenshot.png' });
+    throw new Error(`Failed to authenticate. Current URL: ${page.url()}`);
   }
 
   console.log('Successfully authenticated!');

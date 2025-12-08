@@ -4,6 +4,25 @@ import fs from 'fs';
 
 const PROJECT_FILE = path.join(import.meta.dirname, '.auth', 'project.json');
 
+// Helper function to read project data with error handling
+function readProjectData() {
+  let projectData;
+  try {
+    projectData = JSON.parse(fs.readFileSync(PROJECT_FILE, 'utf-8'));
+  } catch (error) {
+    throw new Error(
+      `Failed to read project file at ${PROJECT_FILE}. ` +
+      `Make sure the auth setup ran successfully. Error: ${error.message}`
+    );
+  }
+
+  if (!projectData.projectId) {
+    throw new Error('Project ID not found in project file');
+  }
+
+  return projectData;
+}
+
 /**
  * Extended test fixture that provides a workspace page.
  * This automatically navigates to the workspace with the test project.
@@ -13,9 +32,7 @@ export const test = base.extend({
    * workspacePage fixture - navigates to the workspace before each test
    */
   workspacePage: async ({ page }, use) => {
-    // Read the project ID from the auth setup
-    const projectData = JSON.parse(fs.readFileSync(PROJECT_FILE, 'utf-8'));
-    const { projectId } = projectData;
+    const { projectId } = readProjectData();
 
     // Navigate to the workspace
     await page.goto(`/workspace/${projectId}`);
@@ -33,8 +50,8 @@ export const test = base.extend({
    * projectId fixture - provides the test project ID
    */
   projectId: async ({}, use) => {
-    const projectData = JSON.parse(fs.readFileSync(PROJECT_FILE, 'utf-8'));
-    await use(projectData.projectId);
+    const { projectId } = readProjectData();
+    await use(projectId);
   }
 });
 
