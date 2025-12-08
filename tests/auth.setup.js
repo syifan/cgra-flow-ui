@@ -41,7 +41,10 @@ setup('authenticate and create project', async ({ page }) => {
   await page.getByRole('button', { name: 'Create Account' }).click();
 
   // Wait for either navigation to dashboard or an error/success message
-  await page.waitForTimeout(3000);
+  await Promise.race([
+    page.waitForURL('**/dashboard', { timeout: 10000 }).catch(() => {}),
+    page.locator('[role="alert"]').waitFor({ state: 'visible', timeout: 10000 }).catch(() => {})
+  ]);
 
   // Check for any error messages
   const errorAlert = page.locator('[role="alert"]').filter({ hasText: /error/i });
@@ -70,8 +73,11 @@ setup('authenticate and create project', async ({ page }) => {
     await loginPassword.fill(TEST_USER.password);
     await page.getByRole('button', { name: 'Sign In' }).click();
 
-    // Wait a bit for the login response
-    await page.waitForTimeout(3000);
+    // Wait for either navigation to dashboard or an error message
+    await Promise.race([
+      page.waitForURL('**/dashboard', { timeout: 10000 }).catch(() => {}),
+      page.locator('[role="alert"]').waitFor({ state: 'visible', timeout: 10000 }).catch(() => {})
+    ]);
 
     // Check for error message
     const loginError = page.locator('[role="alert"]');
@@ -97,8 +103,11 @@ setup('authenticate and create project', async ({ page }) => {
         await signupPasswordInputs.last().fill(TEST_USER.password);
         await page.getByRole('button', { name: 'Create Account' }).click();
 
-        // Wait for navigation
-        await page.waitForTimeout(3000);
+        // Wait for either navigation to dashboard or an error message
+        await Promise.race([
+          page.waitForURL('**/dashboard', { timeout: 10000 }).catch(() => {}),
+          page.locator('[role="alert"]').waitFor({ state: 'visible', timeout: 10000 }).catch(() => {})
+        ]);
       }
     }
 

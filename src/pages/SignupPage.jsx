@@ -33,8 +33,22 @@ function SignupPage() {
       return;
     }
 
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters');
+    // Password must be at least 12 characters and include uppercase, lowercase, number, and special character
+    const passwordRequirements = [
+      { regex: /.{12,}/, message: 'at least 12 characters' },
+      { regex: /[A-Z]/, message: 'an uppercase letter' },
+      { regex: /[a-z]/, message: 'a lowercase letter' },
+      { regex: /[0-9]/, message: 'a number' },
+      { regex: /[^A-Za-z0-9]/, message: 'a special character' }
+    ];
+    const failedRequirements = passwordRequirements.filter(
+      (req) => !req.regex.test(password)
+    );
+    if (failedRequirements.length > 0) {
+      setError(
+        'Password must contain ' +
+          failedRequirements.map((req) => req.message).join(', ')
+      );
       return;
     }
 
@@ -55,11 +69,8 @@ function SignupPage() {
       return;
     }
 
-    try {
-      await navigate('/dashboard');
-    } finally {
-      setLoading(false);
-    }
+    navigate('/dashboard');
+    setLoading(false);
   };
 
   return (
@@ -152,7 +163,7 @@ function SignupPage() {
               required
               autoComplete="new-password"
               disabled={loading}
-              helperText="Must be at least 6 characters"
+              helperText="12+ characters with uppercase, lowercase, number, and special character"
             />
             <TextField
               fullWidth

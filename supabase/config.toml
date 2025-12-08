@@ -31,6 +31,10 @@ port = 54323
 # External URL of the API server that frontend connects to.
 api_url = "http://127.0.0.1"
 
+# NOTE: This config.toml only affects LOCAL DEVELOPMENT.
+# Production settings must be configured in the Supabase Dashboard:
+# - Authentication > Settings > Password Requirements (set min length to 12, enable complexity)
+# - Authentication > Settings > Email Auth (enable email confirmations)
 [auth]
 enabled = true
 # The base URL of your website. Used as an allow-list for redirects and for constructing URLs used
@@ -49,6 +53,8 @@ refresh_token_reuse_interval = 10
 enable_signup = true
 # Allow/disallow anonymous sign-ins to your project.
 enable_anonymous_sign_ins = false
+# Minimum password length. Relaxed for local dev; production should use 12+ via Dashboard.
+password_min_length = 6
 
 [auth.email]
 # Allow/disallow new user signups via email to your project.
@@ -57,5 +63,5 @@ enable_signup = true
 # addresses. If disabled, only the new email is required to confirm.
 double_confirm_changes = true
 # If enabled, users need to confirm their email address before signing in.
-# Disabled for local development - enable in production
+# Disabled for local development only. MUST enable in production via Supabase Dashboard.
 enable_confirmations = false

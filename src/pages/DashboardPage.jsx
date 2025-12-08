@@ -62,7 +62,7 @@ function DashboardPage() {
   }, [fetchProjects]);
 
   const handleCreateProject = async () => {
-    if (!newProjectName.trim()) return;
+    if (!user?.id || !newProjectName.trim()) return;
 
     const { data, error } = await supabase
       .from('projects')
