@@ -1,12 +1,7 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures.js';
 
 test.describe('CGRA Connections', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
-  });
-
-  test('creates new connections when adding new CGRAs to the grid', async ({ page }) => {
+  test('creates new connections when adding new CGRAs to the grid', async ({ workspacePage: page }) => {
     // Initial state: 4x4 grid (16 CGRAs)
     const initialCGRAs = await page.locator('.layer-cgra-nodes g.cgra-node').count();
     expect(initialCGRAs).toBe(16);
@@ -107,7 +102,7 @@ test.describe('CGRA Connections', () => {
     expect(cgra44).toBe(1);
   });
 
-  test('creates connections for new CGRAs in different topologies', async ({ page }) => {
+  test('creates connections for new CGRAs in different topologies', async ({ workspacePage: page }) => {
     // Change to KingMesh topology which should have diagonal connections
     // Material UI Select requires clicking and selecting from the dropdown
     const topologyInput = page.locator('input[data-testid="property-interTopology"]');
@@ -164,7 +159,7 @@ test.describe('CGRA Connections', () => {
     expect(cgra44).toBe(1);
   });
 
-  test('maintains connections when reducing and then increasing grid size', async ({ page }) => {
+  test('maintains connections when reducing and then increasing grid size', async ({ workspacePage: page }) => {
     // Initial state: 4x4 grid
     const initialCGRAs = await page.locator('.layer-cgra-nodes g.cgra-node').count();
     expect(initialCGRAs).toBe(16);

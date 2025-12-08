@@ -1,9 +1,7 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures.js';
 
 test.describe('PE Connections', () => {
-  test('creates PE links when adding new CGRAs', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
+  test('creates PE links when adding new CGRAs', async ({ workspacePage: page }) => {
 
     const peConnections = page.locator('svg .layer-pe-connections line.pe-connection');
     const initialConnectionCount = await peConnections.count();
