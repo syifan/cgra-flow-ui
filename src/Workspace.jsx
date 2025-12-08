@@ -1,8 +1,12 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useNotification } from './contexts/NotificationContext';
+import { supabase } from './lib/supabase';
 import {
   AppBar,
   Box,
+  CircularProgress,
+  Divider,
   IconButton,
   ListItemIcon,
   ListItemText,
@@ -12,8 +16,10 @@ import {
   Typography
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
+import SaveIcon from '@mui/icons-material/Save';
 import DownloadIcon from '@mui/icons-material/Download';
 import UploadIcon from '@mui/icons-material/Upload';
+import HomeIcon from '@mui/icons-material/Home';
 import { Layout, Model } from 'flexlayout-react';
 import 'flexlayout-react/style/dark.css';
 import MainCanvas from './main_cancas';
@@ -111,14 +117,63 @@ const cloneAppData = (data) => {
 };
 
 function Workspace() {
+  const { projectId } = useParams();
+  const navigate = useNavigate();
   const [model] = useState(() => Model.fromJson(initialLayout));
-  const [appState, setAppState] = useState(() => cloneAppData(defaultAppData));
+  const [appState, setAppState] = useState(null);
+  const [projectName, setProjectName] = useState('');
   const [selection, setSelection] = useState(null);
   const [menuAnchorEl, setMenuAnchorEl] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const fileInputRef = useRef(null);
-  const { showError } = useNotification();
+  const { showError, showSuccess } = useNotification();
 
-  const architecture = appState.architecture;
+  // Load project data from Supabase on mount
+  useEffect(() => {
+    const loadProject = async () => {
+      if (!projectId) {
+        showError('No project ID provided');
+        navigate('/dashboard');
+        return;
+      }
+
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('projects')
+        .select('*')
+        .eq('id', projectId)
+        .single();
+
+      if (error) {
+        console.error('Error loading project:', error);
+        showError('Failed to load project: ' + error.message);
+        navigate('/dashboard');
+        return;
+      }
+
+      if (!data) {
+        showError('Project not found');
+        navigate('/dashboard');
+        return;
+      }
+
+      setProjectName(data.name || 'Untitled Project');
+
+      // Use project data if available, otherwise use default
+      if (data.data && Object.keys(data.data).length > 0) {
+        setAppState(cloneAppData(data.data));
+      } else {
+        setAppState(cloneAppData(defaultAppData));
+      }
+
+      setLoading(false);
+    };
+
+    loadProject();
+  }, [projectId, navigate, showError]);
+
+  const architecture = appState?.architecture;
 
   const setValueAtPath = useCallback((object, keyPath, value) => {
     const keys = Array.isArray(keyPath) ? keyPath : keyPath.split('.');
@@ -292,7 +347,32 @@ function Workspace() {
     setMenuAnchorEl(null);
   }, []);
 
-  const handleSaveData = useCallback(() => {
+  const handleBackToDashboard = useCallback(() => {
+    handleCloseMenu();
+    navigate('/dashboard');
+  }, [handleCloseMenu, navigate]);
+
+  const handleSaveToSupabase = useCallback(async () => {
+    handleCloseMenu();
+    if (!projectId || !appState) return;
+
+    setSaving(true);
+    const { error } = await supabase
+      .from('projects')
+      .update({ data: appState })
+      .eq('id', projectId);
+
+    setSaving(false);
+
+    if (error) {
+      console.error('Error saving project:', error);
+      showError('Failed to save project: ' + error.message);
+    } else {
+      showSuccess('Project saved successfully');
+    }
+  }, [projectId, appState, handleCloseMenu, showError, showSuccess]);
+
+  const handleExportData = useCallback(() => {
     handleCloseMenu();
     const blob = new Blob([JSON.stringify(appState, null, 2)], {
       type: 'application/json'
@@ -444,6 +524,28 @@ function Workspace() {
     [architecture, handlePropertyChange, selection]
   );
 
+  // Show loading state
+  if (loading) {
+    return (
+      <Box
+        sx={{
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          bgcolor: 'background.default',
+          flexDirection: 'column',
+          gap: 2
+        }}
+      >
+        <CircularProgress />
+        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+          Loading project...
+        </Typography>
+      </Box>
+    );
+  }
+
   return (
     <Box
       sx={{
@@ -473,28 +575,43 @@ function Workspace() {
             justifyContent: 'space-between'
           }}
         >
-          <Typography
-            variant="h6"
-            sx={{
-              fontWeight: 700,
-              letterSpacing: 2,
-              textTransform: 'uppercase'
-            }}
-          >
-            CGRA Flow
-          </Typography>
-          <IconButton
-            color="inherit"
-            edge="end"
-            aria-label="open settings"
-            sx={{
-              border: '1px solid rgba(148, 163, 184, 0.35)',
-              borderRadius: 2
-            }}
-            onClick={handleOpenMenu}
-          >
-            <MenuIcon />
-          </IconButton>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Typography
+              variant="h6"
+              sx={{
+                fontWeight: 700,
+                letterSpacing: 2,
+                textTransform: 'uppercase'
+              }}
+            >
+              CGRA Flow
+            </Typography>
+            <Typography
+              variant="body2"
+              sx={{
+                color: 'text.secondary',
+                borderLeft: '1px solid rgba(148, 163, 184, 0.3)',
+                pl: 2
+              }}
+            >
+              {projectName}
+            </Typography>
+          </Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            {saving && <CircularProgress size={20} sx={{ color: 'text.secondary' }} />}
+            <IconButton
+              color="inherit"
+              edge="end"
+              aria-label="open settings"
+              sx={{
+                border: '1px solid rgba(148, 163, 184, 0.35)',
+                borderRadius: 2
+              }}
+              onClick={handleOpenMenu}
+            >
+              <MenuIcon />
+            </IconButton>
+          </Box>
         </Toolbar>
       </AppBar>
       <Menu
@@ -504,17 +621,31 @@ function Workspace() {
         anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
         transformOrigin={{ vertical: 'top', horizontal: 'right' }}
       >
-        <MenuItem onClick={handleSaveData}>
+        <MenuItem onClick={handleSaveToSupabase} disabled={saving}>
+          <ListItemIcon>
+            <SaveIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Save project</ListItemText>
+        </MenuItem>
+        <Divider />
+        <MenuItem onClick={handleExportData}>
           <ListItemIcon>
             <DownloadIcon fontSize="small" />
           </ListItemIcon>
-          <ListItemText>Save data</ListItemText>
+          <ListItemText>Export to file</ListItemText>
         </MenuItem>
         <MenuItem onClick={handleTriggerLoad}>
           <ListItemIcon>
             <UploadIcon fontSize="small" />
           </ListItemIcon>
-          <ListItemText>Load data</ListItemText>
+          <ListItemText>Import from file</ListItemText>
+        </MenuItem>
+        <Divider />
+        <MenuItem onClick={handleBackToDashboard}>
+          <ListItemIcon>
+            <HomeIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Back to dashboard</ListItemText>
         </MenuItem>
       </Menu>
       <input
