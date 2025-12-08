@@ -1,5 +1,6 @@
 import {
   buildConnectionsFromLegacyOutgoing,
+  reconcilePeConnectionsAfterCgraResize,
   sanitizePeConnections
 } from './peConnections.js';
 
@@ -193,15 +194,24 @@ export const resizeArchitectureGrid = (architecture, rows, columns) => {
   const nextRows = ensurePositiveInt(rows, architecture?.multiCgraRows);
   const nextColumns = ensurePositiveInt(columns, architecture?.multiCgraColumns);
   const cgraMap = new Map();
+  const previousPeIdSet = new Set();
 
   if (Array.isArray(architecture?.CGRAs)) {
     architecture.CGRAs.forEach((cgra) => {
       if (typeof cgra?.x !== 'number' || typeof cgra?.y !== 'number') return;
       cgraMap.set(`${cgra.y},${cgra.x}`, cgra);
+      if (Array.isArray(cgra?.PEs)) {
+        cgra.PEs.forEach((pe) => {
+          if (pe?.id) {
+            previousPeIdSet.add(pe.id);
+          }
+        });
+      }
     });
   }
 
   const nextCgras = [];
+  const nextPeIdSet = new Set();
 
   for (let row = 0; row < nextRows; row += 1) {
     for (let column = 0; column < nextColumns; column += 1) {
@@ -235,14 +245,41 @@ export const resizeArchitectureGrid = (architecture, rows, columns) => {
       } else {
         nextCgras.push(createCgra({ row, column, architecture }));
       }
+
+      const latest = nextCgras[nextCgras.length - 1];
+      if (Array.isArray(latest?.PEs)) {
+        latest.PEs.forEach((pe) => {
+          if (pe?.id) {
+            nextPeIdSet.add(pe.id);
+          }
+        });
+      }
     }
   }
 
-  return {
+  const nextArchitecture = {
     ...architecture,
     multiCgraRows: nextRows,
     multiCgraColumns: nextColumns,
     CGRAs: nextCgras
+  };
+
+  const addedPeIds = [...nextPeIdSet].filter((id) => !previousPeIdSet.has(id));
+  const removedPeIds = [...previousPeIdSet].filter((id) => !nextPeIdSet.has(id));
+
+  const nextConnections = reconcilePeConnectionsAfterCgraResize({
+    architecture: {
+      ...nextArchitecture,
+      PEConnections: architecture?.PEConnections
+    },
+    previousConnections: architecture?.PEConnections,
+    addedPeIds,
+    removedPeIds
+  });
+
+  return {
+    ...nextArchitecture,
+    PEConnections: nextConnections
   };
 };
 
