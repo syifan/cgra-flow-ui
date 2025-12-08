@@ -22,18 +22,25 @@ function LoginPage() {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+    if (loading) return;
     setError('');
     setLoading(true);
 
     const { error: signInError } = await signIn(email, password);
 
     if (signInError) {
-      setError(signInError.message);
+      // Map Supabase errors to user-friendly messages
+      const message = signInError.message?.toLowerCase() || '';
+      if (message.includes('invalid') || message.includes('credentials')) {
+        setError('Invalid email or password.');
+      } else {
+        setError('An error occurred. Please try again.');
+      }
       setLoading(false);
       return;
     }
 
-    navigate('/dashboard');
+    navigate('/dashboard', { replace: true });
   };
 
   return (

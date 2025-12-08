@@ -36,6 +36,10 @@ jobs:
           STATUS=$(npx supabase status --output json)
           API_URL=$(echo "$STATUS" | jq -r '.API_URL')
           PUBLISHABLE_KEY=$(echo "$STATUS" | jq -r '.PUBLISHABLE_KEY')
+          if [ -z "$API_URL" ] || [ -z "$PUBLISHABLE_KEY" ]; then
+            echo "Error: Supabase API_URL or PUBLISHABLE_KEY is empty. Check that 'npx supabase status' is working and returning valid JSON." >&2
+            exit 1
+          fi
           echo "api_url=$API_URL" >> $GITHUB_OUTPUT
           echo "anon_key=$PUBLISHABLE_KEY" >> $GITHUB_OUTPUT
 

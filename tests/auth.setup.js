@@ -51,7 +51,7 @@ setup('authenticate and create project', async ({ page }) => {
   const hasError = await errorAlert.isVisible().catch(() => false);
   if (hasError) {
     const errorText = await errorAlert.textContent();
-    console.log('Signup error:', errorText);
+    console.error('Signup error:', errorText);
   }
 
   // Check if we're on the dashboard (signup succeeded) or still on signup (user exists)
@@ -84,7 +84,7 @@ setup('authenticate and create project', async ({ page }) => {
     const hasLoginError = await loginError.isVisible().catch(() => false);
     if (hasLoginError) {
       const loginErrorText = await loginError.textContent();
-      console.log('Login error:', loginErrorText);
+      console.error('Login error:', loginErrorText);
 
       // If login failed with "Invalid login credentials", we need to create the user
       // This might happen if the database was reset

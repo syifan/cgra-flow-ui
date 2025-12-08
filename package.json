@@ -13,8 +13,7 @@
     "test:e2e": "playwright test",
     "test:ui": "playwright test --ui",
     "db:push": "npx supabase db push",
-    "db:migrate": "npx supabase db migrate",
-    "db:reset": "npx supabase db reset"
+    "db:migrate": "npx supabase db migrate"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

@@ -25,6 +25,7 @@ function SignupPage() {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+    if (loading) return;
     setError('');
     setSuccess('');
 
@@ -33,7 +34,9 @@ function SignupPage() {
       return;
     }
 
-    // Password must be at least 12 characters and include uppercase, lowercase, number, and special character
+    // Password validation - client-side is primary enforcement for complexity requirements.
+    // Supabase only supports min length server-side (configure in Dashboard > Auth > Settings).
+    // IMPORTANT: Ensure production Supabase has min length set to 12.
     const passwordRequirements = [
       { regex: /.{12,}/, message: 'at least 12 characters' },
       { regex: /[A-Z]/, message: 'an uppercase letter' },
@@ -69,7 +72,7 @@ function SignupPage() {
       return;
     }
 
-    navigate('/dashboard');
+    navigate('/dashboard', { replace: true });
     setLoading(false);
   };
 
