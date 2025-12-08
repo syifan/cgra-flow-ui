@@ -104,6 +104,7 @@ function SignupPage() {
               fontWeight: 700,
               textAlign: 'center',
               mb: 1,
+              color: 'primary.main', // Fallback color for accessibility
               background: 'linear-gradient(135deg, #3aa8ff 0%, #5ad786 100%)',
               backgroundClip: 'text',
               WebkitBackgroundClip: 'text',

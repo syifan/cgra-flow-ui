@@ -54,6 +54,7 @@ function LandingPage() {
               fontWeight: 800,
               letterSpacing: 3,
               mb: 2,
+              color: '#3aa8ff', // Fallback color for accessibility
               background: 'linear-gradient(135deg, #3aa8ff 0%, #5ad786 100%)',
               backgroundClip: 'text',
               WebkitBackgroundClip: 'text',
