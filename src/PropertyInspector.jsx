@@ -352,6 +352,13 @@ function PropertyInspector({ architecture, selection, onPropertyChange }) {
                   }}
                   multiline={property.multiline}
                   minRows={property.multiline ? 3 : undefined}
+                  sx={property.type === 'number' ? {
+                    '& input[type=number]::-webkit-inner-spin-button, & input[type=number]::-webkit-outer-spin-button': {
+                      opacity: 1,
+                      WebkitAppearance: 'inner-spin-button',
+                      cursor: 'pointer'
+                    }
+                  } : undefined}
                 />
               );
             }

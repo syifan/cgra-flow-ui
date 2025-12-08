@@ -5,8 +5,9 @@ import { supabase } from './lib/supabase';
 import {
   AppBar,
   Box,
+  ButtonBase,
+  Chip,
   CircularProgress,
-  Divider,
   IconButton,
   ListItemIcon,
   ListItemText,
@@ -17,9 +18,10 @@ import {
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import SaveIcon from '@mui/icons-material/Save';
-import DownloadIcon from '@mui/icons-material/Download';
-import UploadIcon from '@mui/icons-material/Upload';
 import HomeIcon from '@mui/icons-material/Home';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import EditIcon from '@mui/icons-material/Edit';
+import SyncIcon from '@mui/icons-material/Sync';
 import { Layout, Model } from 'flexlayout-react';
 import 'flexlayout-react/style/dark.css';
 import MainCanvas from './main_cancas';
@@ -126,8 +128,9 @@ function Workspace() {
   const [menuAnchorEl, setMenuAnchorEl] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const fileInputRef = useRef(null);
-  const { showError, showSuccess } = useNotification();
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const savedStateRef = useRef(null);
+  const { showError, showSuccess, showConfirm } = useNotification();
 
   // Load project data from Supabase on mount
   useEffect(() => {
@@ -161,17 +164,66 @@ function Workspace() {
       setProjectName(data.name || 'Untitled Project');
 
       // Use project data if available, otherwise use default
+      let initialState;
       if (data.data && Object.keys(data.data).length > 0) {
-        setAppState(cloneAppData(data.data));
+        initialState = cloneAppData(data.data);
       } else {
-        setAppState(cloneAppData(defaultAppData));
+        initialState = cloneAppData(defaultAppData);
       }
+      setAppState(initialState);
+      savedStateRef.current = JSON.stringify(initialState);
+      setHasUnsavedChanges(false);
 
       setLoading(false);
     };
 
     loadProject();
   }, [projectId, navigate, showError]);
+
+  // Track unsaved changes by comparing current state to saved state
+  useEffect(() => {
+    if (!appState || !savedStateRef.current) return;
+    const currentStateString = JSON.stringify(appState);
+    setHasUnsavedChanges(currentStateString !== savedStateRef.current);
+  }, [appState]);
+
+  // Warn user before leaving page with unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (event) => {
+      if (hasUnsavedChanges) {
+        event.preventDefault();
+        event.returnValue = '';
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasUnsavedChanges]);
+
+  // Debounced auto-save: save 10 seconds after last change
+  useEffect(() => {
+    if (!hasUnsavedChanges || !projectId || !appState || saving) return;
+
+    const timeoutId = setTimeout(async () => {
+      setSaving(true);
+      const { error } = await supabase
+        .from('projects')
+        .update({ data: appState })
+        .eq('id', projectId);
+
+      setSaving(false);
+
+      if (error) {
+        console.error('Auto-save failed:', error);
+        showError('Auto-save failed: ' + error.message);
+      } else {
+        savedStateRef.current = JSON.stringify(appState);
+        setHasUnsavedChanges(false);
+      }
+    }, 10000); // 10 seconds
+
+    return () => clearTimeout(timeoutId);
+  }, [hasUnsavedChanges, projectId, appState, saving, showError]);
 
   const architecture = appState?.architecture;
 
@@ -347,10 +399,23 @@ function Workspace() {
     setMenuAnchorEl(null);
   }, []);
 
-  const handleBackToDashboard = useCallback(() => {
+  const handleBackToDashboard = useCallback(async () => {
     handleCloseMenu();
+
+    if (hasUnsavedChanges) {
+      const confirmed = await showConfirm({
+        title: 'Unsaved Changes',
+        message: 'You have unsaved changes. Are you sure you want to leave? Your changes will be lost.',
+        confirmText: 'Leave',
+        cancelText: 'Stay',
+        confirmColor: 'error'
+      });
+
+      if (!confirmed) return;
+    }
+
     navigate('/dashboard');
-  }, [handleCloseMenu, navigate]);
+  }, [handleCloseMenu, hasUnsavedChanges, showConfirm, navigate]);
 
   const handleSaveToSupabase = useCallback(async () => {
     handleCloseMenu();
@@ -368,65 +433,11 @@ function Workspace() {
       console.error('Error saving project:', error);
       showError('Failed to save project: ' + error.message);
     } else {
+      savedStateRef.current = JSON.stringify(appState);
+      setHasUnsavedChanges(false);
       showSuccess('Project saved successfully');
     }
   }, [projectId, appState, handleCloseMenu, showError, showSuccess]);
-
-  const handleExportData = useCallback(() => {
-    handleCloseMenu();
-    const blob = new Blob([JSON.stringify(appState, null, 2)], {
-      type: 'application/json'
-    });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    const fileNameBase = architecture?.name?.trim().replace(/\s+/g, '-').toLowerCase() || 'cgra-flow';
-    link.download = `${fileNameBase}-app-state.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  }, [appState, architecture?.name, handleCloseMenu]);
-
-  const handleTriggerLoad = useCallback(() => {
-    handleCloseMenu();
-    fileInputRef.current?.click();
-  }, [handleCloseMenu]);
-
-  const handleFileChange = useCallback(
-    (event) => {
-      const file = event.target.files?.[0];
-      if (!file) return;
-
-      const reader = new FileReader();
-      reader.onload = () => {
-        try {
-          const text = typeof reader.result === 'string' ? reader.result : '';
-          const parsed = JSON.parse(text);
-          if (!parsed || typeof parsed !== 'object' || !parsed.architecture) {
-            throw new Error('Invalid app data file');
-          }
-
-          setAppState(cloneAppData(parsed));
-          setSelection(null);
-        } catch (error) {
-          console.error('Failed to load app data', error);
-          showError('Unable to load the selected file. Please choose a valid CGRA Flow export.');
-        } finally {
-          event.target.value = '';
-        }
-      };
-
-      reader.onerror = () => {
-        console.error('Failed to read file', reader.error);
-        showError('Unable to read the selected file. Please try again.');
-        event.target.value = '';
-      };
-
-      reader.readAsText(file);
-    },
-    [setAppState, setSelection, showError]
-  );
 
   const factory = useCallback(
     (node) => {
@@ -576,16 +587,28 @@ function Workspace() {
           }}
         >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Typography
-              variant="h6"
+            <ButtonBase
+              onClick={handleBackToDashboard}
               sx={{
-                fontWeight: 700,
-                letterSpacing: 2,
-                textTransform: 'uppercase'
+                borderRadius: 1,
+                px: 1,
+                py: 0.5,
+                '&:hover': {
+                  bgcolor: 'rgba(148, 163, 184, 0.1)'
+                }
               }}
             >
-              CGRA Flow
-            </Typography>
+              <Typography
+                variant="h6"
+                sx={{
+                  fontWeight: 700,
+                  letterSpacing: 2,
+                  textTransform: 'uppercase'
+                }}
+              >
+                CGRA Flow
+              </Typography>
+            </ButtonBase>
             <Typography
               variant="body2"
               sx={{
@@ -596,9 +619,24 @@ function Workspace() {
             >
               {projectName}
             </Typography>
+            <Chip
+              size="small"
+              icon={
+                saving ? (
+                  <SyncIcon sx={{ animation: 'spin 1s linear infinite', '@keyframes spin': { from: { transform: 'rotate(0deg)' }, to: { transform: 'rotate(360deg)' } } }} />
+                ) : hasUnsavedChanges ? (
+                  <EditIcon />
+                ) : (
+                  <CheckCircleIcon />
+                )
+              }
+              label={saving ? 'Saving...' : hasUnsavedChanges ? 'Unsaved' : 'Saved'}
+              color={saving ? 'info' : hasUnsavedChanges ? 'warning' : 'success'}
+              variant="outlined"
+              sx={{ ml: 1 }}
+            />
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            {saving && <CircularProgress size={20} sx={{ color: 'text.secondary' }} />}
             <IconButton
               color="inherit"
               edge="end"
@@ -627,20 +665,6 @@ function Workspace() {
           </ListItemIcon>
           <ListItemText>Save project</ListItemText>
         </MenuItem>
-        <Divider />
-        <MenuItem onClick={handleExportData}>
-          <ListItemIcon>
-            <DownloadIcon fontSize="small" />
-          </ListItemIcon>
-          <ListItemText>Export to file</ListItemText>
-        </MenuItem>
-        <MenuItem onClick={handleTriggerLoad}>
-          <ListItemIcon>
-            <UploadIcon fontSize="small" />
-          </ListItemIcon>
-          <ListItemText>Import from file</ListItemText>
-        </MenuItem>
-        <Divider />
         <MenuItem onClick={handleBackToDashboard}>
           <ListItemIcon>
             <HomeIcon fontSize="small" />
@@ -648,13 +672,6 @@ function Workspace() {
           <ListItemText>Back to dashboard</ListItemText>
         </MenuItem>
       </Menu>
-      <input
-        type="file"
-        accept="application/json"
-        hidden
-        ref={fileInputRef}
-        onChange={handleFileChange}
-      />
       <Box
         component="main"
         sx={{
