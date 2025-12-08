@@ -158,7 +158,7 @@ setup('authenticate and create project', async ({ page }) => {
 
     // Wait for dialog to close and project to appear
     await expect(page.locator('[role="dialog"]')).toBeHidden({ timeout: 5000 });
-    await expect(page.locator('text=E2E Test Project')).toBeVisible();
+    await expect(page.locator('text=E2E Test Project').first()).toBeVisible();
 
     // Open the newly created project
     await page.locator('text=E2E Test Project').first().click();
