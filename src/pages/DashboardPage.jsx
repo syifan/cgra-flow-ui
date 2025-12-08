@@ -132,7 +132,11 @@ function DashboardPage() {
   };
 
   const handleSignOut = async () => {
-    await signOut();
+    const { error } = await signOut();
+    if (error) {
+      showError('Failed to sign out: ' + error.message);
+      return;
+    }
     navigate('/');
   };
 
