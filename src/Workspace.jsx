@@ -21,7 +21,6 @@ import SaveIcon from '@mui/icons-material/Save';
 import HomeIcon from '@mui/icons-material/Home';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import EditIcon from '@mui/icons-material/Edit';
-import SyncIcon from '@mui/icons-material/Sync';
 import { Layout, Model } from 'flexlayout-react';
 import 'flexlayout-react/style/dark.css';
 import MainCanvas from './main_cancas';
@@ -130,7 +129,13 @@ function Workspace() {
   const [saving, setSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const savedStateRef = useRef(null);
+  const appStateRef = useRef(null);
   const { showError, showSuccess, showConfirm } = useNotification();
+
+  // Keep appStateRef in sync for access in async callbacks
+  useEffect(() => {
+    appStateRef.current = appState;
+  }, [appState]);
 
   // Load project data from Supabase on mount
   useEffect(() => {
@@ -218,7 +223,9 @@ function Workspace() {
         showError('Auto-save failed: ' + error.message);
       } else {
         savedStateRef.current = JSON.stringify(appState);
-        setHasUnsavedChanges(false);
+        // Only clear unsaved indicator if current state matches what we saved
+        const currentStateString = JSON.stringify(appStateRef.current);
+        setHasUnsavedChanges(currentStateString !== savedStateRef.current);
       }
     }, 10000); // 10 seconds
 
@@ -419,7 +426,7 @@ function Workspace() {
 
   const handleSaveToSupabase = useCallback(async () => {
     handleCloseMenu();
-    if (!projectId || !appState) return;
+    if (!projectId || !appState || saving) return;
 
     setSaving(true);
     const { error } = await supabase
@@ -434,10 +441,12 @@ function Workspace() {
       showError('Failed to save project: ' + error.message);
     } else {
       savedStateRef.current = JSON.stringify(appState);
-      setHasUnsavedChanges(false);
+      // Only clear unsaved indicator if current state matches what we saved
+      const currentStateString = JSON.stringify(appStateRef.current);
+      setHasUnsavedChanges(currentStateString !== savedStateRef.current);
       showSuccess('Project saved successfully');
     }
-  }, [projectId, appState, handleCloseMenu, showError, showSuccess]);
+  }, [projectId, appState, saving, handleCloseMenu, showError, showSuccess]);
 
   const factory = useCallback(
     (node) => {
@@ -623,7 +632,7 @@ function Workspace() {
               size="small"
               icon={
                 saving ? (
-                  <SyncIcon sx={{ animation: 'spin 1s linear infinite', '@keyframes spin': { from: { transform: 'rotate(0deg)' }, to: { transform: 'rotate(360deg)' } } }} />
+                  <CircularProgress size={16} color="inherit" />
                 ) : hasUnsavedChanges ? (
                   <EditIcon />
                 ) : (
