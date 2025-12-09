@@ -5,6 +5,7 @@ import { supabase } from './lib/supabase';
 import {
   AppBar,
   Box,
+  Button,
   ButtonBase,
   Checkbox,
   Chip,
@@ -23,6 +24,10 @@ import MenuIcon from '@mui/icons-material/Menu';
 import SaveIcon from '@mui/icons-material/Save';
 import HomeIcon from '@mui/icons-material/Home';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import LockIcon from '@mui/icons-material/Lock';
+import ErrorIcon from '@mui/icons-material/Error';
+import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import { Layout, Model } from 'flexlayout-react';
 import 'flexlayout-react/style/dark.css';
 import MainCanvas from './main_cancas';
@@ -71,11 +76,6 @@ const initialLayout = {
             weight: 30,
             selected: 0,
             children: [
-              {
-                type: 'tab',
-                name: 'Benchmarks',
-                component: 'benchmarks'
-              },
               {
                 type: 'tab',
                 name: 'Mapping',
@@ -134,16 +134,31 @@ function Workspace() {
   const [menuAnchorEl, setMenuAnchorEl] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [selectedBenchmarks, setSelectedBenchmarks] = useState({
-    fir: false,
-    mm: false
-  });
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [autoSaveCountdown, setAutoSaveCountdown] = useState(0);
+  const [pendingJob, setPendingJob] = useState(null);
+  const [latestMappingJob, setLatestMappingJob] = useState(null);
   const savedStateRef = useRef(null);
   const appStateRef = useRef(null);
   const autoSaveIntervalRef = useRef(null);
   const { showError, showSuccess, showConfirm } = useNotification();
+
+  // Project is locked when there's a queued or running job
+  const isLocked = pendingJob !== null;
+
+  // Selected benchmarks are stored in appState
+  const selectedBenchmarks = appState?.selectedBenchmarks ?? { fir: false, mm: false };
+
+  const setSelectedBenchmarks = useCallback((updater) => {
+    if (isLocked) return;
+    setAppState((prev) => {
+      if (!prev) return prev;
+      const newBenchmarks = typeof updater === 'function'
+        ? updater(prev.selectedBenchmarks ?? { fir: false, mm: false })
+        : updater;
+      return { ...prev, selectedBenchmarks: newBenchmarks };
+    });
+  }, [isLocked]);
 
   const AUTO_SAVE_DELAY = 10; // seconds
 
@@ -151,6 +166,69 @@ function Workspace() {
   useEffect(() => {
     appStateRef.current = appState;
   }, [appState]);
+
+  // Fetch and subscribe to jobs for this project
+  useEffect(() => {
+    if (!projectId) return;
+
+    const fetchJobs = async () => {
+      // Fetch pending job (queued or running)
+      const { data: pendingData, error: pendingError } = await supabase
+        .from('jobs')
+        .select('*')
+        .eq('project_id', projectId)
+        .in('status', ['queued', 'running'])
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (pendingError) {
+        console.error('Error fetching pending jobs:', pendingError);
+      } else {
+        setPendingJob(pendingData);
+      }
+
+      // Fetch latest mapping job (any status) for status display
+      const { data: latestData, error: latestError } = await supabase
+        .from('jobs')
+        .select('*')
+        .eq('project_id', projectId)
+        .eq('type', 'mapping')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (latestError) {
+        console.error('Error fetching latest mapping job:', latestError);
+      } else {
+        setLatestMappingJob(latestData);
+      }
+    };
+
+    fetchJobs();
+
+    // Subscribe to job changes for this project
+    const subscription = supabase
+      .channel(`jobs:project_id=eq.${projectId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'jobs',
+          filter: `project_id=eq.${projectId}`
+        },
+        () => {
+          // Refetch jobs on any change
+          fetchJobs();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [projectId]);
 
   // Load project data from Supabase on mount
   useEffect(() => {
@@ -222,9 +300,9 @@ function Workspace() {
 
   // Debounced auto-save: save after countdown reaches 0
   useEffect(() => {
-    if (!hasUnsavedChanges || !projectId || !appState || saving) {
-      // Clear countdown when not in unsaved state
-      if (!hasUnsavedChanges) {
+    if (!hasUnsavedChanges || !projectId || !appState || saving || isLocked) {
+      // Clear countdown when not in unsaved state or locked
+      if (!hasUnsavedChanges || isLocked) {
         setAutoSaveCountdown(0);
         if (autoSaveIntervalRef.current) {
           clearInterval(autoSaveIntervalRef.current);
@@ -280,7 +358,7 @@ function Workspace() {
         autoSaveIntervalRef.current = null;
       }
     };
-  }, [hasUnsavedChanges, projectId, appState, saving, showError]);
+  }, [hasUnsavedChanges, projectId, appState, saving, showError, isLocked]);
 
   const architecture = appState?.architecture;
 
@@ -476,7 +554,7 @@ function Workspace() {
 
   const handleSaveToSupabase = useCallback(async () => {
     handleCloseMenu();
-    if (!projectId || !appState || saving) return;
+    if (!projectId || !appState || saving || isLocked) return;
 
     setSaving(true);
     const { error } = await supabase
@@ -496,7 +574,69 @@ function Workspace() {
       setHasUnsavedChanges(currentStateString !== savedStateRef.current);
       showSuccess('Project saved successfully');
     }
-  }, [projectId, appState, saving, handleCloseMenu, showError, showSuccess]);
+  }, [projectId, appState, saving, isLocked, handleCloseMenu, showError, showSuccess]);
+
+  const handleStartMapping = useCallback(async () => {
+    if (!projectId || isLocked || !appState) return;
+
+    // Collect selected benchmarks
+    const benchmarks = [];
+    if (selectedBenchmarks.fir) benchmarks.push('fir');
+    if (selectedBenchmarks.mm) benchmarks.push('mm');
+
+    if (benchmarks.length === 0) {
+      showError('Please select at least one benchmark');
+      return;
+    }
+
+    // Get current user
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      showError('You must be logged in to start a mapping job');
+      return;
+    }
+
+    // Save project first before creating job
+    setSaving(true);
+    const { error: saveError } = await supabase
+      .from('projects')
+      .update({ data: appState })
+      .eq('id', projectId);
+
+    if (saveError) {
+      setSaving(false);
+      console.error('Error saving project before mapping:', saveError);
+      showError('Failed to save project: ' + saveError.message);
+      return;
+    }
+
+    savedStateRef.current = JSON.stringify(appState);
+    setHasUnsavedChanges(false);
+    setSaving(false);
+
+    // Insert job into Supabase
+    const { data: newJob, error } = await supabase
+      .from('jobs')
+      .insert({
+        project_id: projectId,
+        user_id: user.id,
+        type: 'mapping',
+        status: 'queued',
+        info: { benchmarks }
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error creating job:', error);
+      showError('Failed to start mapping job: ' + error.message);
+    } else {
+      // Optimistically update the lock state immediately
+      setPendingJob(newJob);
+      setLatestMappingJob(newJob);
+      showSuccess('Mapping job queued successfully');
+    }
+  }, [projectId, isLocked, appState, selectedBenchmarks, showError, showSuccess]);
 
   const factory = useCallback(
     (node) => {
@@ -517,6 +657,7 @@ function Workspace() {
               architecture={architecture}
               selection={selection}
               onPropertyChange={handlePropertyChange}
+              disabled={isLocked}
             />
           );
         case 'genai':
@@ -536,85 +677,127 @@ function Workspace() {
               GenAI workspace coming soon.
             </Box>
           );
-        case 'benchmarks':
+        case 'mapping': {
+          const getJobStatusDisplay = () => {
+            if (!latestMappingJob) return null;
+            const status = latestMappingJob.status;
+            const benchmarks = latestMappingJob.info?.benchmarks?.join(', ') || 'N/A';
+
+            const statusConfig = {
+              queued: { icon: <HourglassEmptyIcon fontSize="small" />, color: 'info', label: 'Queued' },
+              running: { icon: <PlayArrowIcon fontSize="small" />, color: 'warning', label: 'Running' },
+              success: { icon: <CheckCircleIcon fontSize="small" />, color: 'success', label: 'Success' },
+              failed: { icon: <ErrorIcon fontSize="small" />, color: 'error', label: 'Failed' },
+              cancelled: { icon: <ErrorIcon fontSize="small" />, color: 'default', label: 'Cancelled' }
+            };
+
+            const config = statusConfig[status] || statusConfig.cancelled;
+
+            return (
+              <Box sx={{ mb: 2, p: 1.5, bgcolor: 'rgba(148,163,184,0.1)', borderRadius: 1 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                  <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                    Latest Mapping Job:
+                  </Typography>
+                  <Chip
+                    size="small"
+                    icon={config.icon}
+                    label={config.label}
+                    color={config.color}
+                    variant="outlined"
+                  />
+                </Box>
+                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                  Benchmarks: {benchmarks}
+                </Typography>
+                {latestMappingJob.error_message && (
+                  <Typography variant="caption" sx={{ color: 'error.main', display: 'block', mt: 0.5 }}>
+                    Error: {latestMappingJob.error_message}
+                  </Typography>
+                )}
+              </Box>
+            );
+          };
+
           return (
             <Box
               sx={{
                 height: '100%',
                 p: 2,
+                display: 'flex',
                 overflow: 'auto'
               }}
             >
-              <Typography variant="subtitle2" sx={{ mb: 2, color: 'text.secondary' }}>
-                Select benchmarks to run on your CGRA design:
-              </Typography>
-              <FormGroup>
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      checked={selectedBenchmarks.fir}
-                      onChange={(e) =>
-                        setSelectedBenchmarks((prev) => ({
-                          ...prev,
-                          fir: e.target.checked
-                        }))
-                      }
-                    />
-                  }
-                  label={
-                    <Box>
-                      <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                        FIR
-                      </Typography>
-                      <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                        Finite Impulse Response filter - A common DSP operation that computes weighted sums of input samples.
-                      </Typography>
-                    </Box>
-                  }
-                />
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      checked={selectedBenchmarks.mm}
-                      onChange={(e) =>
-                        setSelectedBenchmarks((prev) => ({
-                          ...prev,
-                          mm: e.target.checked
-                        }))
-                      }
-                    />
-                  }
-                  label={
-                    <Box>
-                      <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                        MM
-                      </Typography>
-                      <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                        Matrix Multiplication - A fundamental linear algebra operation used in graphics, ML, and scientific computing.
-                      </Typography>
-                    </Box>
-                  }
-                />
-              </FormGroup>
+              <Box sx={{ flex: 1 }}>
+                {getJobStatusDisplay()}
+                <Typography variant="subtitle2" sx={{ mb: 2, color: 'text.secondary' }}>
+                  Select benchmarks to map on your CGRA design:
+                </Typography>
+                <FormGroup>
+                  <FormControlLabel
+                    disabled={isLocked}
+                    control={
+                      <Checkbox
+                        checked={selectedBenchmarks.fir}
+                        onChange={(e) =>
+                          setSelectedBenchmarks((prev) => ({
+                            ...prev,
+                            fir: e.target.checked
+                          }))
+                        }
+                        disabled={isLocked}
+                      />
+                    }
+                    label={
+                      <Box>
+                        <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                          FIR
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                          Finite Impulse Response filter - A common DSP operation that computes weighted sums of input samples.
+                        </Typography>
+                      </Box>
+                    }
+                  />
+                  <FormControlLabel
+                    disabled={isLocked}
+                    control={
+                      <Checkbox
+                        checked={selectedBenchmarks.mm}
+                        onChange={(e) =>
+                          setSelectedBenchmarks((prev) => ({
+                            ...prev,
+                            mm: e.target.checked
+                          }))
+                        }
+                        disabled={isLocked}
+                      />
+                    }
+                    label={
+                      <Box>
+                        <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                          MM
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                          Matrix Multiplication - A fundamental linear algebra operation used in graphics, ML, and scientific computing.
+                        </Typography>
+                      </Box>
+                    }
+                  />
+                </FormGroup>
+              </Box>
+              <Box sx={{ display: 'flex', alignItems: 'flex-start', ml: 2 }}>
+                <Button
+                  variant="contained"
+                  disabled={isLocked || (!selectedBenchmarks.fir && !selectedBenchmarks.mm)}
+                  onClick={handleStartMapping}
+                >
+                  Start Mapping
+                </Button>
+              </Box>
             </Box>
           );
-        case 'mapping':
-          return (
-            <Box
-              sx={{
-                height: '100%',
-                p: 3,
-                borderRadius: 1,
-                border: '1px dashed rgba(148, 163, 184, 0.3)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'text.secondary'
-              }}
-            >
-              Mapping workspace coming soon.
-            </Box>
-          );
+        }
         case 'verification':
           return (
             <Box
@@ -653,7 +836,7 @@ function Workspace() {
           return null;
       }
     },
-    [architecture, handlePropertyChange, selection, selectedBenchmarks]
+    [architecture, handlePropertyChange, selection, selectedBenchmarks, setSelectedBenchmarks, isLocked, handleStartMapping, latestMappingJob]
   );
 
   // Show loading state
@@ -784,6 +967,18 @@ function Workspace() {
               variant="outlined"
               sx={{ ml: 1 }}
             />
+            <Chip
+              size="small"
+              icon={isLocked ? <LockIcon /> : <CheckCircleIcon />}
+              label={
+                isLocked
+                  ? `1 job ${pendingJob?.status === 'running' ? 'running' : 'queued'}`
+                  : 'No pending jobs'
+              }
+              color={isLocked ? 'error' : 'default'}
+              variant="outlined"
+              sx={{ ml: 1 }}
+            />
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <IconButton
@@ -808,7 +1003,7 @@ function Workspace() {
         anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
         transformOrigin={{ vertical: 'top', horizontal: 'right' }}
       >
-        <MenuItem onClick={handleSaveToSupabase} disabled={saving}>
+        <MenuItem onClick={handleSaveToSupabase} disabled={saving || isLocked}>
           <ListItemIcon>
             <SaveIcon fontSize="small" />
           </ListItemIcon>

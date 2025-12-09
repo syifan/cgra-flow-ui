@@ -19,7 +19,7 @@ const getValueAtPath = (object, keyPath) => {
   }, object);
 };
 
-function PropertyInspector({ architecture, selection, onPropertyChange }) {
+function PropertyInspector({ architecture, selection, onPropertyChange, disabled = false }) {
   const { entity, schema, target, title, description, emptyMessage } = useMemo(() => {
     if (!architecture) {
       return {
@@ -149,7 +149,7 @@ function PropertyInspector({ architecture, selection, onPropertyChange }) {
         })()
       : false;
 
-    const isDisabled = property.mutable === false || dependencyMet;
+    const isDisabled = disabled || property.mutable === false || dependencyMet;
     const value = getValueAtPath(entity, property.key);
 
     return { isDisabled, value };
