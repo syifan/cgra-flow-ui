@@ -6,8 +6,11 @@ import {
   AppBar,
   Box,
   ButtonBase,
+  Checkbox,
   Chip,
   CircularProgress,
+  FormControlLabel,
+  FormGroup,
   IconButton,
   ListItemIcon,
   ListItemText,
@@ -70,6 +73,11 @@ const initialLayout = {
             children: [
               {
                 type: 'tab',
+                name: 'Benchmarks',
+                component: 'benchmarks'
+              },
+              {
+                type: 'tab',
                 name: 'Mapping',
                 component: 'mapping'
               },
@@ -126,6 +134,10 @@ function Workspace() {
   const [menuAnchorEl, setMenuAnchorEl] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [selectedBenchmarks, setSelectedBenchmarks] = useState({
+    fir: false,
+    mm: false
+  });
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [autoSaveCountdown, setAutoSaveCountdown] = useState(0);
   const savedStateRef = useRef(null);
@@ -524,6 +536,68 @@ function Workspace() {
               GenAI workspace coming soon.
             </Box>
           );
+        case 'benchmarks':
+          return (
+            <Box
+              sx={{
+                height: '100%',
+                p: 2,
+                overflow: 'auto'
+              }}
+            >
+              <Typography variant="subtitle2" sx={{ mb: 2, color: 'text.secondary' }}>
+                Select benchmarks to run on your CGRA design:
+              </Typography>
+              <FormGroup>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={selectedBenchmarks.fir}
+                      onChange={(e) =>
+                        setSelectedBenchmarks((prev) => ({
+                          ...prev,
+                          fir: e.target.checked
+                        }))
+                      }
+                    />
+                  }
+                  label={
+                    <Box>
+                      <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                        FIR
+                      </Typography>
+                      <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                        Finite Impulse Response filter - A common DSP operation that computes weighted sums of input samples.
+                      </Typography>
+                    </Box>
+                  }
+                />
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={selectedBenchmarks.mm}
+                      onChange={(e) =>
+                        setSelectedBenchmarks((prev) => ({
+                          ...prev,
+                          mm: e.target.checked
+                        }))
+                      }
+                    />
+                  }
+                  label={
+                    <Box>
+                      <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                        MM
+                      </Typography>
+                      <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                        Matrix Multiplication - A fundamental linear algebra operation used in graphics, ML, and scientific computing.
+                      </Typography>
+                    </Box>
+                  }
+                />
+              </FormGroup>
+            </Box>
+          );
         case 'mapping':
           return (
             <Box
@@ -579,7 +653,7 @@ function Workspace() {
           return null;
       }
     },
-    [architecture, handlePropertyChange, selection]
+    [architecture, handlePropertyChange, selection, selectedBenchmarks]
   );
 
   // Show loading state
