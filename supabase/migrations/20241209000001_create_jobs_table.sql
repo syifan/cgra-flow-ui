@@ -61,3 +61,6 @@ CREATE TRIGGER trigger_jobs_updated_at
 -- Add comment to table
 COMMENT ON TABLE jobs IS 'Job queue for CGRA mapping, verification, and layout tasks';
 COMMENT ON COLUMN jobs.info IS 'Job-specific information (e.g., {"benchmarks": ["fir", "mm"]} for mapping jobs)';
+
+-- Enable Realtime for the jobs table
+ALTER PUBLICATION supabase_realtime ADD TABLE jobs;
