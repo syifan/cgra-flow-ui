@@ -17,7 +17,7 @@ test.describe('Workspace save functionality', () => {
     await expect(cgraNodes).toHaveCount(12); // 3 rows x 4 columns = 12
 
     // Should show unsaved indicator
-    await expect(page.locator('.MuiChip-label:has-text("Unsaved")')).toBeVisible();
+    await expect(page.locator('.MuiChip-label:has-text("To be saved")')).toBeVisible();
   });
 
   test('can save project changes to Supabase', async ({ workspacePage: page }) => {
@@ -79,7 +79,7 @@ test.describe('Workspace save functionality', () => {
     await columnsInput.fill(newColumns);
 
     // Wait for unsaved indicator to appear (the count will change, triggering unsaved state)
-    await expect(page.locator('.MuiChip-label:has-text("Unsaved")')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('.MuiChip-label:has-text("To be saved")')).toBeVisible({ timeout: 5000 });
 
     // Try to navigate away by clicking logo (before auto-save triggers at 10s)
     await page.locator('text=CGRA Flow').click();
@@ -108,7 +108,7 @@ test.describe('Workspace save functionality', () => {
     await rowsInput.fill(newRows);
 
     // Should show unsaved indicator
-    await expect(page.locator('.MuiChip-label:has-text("Unsaved")')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('.MuiChip-label:has-text("To be saved")')).toBeVisible({ timeout: 5000 });
 
     // Wait for auto-save (10 seconds) - check that it eventually becomes "Saved"
     // The "Saving..." state may be too brief to catch reliably
