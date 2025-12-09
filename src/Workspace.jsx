@@ -20,7 +20,6 @@ import MenuIcon from '@mui/icons-material/Menu';
 import SaveIcon from '@mui/icons-material/Save';
 import HomeIcon from '@mui/icons-material/Home';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import EditIcon from '@mui/icons-material/Edit';
 import { Layout, Model } from 'flexlayout-react';
 import 'flexlayout-react/style/dark.css';
 import MainCanvas from './main_cancas';
@@ -128,9 +127,13 @@ function Workspace() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [autoSaveCountdown, setAutoSaveCountdown] = useState(0);
   const savedStateRef = useRef(null);
   const appStateRef = useRef(null);
+  const autoSaveIntervalRef = useRef(null);
   const { showError, showSuccess, showConfirm } = useNotification();
+
+  const AUTO_SAVE_DELAY = 10; // seconds
 
   // Keep appStateRef in sync for access in async callbacks
   useEffect(() => {
@@ -205,11 +208,40 @@ function Workspace() {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [hasUnsavedChanges]);
 
-  // Debounced auto-save: save 10 seconds after last change
+  // Debounced auto-save: save after countdown reaches 0
   useEffect(() => {
-    if (!hasUnsavedChanges || !projectId || !appState || saving) return;
+    if (!hasUnsavedChanges || !projectId || !appState || saving) {
+      // Clear countdown when not in unsaved state
+      if (!hasUnsavedChanges) {
+        setAutoSaveCountdown(0);
+        if (autoSaveIntervalRef.current) {
+          clearInterval(autoSaveIntervalRef.current);
+          autoSaveIntervalRef.current = null;
+        }
+      }
+      return;
+    }
+
+    // Start countdown
+    setAutoSaveCountdown(AUTO_SAVE_DELAY);
+
+    // Update countdown every second
+    autoSaveIntervalRef.current = setInterval(() => {
+      setAutoSaveCountdown((prev) => {
+        if (prev <= 1) {
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
 
     const timeoutId = setTimeout(async () => {
+      // Clear the interval before saving
+      if (autoSaveIntervalRef.current) {
+        clearInterval(autoSaveIntervalRef.current);
+        autoSaveIntervalRef.current = null;
+      }
+
       setSaving(true);
       const { error } = await supabase
         .from('projects')
@@ -227,9 +259,15 @@ function Workspace() {
         const currentStateString = JSON.stringify(appStateRef.current);
         setHasUnsavedChanges(currentStateString !== savedStateRef.current);
       }
-    }, 10000); // 10 seconds
+    }, AUTO_SAVE_DELAY * 1000);
 
-    return () => clearTimeout(timeoutId);
+    return () => {
+      clearTimeout(timeoutId);
+      if (autoSaveIntervalRef.current) {
+        clearInterval(autoSaveIntervalRef.current);
+        autoSaveIntervalRef.current = null;
+      }
+    };
   }, [hasUnsavedChanges, projectId, appState, saving, showError]);
 
   const architecture = appState?.architecture;
@@ -634,12 +672,40 @@ function Workspace() {
                 saving ? (
                   <CircularProgress size={16} color="inherit" />
                 ) : hasUnsavedChanges ? (
-                  <EditIcon />
+                  <Box sx={{ position: 'relative', display: 'inline-flex', ml: 0.5 }}>
+                    <CircularProgress
+                      variant="determinate"
+                      value={(autoSaveCountdown / AUTO_SAVE_DELAY) * 100}
+                      size={16}
+                      thickness={5}
+                      sx={{ color: 'warning.main' }}
+                    />
+                    <Box
+                      sx={{
+                        top: 0,
+                        left: 0,
+                        bottom: 0,
+                        right: 0,
+                        position: 'absolute',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}
+                    >
+                      <Typography
+                        variant="caption"
+                        component="div"
+                        sx={{ fontSize: '8px', lineHeight: 1, color: 'warning.main' }}
+                      >
+                        {autoSaveCountdown}
+                      </Typography>
+                    </Box>
+                  </Box>
                 ) : (
                   <CheckCircleIcon />
                 )
               }
-              label={saving ? 'Saving...' : hasUnsavedChanges ? 'Unsaved' : 'Saved'}
+              label={saving ? 'Saving...' : hasUnsavedChanges ? 'To be saved' : 'Saved'}
               color={saving ? 'info' : hasUnsavedChanges ? 'warning' : 'success'}
               variant="outlined"
               sx={{ ml: 1 }}
