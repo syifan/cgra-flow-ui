@@ -12,8 +12,7 @@ jobs:
     permissions:
       pull-requests: write
     env:
-      # Railway CLI expects the token in RAILWAY_TOKEN
-      RAILWAY_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+      RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
