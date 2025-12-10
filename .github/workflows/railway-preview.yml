@@ -4,38 +4,28 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, closed]
 
-env:
-  RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
-
 jobs:
   deploy-preview:
     if: github.event.action != 'closed'
     runs-on: ubuntu-latest
+    container: ghcr.io/railwayapp/cli:latest
     permissions:
       pull-requests: write
+    env:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install Railway CLI
-        run: npm install -g @railway/cli
-
-      # Link to Railway project (required for CLI commands)
-      - name: Link Railway Project
-        run: railway link ${{ secrets.RAILWAY_PROJECT_ID }}
-        env:
-          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+      - name: Verify Railway Auth
+        run: railway whoami
 
       # Get Supabase branch credentials using the Management API
-      # Supabase branches have their own project_ref and API keys
       - name: Get Supabase Branch Credentials
         id: supabase
         run: |
+          apk add --no-cache curl jq
+
           BRANCH_NAME="${{ github.head_ref }}"
           PROJECT_REF="${{ secrets.SUPABASE_PROJECT_REF }}"
 
@@ -55,7 +45,7 @@ jobs:
             exit 1
           fi
 
-          # Each Supabase branch has its own project_ref (different from main project)
+          # Each Supabase branch has its own project_ref
           BRANCH_PROJECT_REF=$(echo "$BRANCH_INFO" | jq -r '.project_ref')
           BRANCH_STATUS=$(echo "$BRANCH_INFO" | jq -r '.status')
 
@@ -66,11 +56,10 @@ jobs:
             sleep 30
           fi
 
-          # Branch URL uses the branch's own project_ref
           BRANCH_URL="https://${BRANCH_PROJECT_REF}.supabase.co"
           echo "Branch URL: $BRANCH_URL"
 
-          # Get the API keys for this branch (they're per-branch)
+          # Get the API keys for this branch
           API_KEYS=$(curl -s -X GET \
             "https://api.supabase.com/v1/projects/${BRANCH_PROJECT_REF}/api-keys" \
             -H "Authorization: Bearer ${{ secrets.SUPABASE_ACCESS_TOKEN }}" \
@@ -91,7 +80,6 @@ jobs:
 
           echo "Successfully retrieved branch credentials"
 
-          # Mask sensitive values in logs
           echo "::add-mask::$ANON_KEY"
           echo "::add-mask::$SERVICE_ROLE_KEY"
 
@@ -99,92 +87,50 @@ jobs:
           echo "anon_key=$ANON_KEY" >> $GITHUB_OUTPUT
           echo "service_role_key=$SERVICE_ROLE_KEY" >> $GITHUB_OUTPUT
 
-      # Create Railway environment for this PR
-      - name: Create Railway PR Environment
-        id: railway_env
-        run: |
-          ENV_NAME="pr-${{ github.event.pull_request.number }}"
-          echo "env_name=$ENV_NAME" >> $GITHUB_OUTPUT
-
-          # Check if environment already exists
-          EXISTING=$(railway environment list 2>/dev/null | grep "$ENV_NAME" || true)
-
-          if [ -z "$EXISTING" ]; then
-            echo "Creating new environment: $ENV_NAME"
-            railway environment create "$ENV_NAME" || true
-          else
-            echo "Environment $ENV_NAME already exists"
-          fi
-        env:
-          # Account token required to create environments
-          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
-
-      # Deploy Frontend to Railway
+      # Deploy Frontend
       - name: Deploy Frontend
         id: frontend
         run: |
-          ENV_NAME="pr-${{ github.event.pull_request.number }}"
+          # Set variables and deploy frontend service
+          railway variables --set "VITE_SUPABASE_URL=${{ steps.supabase.outputs.url }}" --service frontend || true
+          railway variables --set "VITE_SUPABASE_ANON_KEY=${{ steps.supabase.outputs.anon_key }}" --service frontend || true
 
-          # Set environment variables for frontend (one at a time with --set)
-          railway variables --set "VITE_SUPABASE_URL=${{ steps.supabase.outputs.url }}" \
-            --environment "$ENV_NAME" --service frontend || true
-          railway variables --set "VITE_SUPABASE_ANON_KEY=${{ steps.supabase.outputs.anon_key }}" \
-            --environment "$ENV_NAME" --service frontend || true
+          railway up --service frontend --detach
 
-          # Deploy frontend
-          railway up --environment "$ENV_NAME" --service frontend --detach
-
-          # Get the deployment URL
-          FRONTEND_URL=$(railway domain --environment "$ENV_NAME" --service frontend 2>/dev/null || echo "")
+          # Get deployment URL
+          FRONTEND_URL=$(railway domain --service frontend 2>/dev/null || echo "pending")
           echo "frontend_url=$FRONTEND_URL" >> $GITHUB_OUTPUT
-        env:
-          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
 
-      # Deploy Runner to Railway
+      # Deploy Runner
       - name: Deploy Runner
-        id: runner
         working-directory: ./runner
         run: |
-          ENV_NAME="pr-${{ github.event.pull_request.number }}"
+          railway variables --set "SUPABASE_URL=${{ steps.supabase.outputs.url }}" --service runner || true
+          railway variables --set "SUPABASE_SERVICE_ROLE_KEY=${{ steps.supabase.outputs.service_role_key }}" --service runner || true
+          railway variables --set "RUNNER_ID=pr-${{ github.event.pull_request.number }}" --service runner || true
+          railway variables --set "POLL_INTERVAL_MS=5000" --service runner || true
 
-          # Set environment variables for runner (one at a time with --set)
-          railway variables --set "SUPABASE_URL=${{ steps.supabase.outputs.url }}" \
-            --environment "$ENV_NAME" --service runner || true
-          railway variables --set "SUPABASE_SERVICE_ROLE_KEY=${{ steps.supabase.outputs.service_role_key }}" \
-            --environment "$ENV_NAME" --service runner || true
-          railway variables --set "RUNNER_ID=pr-${{ github.event.pull_request.number }}" \
-            --environment "$ENV_NAME" --service runner || true
-          railway variables --set "POLL_INTERVAL_MS=5000" \
-            --environment "$ENV_NAME" --service runner || true
+          railway up --service runner --detach
 
-          # Deploy runner
-          railway up --environment "$ENV_NAME" --service runner --detach
-        env:
-          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
-
-      # Comment on PR with deployment URLs
+      # Comment on PR
       - name: Comment on PR
         uses: actions/github-script@v7
         with:
           script: |
             const frontendUrl = '${{ steps.frontend.outputs.frontend_url }}';
-            const envName = 'pr-${{ github.event.pull_request.number }}';
             const supabaseUrl = '${{ steps.supabase.outputs.url }}';
 
             const body = `## 🚀 Railway Preview Deployment
 
             | Service | Status |
             |---------|--------|
-            | **Frontend** | ${frontendUrl ? `[${frontendUrl}](https://${frontendUrl})` : '⏳ Deploying...'} |
-            | **Runner** | ✅ Running |
+            | **Frontend** | ${frontendUrl && frontendUrl !== 'pending' ? `[${frontendUrl}](https://${frontendUrl})` : '⏳ Deploying...'} |
+            | **Runner** | ✅ Deployed |
             | **Supabase** | \`${supabaseUrl}\` |
 
-            **Environment:** \`${envName}\`
-
-            > Preview will be automatically deleted when PR is closed.
+            > This deployment uses the Railway environment configured for this project.
             `;
 
-            // Find existing comment
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -212,39 +158,5 @@ jobs:
               });
             }
 
-  # Cleanup when PR is closed
-  cleanup-preview:
-    if: github.event.action == 'closed'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Install Railway CLI
-        run: npm install -g @railway/cli
-
-      - name: Link Railway Project
-        run: railway link ${{ secrets.RAILWAY_PROJECT_ID }}
-        env:
-          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
-
-      - name: Delete Railway PR Environment
-        run: |
-          ENV_NAME="pr-${{ github.event.pull_request.number }}"
-          echo "Deleting environment: $ENV_NAME"
-          railway environment delete "$ENV_NAME" --yes || true
-        env:
-          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
-
-      - name: Comment on PR
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const body = `## 🧹 Railway Preview Cleaned Up
-
-            The preview environment \`pr-${{ github.event.pull_request.number }}\` has been deleted.
-            `;
-
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: body
-            });
+  # Note: Cleanup is handled automatically by Railway's PR environment feature
+  # Enable it in Railway Dashboard → Project Settings → Environments → Enable PR Environments
