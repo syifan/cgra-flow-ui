@@ -25,6 +25,12 @@ jobs:
       - name: Install Railway CLI
         run: npm install -g @railway/cli
 
+      # Link to Railway project (required for CLI commands)
+      - name: Link Railway Project
+        run: railway link ${{ secrets.RAILWAY_PROJECT_ID }}
+        env:
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+
       # Get Supabase branch credentials using the Management API
       # Supabase branches have their own project_ref and API keys
       - name: Get Supabase Branch Credentials
@@ -119,12 +125,11 @@ jobs:
         run: |
           ENV_NAME="pr-${{ github.event.pull_request.number }}"
 
-          # Set environment variables for frontend
-          railway variables set \
-            VITE_SUPABASE_URL="${{ steps.supabase.outputs.url }}" \
-            VITE_SUPABASE_ANON_KEY="${{ steps.supabase.outputs.anon_key }}" \
-            --environment "$ENV_NAME" \
-            --service frontend || true
+          # Set environment variables for frontend (one at a time with --set)
+          railway variables --set "VITE_SUPABASE_URL=${{ steps.supabase.outputs.url }}" \
+            --environment "$ENV_NAME" --service frontend || true
+          railway variables --set "VITE_SUPABASE_ANON_KEY=${{ steps.supabase.outputs.anon_key }}" \
+            --environment "$ENV_NAME" --service frontend || true
 
           # Deploy frontend
           railway up --environment "$ENV_NAME" --service frontend --detach
@@ -142,14 +147,15 @@ jobs:
         run: |
           ENV_NAME="pr-${{ github.event.pull_request.number }}"
 
-          # Set environment variables for runner
-          railway variables set \
-            SUPABASE_URL="${{ steps.supabase.outputs.url }}" \
-            SUPABASE_SERVICE_ROLE_KEY="${{ steps.supabase.outputs.service_role_key }}" \
-            RUNNER_ID="pr-${{ github.event.pull_request.number }}" \
-            POLL_INTERVAL_MS="5000" \
-            --environment "$ENV_NAME" \
-            --service runner || true
+          # Set environment variables for runner (one at a time with --set)
+          railway variables --set "SUPABASE_URL=${{ steps.supabase.outputs.url }}" \
+            --environment "$ENV_NAME" --service runner || true
+          railway variables --set "SUPABASE_SERVICE_ROLE_KEY=${{ steps.supabase.outputs.service_role_key }}" \
+            --environment "$ENV_NAME" --service runner || true
+          railway variables --set "RUNNER_ID=pr-${{ github.event.pull_request.number }}" \
+            --environment "$ENV_NAME" --service runner || true
+          railway variables --set "POLL_INTERVAL_MS=5000" \
+            --environment "$ENV_NAME" --service runner || true
 
           # Deploy runner
           railway up --environment "$ENV_NAME" --service runner --detach
@@ -213,6 +219,11 @@ jobs:
     steps:
       - name: Install Railway CLI
         run: npm install -g @railway/cli
+
+      - name: Link Railway Project
+        run: railway link ${{ secrets.RAILWAY_PROJECT_ID }}
+        env:
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
 
       - name: Delete Railway PR Environment
         run: |
