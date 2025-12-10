@@ -20,6 +20,9 @@ jobs:
       - name: Verify Railway Auth
         run: railway whoami
 
+      - name: Link Railway Project
+        run: railway link ${{ secrets.RAILWAY_PROJECT_ID }}
+
       # Get Supabase branch credentials using the Management API
       - name: Get Supabase Branch Credentials
         id: supabase
