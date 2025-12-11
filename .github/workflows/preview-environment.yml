@@ -111,30 +111,22 @@ jobs:
       - name: Install Railway CLI
         run: npm install -g @railway/cli
 
-      - name: Deploy Runner to Railway Preview
+      - name: Deploy Runner to Railway
         env:
-          # Use Project Token (not API Token) - auto-links to the project
+          # Project Token - scoped to a specific environment
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: |
           cd runner
 
-          # Set environment name based on PR
-          ENVIRONMENT="pr-${{ github.event.number }}"
+          echo "Deploying runner to Railway..."
 
-          echo "Deploying runner to Railway environment: $ENVIRONMENT"
-
-          # Create environment if it doesn't exist and set variables
-          railway environment create "$ENVIRONMENT" 2>/dev/null || true
-
-          # Switch to the PR environment
-          railway environment "$ENVIRONMENT"
-
-          # Set environment variables for this preview
+          # Set environment variables for this deployment
+          # These will be used by the runner to connect to the correct Supabase instance
           railway variables set \
             SUPABASE_URL="${{ steps.supabase-branch.outputs.branch_url }}" \
             SUPABASE_SERVICE_ROLE_KEY="${{ steps.supabase-keys.outputs.service_key }}" \
             RUNNER_MODE="fake" \
-            RUNNER_ID="runner-pr-${{ github.event.number }}"
+            RUNNER_ID="runner-${{ github.event.number }}"
 
           # Deploy
           railway up --detach
@@ -192,14 +184,9 @@ jobs:
       # Note: Supabase branch is managed by Supabase GitHub integration
       # It will be deleted automatically when the git branch is deleted
 
-      - name: Install Railway CLI
-        run: npm install -g @railway/cli
-
-      - name: Delete Railway Preview Environment
-        env:
-          # Use Project Token (not API Token) - auto-links to the project
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      # Note: With Project Token, we deploy to a single environment
+      # The runner will be redeployed when the next PR runs
+      - name: Log cleanup
         run: |
-          ENVIRONMENT="pr-${{ github.event.number }}"
-          echo "Deleting Railway environment: $ENVIRONMENT"
-          railway environment delete "$ENVIRONMENT" --yes || true
+          echo "PR ${{ github.event.number }} closed"
+          echo "Railway runner will be updated by the next PR deployment"
