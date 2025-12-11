@@ -5,7 +5,7 @@ on:
     types: [opened, synchronize, reopened, closed]
 
 env:
-  SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+  SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_REF }}
 
 jobs:
   # Create/update preview environment when PR is opened or updated
