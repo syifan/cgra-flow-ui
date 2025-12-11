@@ -114,9 +114,12 @@ jobs:
       - name: Deploy Runner to Railway Preview
         env:
           RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
-          RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
         run: |
           cd runner
+
+          # Create Railway config file to link project without TTY
+          mkdir -p .railway
+          echo '{"project": "${{ secrets.RAILWAY_PROJECT_ID }}"}' > .railway/config.json
 
           # Set environment name based on PR
           ENVIRONMENT="pr-${{ github.event.number }}"
@@ -198,8 +201,11 @@ jobs:
       - name: Delete Railway Preview Environment
         env:
           RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
-          RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
         run: |
+          # Create Railway config file to link project without TTY
+          mkdir -p .railway
+          echo '{"project": "${{ secrets.RAILWAY_PROJECT_ID }}"}' > .railway/config.json
+
           ENVIRONMENT="pr-${{ github.event.number }}"
           echo "Deleting Railway environment: $ENVIRONMENT"
           railway environment delete "$ENVIRONMENT" --yes || true
