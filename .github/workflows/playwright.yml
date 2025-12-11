@@ -21,7 +21,9 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci
+        run: |
+          npm ci
+          cd runner && npm ci
 
       # Free up disk space to allow Docker image caching
       - name: Free disk space
@@ -56,14 +58,21 @@ jobs:
           echo "$STATUS" | jq .
           API_URL=$(echo "$STATUS" | jq -r '.API_URL')
           PUBLISHABLE_KEY=$(echo "$STATUS" | jq -r '.PUBLISHABLE_KEY')
+          SERVICE_ROLE_KEY=$(echo "$STATUS" | jq -r '.SERVICE_ROLE_KEY')
           echo "Extracted API_URL: $API_URL"
           echo "Extracted PUBLISHABLE_KEY: ${PUBLISHABLE_KEY:0:20}..."
+          echo "Extracted SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY:0:20}..."
           if [ -z "$API_URL" ] || [ "$API_URL" = "null" ] || [ -z "$PUBLISHABLE_KEY" ] || [ "$PUBLISHABLE_KEY" = "null" ]; then
             echo "Error: Supabase API_URL or PUBLISHABLE_KEY is empty or null." >&2
             exit 1
           fi
+          if [ -z "$SERVICE_ROLE_KEY" ] || [ "$SERVICE_ROLE_KEY" = "null" ]; then
+            echo "Error: Supabase SERVICE_ROLE_KEY is empty or null." >&2
+            exit 1
+          fi
           echo "api_url=$API_URL" >> $GITHUB_OUTPUT
           echo "anon_key=$PUBLISHABLE_KEY" >> $GITHUB_OUTPUT
+          echo "service_role_key=$SERVICE_ROLE_KEY" >> $GITHUB_OUTPUT
 
       - name: Run Playwright tests
         run: |
@@ -73,6 +82,8 @@ jobs:
         env:
           VITE_SUPABASE_URL: ${{ steps.supabase.outputs.api_url }}
           VITE_SUPABASE_ANON_KEY: ${{ steps.supabase.outputs.anon_key }}
+          SUPABASE_URL: ${{ steps.supabase.outputs.api_url }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ steps.supabase.outputs.service_role_key }}
 
       - name: Upload test results
         uses: actions/upload-artifact@v4

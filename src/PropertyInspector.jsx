@@ -19,7 +19,7 @@ const getValueAtPath = (object, keyPath) => {
   }, object);
 };
 
-function PropertyInspector({ architecture, selection, onPropertyChange }) {
+function PropertyInspector({ architecture, selection, onPropertyChange, disabled = false }) {
   const { entity, schema, target, title, description, emptyMessage } = useMemo(() => {
     if (!architecture) {
       return {
@@ -149,7 +149,7 @@ function PropertyInspector({ architecture, selection, onPropertyChange }) {
         })()
       : false;
 
-    const isDisabled = property.mutable === false || dependencyMet;
+    const isDisabled = disabled || property.mutable === false || dependencyMet;
     const value = getValueAtPath(entity, property.key);
 
     return { isDisabled, value };
@@ -352,6 +352,13 @@ function PropertyInspector({ architecture, selection, onPropertyChange }) {
                   }}
                   multiline={property.multiline}
                   minRows={property.multiline ? 3 : undefined}
+                  sx={property.type === 'number' ? {
+                    '& input[type=number]::-webkit-inner-spin-button, & input[type=number]::-webkit-outer-spin-button': {
+                      opacity: 1,
+                      cursor: 'pointer',
+                      filter: 'invert(1)'
+                    }
+                  } : undefined}
                 />
               );
             }

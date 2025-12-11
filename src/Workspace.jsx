@@ -1,8 +1,17 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useNotification } from './contexts/NotificationContext';
+import { supabase } from './lib/supabase';
 import {
   AppBar,
   Box,
+  Button,
+  ButtonBase,
+  Checkbox,
+  Chip,
+  CircularProgress,
+  FormControlLabel,
+  FormGroup,
   IconButton,
   ListItemIcon,
   ListItemText,
@@ -12,8 +21,13 @@ import {
   Typography
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
-import DownloadIcon from '@mui/icons-material/Download';
-import UploadIcon from '@mui/icons-material/Upload';
+import SaveIcon from '@mui/icons-material/Save';
+import HomeIcon from '@mui/icons-material/Home';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import LockIcon from '@mui/icons-material/Lock';
+import ErrorIcon from '@mui/icons-material/Error';
+import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import { Layout, Model } from 'flexlayout-react';
 import 'flexlayout-react/style/dark.css';
 import MainCanvas from './main_cancas';
@@ -111,14 +125,242 @@ const cloneAppData = (data) => {
 };
 
 function Workspace() {
+  const { projectId } = useParams();
+  const navigate = useNavigate();
   const [model] = useState(() => Model.fromJson(initialLayout));
-  const [appState, setAppState] = useState(() => cloneAppData(defaultAppData));
+  const [appState, setAppState] = useState(null);
+  const [projectName, setProjectName] = useState('');
   const [selection, setSelection] = useState(null);
   const [menuAnchorEl, setMenuAnchorEl] = useState(null);
-  const fileInputRef = useRef(null);
-  const { showError } = useNotification();
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [autoSaveCountdown, setAutoSaveCountdown] = useState(0);
+  const [pendingJob, setPendingJob] = useState(null);
+  const [latestMappingJob, setLatestMappingJob] = useState(null);
+  const savedStateRef = useRef(null);
+  const appStateRef = useRef(null);
+  const autoSaveIntervalRef = useRef(null);
+  const { showError, showSuccess, showConfirm } = useNotification();
 
-  const architecture = appState.architecture;
+  // Project is locked when there's a queued or running job
+  const isLocked = pendingJob !== null;
+
+  // Selected benchmarks are stored in appState
+  const selectedBenchmarks = appState?.selectedBenchmarks ?? { fir: false, mm: false };
+
+  const setSelectedBenchmarks = useCallback((updater) => {
+    if (isLocked) return;
+    setAppState((prev) => {
+      if (!prev) return prev;
+      const newBenchmarks = typeof updater === 'function'
+        ? updater(prev.selectedBenchmarks ?? { fir: false, mm: false })
+        : updater;
+      return { ...prev, selectedBenchmarks: newBenchmarks };
+    });
+  }, [isLocked]);
+
+  const AUTO_SAVE_DELAY = 10; // seconds
+
+  // Keep appStateRef in sync for access in async callbacks
+  useEffect(() => {
+    appStateRef.current = appState;
+  }, [appState]);
+
+  // Fetch and subscribe to jobs for this project
+  useEffect(() => {
+    if (!projectId) return;
+
+    const fetchJobs = async () => {
+      // Fetch pending job (queued or running)
+      const { data: pendingData, error: pendingError } = await supabase
+        .from('jobs')
+        .select('*')
+        .eq('project_id', projectId)
+        .in('status', ['queued', 'running'])
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (pendingError) {
+        console.error('Error fetching pending jobs:', pendingError);
+      } else {
+        setPendingJob(pendingData);
+      }
+
+      // Fetch latest mapping job (any status) for status display
+      const { data: latestData, error: latestError } = await supabase
+        .from('jobs')
+        .select('*')
+        .eq('project_id', projectId)
+        .eq('type', 'mapping')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (latestError) {
+        console.error('Error fetching latest mapping job:', latestError);
+      } else {
+        setLatestMappingJob(latestData);
+      }
+    };
+
+    fetchJobs();
+
+    // Subscribe to job changes for this project
+    const subscription = supabase
+      .channel(`jobs:project_id=eq.${projectId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'jobs',
+          filter: `project_id=eq.${projectId}`
+        },
+        () => {
+          // Refetch jobs on any change
+          fetchJobs();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [projectId]);
+
+  // Load project data from Supabase on mount
+  useEffect(() => {
+    const loadProject = async () => {
+      if (!projectId) {
+        showError('No project ID provided');
+        navigate('/dashboard');
+        return;
+      }
+
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('projects')
+        .select('*')
+        .eq('id', projectId)
+        .single();
+
+      if (error) {
+        console.error('Error loading project:', error);
+        showError('Failed to load project: ' + error.message);
+        navigate('/dashboard');
+        return;
+      }
+
+      if (!data) {
+        showError('Project not found');
+        navigate('/dashboard');
+        return;
+      }
+
+      setProjectName(data.name || 'Untitled Project');
+
+      // Use project data if available, otherwise use default
+      let initialState;
+      if (data.data && Object.keys(data.data).length > 0) {
+        initialState = cloneAppData(data.data);
+      } else {
+        initialState = cloneAppData(defaultAppData);
+      }
+      setAppState(initialState);
+      savedStateRef.current = JSON.stringify(initialState);
+      setHasUnsavedChanges(false);
+
+      setLoading(false);
+    };
+
+    loadProject();
+  }, [projectId, navigate, showError]);
+
+  // Track unsaved changes by comparing current state to saved state
+  useEffect(() => {
+    if (!appState || !savedStateRef.current) return;
+    const currentStateString = JSON.stringify(appState);
+    setHasUnsavedChanges(currentStateString !== savedStateRef.current);
+  }, [appState]);
+
+  // Warn user before leaving page with unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (event) => {
+      if (hasUnsavedChanges) {
+        event.preventDefault();
+        event.returnValue = '';
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasUnsavedChanges]);
+
+  // Debounced auto-save: save after countdown reaches 0
+  useEffect(() => {
+    if (!hasUnsavedChanges || !projectId || !appState || saving || isLocked) {
+      // Clear countdown when not in unsaved state or locked
+      if (!hasUnsavedChanges || isLocked) {
+        setAutoSaveCountdown(0);
+        if (autoSaveIntervalRef.current) {
+          clearInterval(autoSaveIntervalRef.current);
+          autoSaveIntervalRef.current = null;
+        }
+      }
+      return;
+    }
+
+    // Start countdown
+    setAutoSaveCountdown(AUTO_SAVE_DELAY);
+
+    // Update countdown every second
+    autoSaveIntervalRef.current = setInterval(() => {
+      setAutoSaveCountdown((prev) => {
+        if (prev <= 1) {
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    const timeoutId = setTimeout(async () => {
+      // Clear the interval before saving
+      if (autoSaveIntervalRef.current) {
+        clearInterval(autoSaveIntervalRef.current);
+        autoSaveIntervalRef.current = null;
+      }
+
+      setSaving(true);
+      const { error } = await supabase
+        .from('projects')
+        .update({ data: appState })
+        .eq('id', projectId);
+
+      setSaving(false);
+
+      if (error) {
+        console.error('Auto-save failed:', error);
+        showError('Auto-save failed: ' + error.message);
+      } else {
+        savedStateRef.current = JSON.stringify(appState);
+        // Only clear unsaved indicator if current state matches what we saved
+        const currentStateString = JSON.stringify(appStateRef.current);
+        setHasUnsavedChanges(currentStateString !== savedStateRef.current);
+      }
+    }, AUTO_SAVE_DELAY * 1000);
+
+    return () => {
+      clearTimeout(timeoutId);
+      if (autoSaveIntervalRef.current) {
+        clearInterval(autoSaveIntervalRef.current);
+        autoSaveIntervalRef.current = null;
+      }
+    };
+  }, [hasUnsavedChanges, projectId, appState, saving, showError, isLocked]);
+
+  const architecture = appState?.architecture;
 
   const setValueAtPath = useCallback((object, keyPath, value) => {
     const keys = Array.isArray(keyPath) ? keyPath : keyPath.split('.');
@@ -292,61 +534,109 @@ function Workspace() {
     setMenuAnchorEl(null);
   }, []);
 
-  const handleSaveData = useCallback(() => {
+  const handleBackToDashboard = useCallback(async () => {
     handleCloseMenu();
-    const blob = new Blob([JSON.stringify(appState, null, 2)], {
-      type: 'application/json'
-    });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    const fileNameBase = architecture?.name?.trim().replace(/\s+/g, '-').toLowerCase() || 'cgra-flow';
-    link.download = `${fileNameBase}-app-state.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  }, [appState, architecture?.name, handleCloseMenu]);
 
-  const handleTriggerLoad = useCallback(() => {
+    if (hasUnsavedChanges) {
+      const confirmed = await showConfirm({
+        title: 'Unsaved Changes',
+        message: 'You have unsaved changes. Are you sure you want to leave? Your changes will be lost.',
+        confirmText: 'Leave',
+        cancelText: 'Stay',
+        confirmColor: 'error'
+      });
+
+      if (!confirmed) return;
+    }
+
+    navigate('/dashboard');
+  }, [handleCloseMenu, hasUnsavedChanges, showConfirm, navigate]);
+
+  const handleSaveToSupabase = useCallback(async () => {
     handleCloseMenu();
-    fileInputRef.current?.click();
-  }, [handleCloseMenu]);
+    if (!projectId || !appState || saving || isLocked) return;
 
-  const handleFileChange = useCallback(
-    (event) => {
-      const file = event.target.files?.[0];
-      if (!file) return;
+    setSaving(true);
+    const { error } = await supabase
+      .from('projects')
+      .update({ data: appState })
+      .eq('id', projectId);
 
-      const reader = new FileReader();
-      reader.onload = () => {
-        try {
-          const text = typeof reader.result === 'string' ? reader.result : '';
-          const parsed = JSON.parse(text);
-          if (!parsed || typeof parsed !== 'object' || !parsed.architecture) {
-            throw new Error('Invalid app data file');
-          }
+    setSaving(false);
 
-          setAppState(cloneAppData(parsed));
-          setSelection(null);
-        } catch (error) {
-          console.error('Failed to load app data', error);
-          showError('Unable to load the selected file. Please choose a valid CGRA Flow export.');
-        } finally {
-          event.target.value = '';
-        }
-      };
+    if (error) {
+      console.error('Error saving project:', error);
+      showError('Failed to save project: ' + error.message);
+    } else {
+      savedStateRef.current = JSON.stringify(appState);
+      // Only clear unsaved indicator if current state matches what we saved
+      const currentStateString = JSON.stringify(appStateRef.current);
+      setHasUnsavedChanges(currentStateString !== savedStateRef.current);
+      showSuccess('Project saved successfully');
+    }
+  }, [projectId, appState, saving, isLocked, handleCloseMenu, showError, showSuccess]);
 
-      reader.onerror = () => {
-        console.error('Failed to read file', reader.error);
-        showError('Unable to read the selected file. Please try again.');
-        event.target.value = '';
-      };
+  const handleStartMapping = useCallback(async () => {
+    if (!projectId || isLocked || !appState) return;
 
-      reader.readAsText(file);
-    },
-    [setAppState, setSelection, showError]
-  );
+    // Collect selected benchmarks
+    const benchmarks = [];
+    if (selectedBenchmarks.fir) benchmarks.push('fir');
+    if (selectedBenchmarks.mm) benchmarks.push('mm');
+
+    if (benchmarks.length === 0) {
+      showError('Please select at least one benchmark');
+      return;
+    }
+
+    // Get current user
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      showError('You must be logged in to start a mapping job');
+      return;
+    }
+
+    // Save project first before creating job
+    setSaving(true);
+    const { error: saveError } = await supabase
+      .from('projects')
+      .update({ data: appState })
+      .eq('id', projectId);
+
+    if (saveError) {
+      setSaving(false);
+      console.error('Error saving project before mapping:', saveError);
+      showError('Failed to save project: ' + saveError.message);
+      return;
+    }
+
+    savedStateRef.current = JSON.stringify(appState);
+    setHasUnsavedChanges(false);
+    setSaving(false);
+
+    // Insert job into Supabase
+    const { data: newJob, error } = await supabase
+      .from('jobs')
+      .insert({
+        project_id: projectId,
+        user_id: user.id,
+        type: 'mapping',
+        status: 'queued',
+        info: { benchmarks }
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error creating job:', error);
+      showError('Failed to start mapping job: ' + error.message);
+    } else {
+      // Optimistically update the lock state immediately
+      setPendingJob(newJob);
+      setLatestMappingJob(newJob);
+      showSuccess('Mapping job queued successfully');
+    }
+  }, [projectId, isLocked, appState, selectedBenchmarks, showError, showSuccess]);
 
   const factory = useCallback(
     (node) => {
@@ -367,6 +657,7 @@ function Workspace() {
               architecture={architecture}
               selection={selection}
               onPropertyChange={handlePropertyChange}
+              disabled={isLocked}
             />
           );
         case 'genai':
@@ -386,23 +677,127 @@ function Workspace() {
               GenAI workspace coming soon.
             </Box>
           );
-        case 'mapping':
+        case 'mapping': {
+          const getJobStatusDisplay = () => {
+            if (!latestMappingJob) return null;
+            const status = latestMappingJob.status;
+            const benchmarks = latestMappingJob.info?.benchmarks?.join(', ') || 'N/A';
+
+            const statusConfig = {
+              queued: { icon: <HourglassEmptyIcon fontSize="small" />, color: 'info', label: 'Queued' },
+              running: { icon: <PlayArrowIcon fontSize="small" />, color: 'warning', label: 'Running' },
+              success: { icon: <CheckCircleIcon fontSize="small" />, color: 'success', label: 'Success' },
+              failed: { icon: <ErrorIcon fontSize="small" />, color: 'error', label: 'Failed' },
+              cancelled: { icon: <ErrorIcon fontSize="small" />, color: 'default', label: 'Cancelled' }
+            };
+
+            const config = statusConfig[status] || statusConfig.cancelled;
+
+            return (
+              <Box sx={{ mb: 2, p: 1.5, bgcolor: 'rgba(148,163,184,0.1)', borderRadius: 1 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                  <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                    Latest Mapping Job:
+                  </Typography>
+                  <Chip
+                    size="small"
+                    icon={config.icon}
+                    label={config.label}
+                    color={config.color}
+                    variant="outlined"
+                  />
+                </Box>
+                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                  Benchmarks: {benchmarks}
+                </Typography>
+                {latestMappingJob.error_message && (
+                  <Typography variant="caption" sx={{ color: 'error.main', display: 'block', mt: 0.5 }}>
+                    Error: {latestMappingJob.error_message}
+                  </Typography>
+                )}
+              </Box>
+            );
+          };
+
           return (
             <Box
               sx={{
                 height: '100%',
-                p: 3,
-                borderRadius: 1,
-                border: '1px dashed rgba(148, 163, 184, 0.3)',
+                p: 2,
                 display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'text.secondary'
+                overflow: 'auto'
               }}
             >
-              Mapping workspace coming soon.
+              <Box sx={{ flex: 1 }}>
+                {getJobStatusDisplay()}
+                <Typography variant="subtitle2" sx={{ mb: 2, color: 'text.secondary' }}>
+                  Select benchmarks to map on your CGRA design:
+                </Typography>
+                <FormGroup>
+                  <FormControlLabel
+                    disabled={isLocked}
+                    control={
+                      <Checkbox
+                        checked={selectedBenchmarks.fir}
+                        onChange={(e) =>
+                          setSelectedBenchmarks((prev) => ({
+                            ...prev,
+                            fir: e.target.checked
+                          }))
+                        }
+                        disabled={isLocked}
+                      />
+                    }
+                    label={
+                      <Box>
+                        <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                          FIR
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                          Finite Impulse Response filter - A common DSP operation that computes weighted sums of input samples.
+                        </Typography>
+                      </Box>
+                    }
+                  />
+                  <FormControlLabel
+                    disabled={isLocked}
+                    control={
+                      <Checkbox
+                        checked={selectedBenchmarks.mm}
+                        onChange={(e) =>
+                          setSelectedBenchmarks((prev) => ({
+                            ...prev,
+                            mm: e.target.checked
+                          }))
+                        }
+                        disabled={isLocked}
+                      />
+                    }
+                    label={
+                      <Box>
+                        <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                          MM
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                          Matrix Multiplication - A fundamental linear algebra operation used in graphics, ML, and scientific computing.
+                        </Typography>
+                      </Box>
+                    }
+                  />
+                </FormGroup>
+              </Box>
+              <Box sx={{ display: 'flex', alignItems: 'flex-start', ml: 2 }}>
+                <Button
+                  variant="contained"
+                  disabled={isLocked || (!selectedBenchmarks.fir && !selectedBenchmarks.mm)}
+                  onClick={handleStartMapping}
+                >
+                  Start Mapping
+                </Button>
+              </Box>
             </Box>
           );
+        }
         case 'verification':
           return (
             <Box
@@ -441,8 +836,30 @@ function Workspace() {
           return null;
       }
     },
-    [architecture, handlePropertyChange, selection]
+    [architecture, handlePropertyChange, selection, selectedBenchmarks, setSelectedBenchmarks, isLocked, handleStartMapping, latestMappingJob]
   );
+
+  // Show loading state
+  if (loading) {
+    return (
+      <Box
+        sx={{
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          bgcolor: 'background.default',
+          flexDirection: 'column',
+          gap: 2
+        }}
+      >
+        <CircularProgress />
+        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+          Loading project...
+        </Typography>
+      </Box>
+    );
+  }
 
   return (
     <Box
@@ -473,28 +890,110 @@ function Workspace() {
             justifyContent: 'space-between'
           }}
         >
-          <Typography
-            variant="h6"
-            sx={{
-              fontWeight: 700,
-              letterSpacing: 2,
-              textTransform: 'uppercase'
-            }}
-          >
-            CGRA Flow
-          </Typography>
-          <IconButton
-            color="inherit"
-            edge="end"
-            aria-label="open settings"
-            sx={{
-              border: '1px solid rgba(148, 163, 184, 0.35)',
-              borderRadius: 2
-            }}
-            onClick={handleOpenMenu}
-          >
-            <MenuIcon />
-          </IconButton>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <ButtonBase
+              onClick={handleBackToDashboard}
+              sx={{
+                borderRadius: 1,
+                px: 1,
+                py: 0.5,
+                '&:hover': {
+                  bgcolor: 'rgba(148, 163, 184, 0.1)'
+                }
+              }}
+            >
+              <Typography
+                variant="h6"
+                sx={{
+                  fontWeight: 700,
+                  letterSpacing: 2,
+                  textTransform: 'uppercase'
+                }}
+              >
+                CGRA Flow
+              </Typography>
+            </ButtonBase>
+            <Typography
+              variant="body2"
+              sx={{
+                color: 'text.secondary',
+                borderLeft: '1px solid rgba(148, 163, 184, 0.3)',
+                pl: 2
+              }}
+            >
+              {projectName}
+            </Typography>
+            <Chip
+              size="small"
+              icon={
+                saving ? (
+                  <CircularProgress size={16} color="inherit" />
+                ) : hasUnsavedChanges ? (
+                  <Box sx={{ position: 'relative', display: 'inline-flex', ml: 0.5 }}>
+                    <CircularProgress
+                      variant="determinate"
+                      value={(autoSaveCountdown / AUTO_SAVE_DELAY) * 100}
+                      size={16}
+                      thickness={5}
+                      sx={{ color: 'warning.main' }}
+                    />
+                    <Box
+                      sx={{
+                        top: 0,
+                        left: 0,
+                        bottom: 0,
+                        right: 0,
+                        position: 'absolute',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}
+                    >
+                      <Typography
+                        variant="caption"
+                        component="div"
+                        sx={{ fontSize: '8px', lineHeight: 1, color: 'warning.main' }}
+                      >
+                        {autoSaveCountdown}
+                      </Typography>
+                    </Box>
+                  </Box>
+                ) : (
+                  <CheckCircleIcon />
+                )
+              }
+              label={saving ? 'Saving...' : hasUnsavedChanges ? 'To be saved' : 'Saved'}
+              color={saving ? 'info' : hasUnsavedChanges ? 'warning' : 'success'}
+              variant="outlined"
+              sx={{ ml: 1 }}
+            />
+            <Chip
+              size="small"
+              icon={isLocked ? <LockIcon /> : <CheckCircleIcon />}
+              label={
+                isLocked
+                  ? `1 job ${pendingJob?.status === 'running' ? 'running' : 'queued'}`
+                  : 'No pending jobs'
+              }
+              color={isLocked ? 'error' : 'default'}
+              variant="outlined"
+              sx={{ ml: 1 }}
+            />
+          </Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <IconButton
+              color="inherit"
+              edge="end"
+              aria-label="open settings"
+              sx={{
+                border: '1px solid rgba(148, 163, 184, 0.35)',
+                borderRadius: 2
+              }}
+              onClick={handleOpenMenu}
+            >
+              <MenuIcon />
+            </IconButton>
+          </Box>
         </Toolbar>
       </AppBar>
       <Menu
@@ -504,26 +1003,19 @@ function Workspace() {
         anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
         transformOrigin={{ vertical: 'top', horizontal: 'right' }}
       >
-        <MenuItem onClick={handleSaveData}>
+        <MenuItem onClick={handleSaveToSupabase} disabled={saving || isLocked}>
           <ListItemIcon>
-            <DownloadIcon fontSize="small" />
+            <SaveIcon fontSize="small" />
           </ListItemIcon>
-          <ListItemText>Save data</ListItemText>
+          <ListItemText>Save project</ListItemText>
         </MenuItem>
-        <MenuItem onClick={handleTriggerLoad}>
+        <MenuItem onClick={handleBackToDashboard}>
           <ListItemIcon>
-            <UploadIcon fontSize="small" />
+            <HomeIcon fontSize="small" />
           </ListItemIcon>
-          <ListItemText>Load data</ListItemText>
+          <ListItemText>Back to dashboard</ListItemText>
         </MenuItem>
       </Menu>
-      <input
-        type="file"
-        accept="application/json"
-        hidden
-        ref={fileInputRef}
-        onChange={handleFileChange}
-      />
       <Box
         component="main"
         sx={{
@@ -551,3 +1043,4 @@ function Workspace() {
 }
 
 export default Workspace;
+

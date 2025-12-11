@@ -1,0 +1,89 @@
+/**
+ * Job processor for claiming and executing jobs from the queue.
+ */
+
+/**
+ * Claim the next available job atomically.
+ * Uses FOR UPDATE SKIP LOCKED to prevent race conditions between multiple runners.
+ *
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {string} runnerId
+ * @returns {Promise<object|null>} The claimed job or null if no jobs available
+ */
+export async function claimNextJob(supabase, runnerId) {
+  const { data, error } = await supabase.rpc('claim_next_job', {
+    p_runner_id: runnerId
+  })
+
+  if (error) {
+    throw error
+  }
+
+  // RPC returns an array (SETOF), return first item or null
+  return data && data.length > 0 ? data[0] : null
+}
+
+/**
+ * Mark a job as completed successfully.
+ *
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {string} jobId
+ * @param {object} resultInfo - Additional info to store in the job
+ */
+export async function completeJob(supabase, jobId, resultInfo = {}) {
+  const { error } = await supabase
+    .from('jobs')
+    .update({
+      status: 'success',
+      completed_at: new Date().toISOString(),
+      info: resultInfo
+    })
+    .eq('id', jobId)
+
+  if (error) throw error
+}
+
+/**
+ * Mark a job as failed.
+ *
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {string} jobId
+ * @param {string} errorMessage
+ */
+export async function failJob(supabase, jobId, errorMessage) {
+  const { error } = await supabase
+    .from('jobs')
+    .update({
+      status: 'failed',
+      completed_at: new Date().toISOString(),
+      error_message: errorMessage
+    })
+    .eq('id', jobId)
+
+  if (error) throw error
+}
+
+/**
+ * Simulate job execution with random duration.
+ * This is a fake implementation for testing.
+ *
+ * @param {object} job - The job to process
+ * @returns {Promise<object>} Result info
+ */
+export async function executeJobFake(job) {
+  // Random duration between 10-30 seconds
+  const durationMs = Math.floor(Math.random() * 20000) + 10000
+  const durationSec = (durationMs / 1000).toFixed(1)
+
+  console.log(`  Simulating ${job.type} job execution for ${durationSec}s...`)
+
+  await new Promise(resolve => setTimeout(resolve, durationMs))
+
+  // Return fake result info
+  return {
+    ...job.info,
+    execution_time_ms: durationMs,
+    completed_by: 'fake_runner',
+    result: `Fake ${job.type} completed successfully`
+  }
+}
