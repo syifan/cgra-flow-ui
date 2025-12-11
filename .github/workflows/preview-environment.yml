@@ -108,14 +108,6 @@ jobs:
           echo "anon_key=$ANON_KEY" >> $GITHUB_OUTPUT
           echo "service_key=$SERVICE_KEY" >> $GITHUB_OUTPUT
 
-      - name: Push Database Migrations to Branch
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-        run: |
-          BRANCH_REF="${{ steps.supabase-branch.outputs.branch_ref }}"
-          echo "Pushing migrations to branch $BRANCH_REF..."
-          supabase db push --project-ref "$BRANCH_REF"
-
       - name: Install Railway CLI
         run: npm install -g @railway/cli
 
