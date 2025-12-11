@@ -38,17 +38,30 @@ jobs:
 
           echo "Looking for Supabase branch: $GIT_BRANCH"
 
-          # List all branches and find the matching one
-          BRANCHES=$(supabase branches list --project-ref $SUPABASE_PROJECT_ID --output json)
-          echo "Available branches:"
-          echo "$BRANCHES" | jq -r '.[].name'
+          # Use Supabase Management API to list branches (CLI doesn't support JSON output)
+          BRANCHES=$(curl -s \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_ID/branches")
 
-          BRANCH_REF=$(echo "$BRANCHES" | jq -r ".[] | select(.name == \"$GIT_BRANCH\") | .id")
+          echo "API Response:"
+          echo "$BRANCHES" | jq .
+
+          # Check for API errors
+          if echo "$BRANCHES" | jq -e '.error' > /dev/null 2>&1; then
+            echo "::error::Failed to list branches: $(echo "$BRANCHES" | jq -r '.error')"
+            exit 1
+          fi
+
+          echo "Available branches:"
+          echo "$BRANCHES" | jq -r '.[].name // .[].git_branch // "unknown"'
+
+          # Find the matching branch (check both 'name' and 'git_branch' fields)
+          BRANCH_REF=$(echo "$BRANCHES" | jq -r ".[] | select(.name == \"$GIT_BRANCH\" or .git_branch == \"$GIT_BRANCH\") | .project_ref // .id")
 
           if [ -z "$BRANCH_REF" ] || [ "$BRANCH_REF" = "null" ]; then
             echo "::error::Supabase branch '$GIT_BRANCH' not found."
             echo "::error::Please ensure Supabase GitHub integration is enabled and the branch has been created."
-            echo "::error::Available branches: $(echo "$BRANCHES" | jq -r '[.[].name] | join(", ")')"
+            echo "::error::Available branches: $(echo "$BRANCHES" | jq -r '[.[].name // .[].git_branch] | join(", ")')"
             exit 1
           fi
 
