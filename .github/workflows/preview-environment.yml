@@ -112,6 +112,7 @@ jobs:
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.RUNNER_SSH_HOST }}
+          port: ${{ secrets.RUNNER_SSH_PORT || 22 }}
           username: ${{ secrets.RUNNER_SSH_USER }}
           key: ${{ secrets.RUNNER_SSH_KEY }}
           script: |
@@ -148,6 +149,13 @@ jobs:
             pm2 delete cgra-runner 2>/dev/null || true
             pm2 start index.js --name cgra-runner --env-file ../.env
             pm2 save
+
+            # Show status and recent logs
+            echo "=== PM2 Status ==="
+            pm2 status
+            echo ""
+            echo "=== Recent Logs (last 20 lines) ==="
+            pm2 logs cgra-runner --lines 20 --nostream || true
 
       - name: Comment on PR
         uses: actions/github-script@v7
@@ -206,6 +214,7 @@ jobs:
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.RUNNER_SSH_HOST }}
+          port: ${{ secrets.RUNNER_SSH_PORT || 22 }}
           username: ${{ secrets.RUNNER_SSH_USER }}
           key: ${{ secrets.RUNNER_SSH_KEY }}
           script: |
