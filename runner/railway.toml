@@ -1,0 +1,20 @@
+[build]
+builder = "dockerfile"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+# No exposed port needed - this is a background worker
+numReplicas = 1
+# Restart on failure
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3
+
+# Health check (optional - ensures runner stays alive)
+# healthcheckPath = ""
+# healthcheckTimeout = 100
+
+[deploy.resources]
+# Minimal resources for fake runner
+# Increase when using real CGRA compilation
+cpus = 0.5
+memory = 512

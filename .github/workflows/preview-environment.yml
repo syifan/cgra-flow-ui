@@ -1,0 +1,196 @@
+name: Preview Environment
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+env:
+  SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+
+jobs:
+  # Create/update preview environment when PR is opened or updated
+  deploy-preview:
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Find Supabase Branch
+        id: supabase-branch
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          # Supabase creates branches automatically via GitHub integration
+          # Branch name matches the git branch name
+          GIT_BRANCH="${{ github.head_ref }}"
+
+          echo "Looking for Supabase branch: $GIT_BRANCH"
+
+          # List all branches and find the matching one
+          BRANCHES=$(supabase branches list --project-ref $SUPABASE_PROJECT_ID --output json)
+          echo "Available branches:"
+          echo "$BRANCHES" | jq -r '.[].name'
+
+          BRANCH_REF=$(echo "$BRANCHES" | jq -r ".[] | select(.name == \"$GIT_BRANCH\") | .id")
+
+          if [ -z "$BRANCH_REF" ] || [ "$BRANCH_REF" = "null" ]; then
+            echo "::error::Supabase branch '$GIT_BRANCH' not found."
+            echo "::error::Please ensure Supabase GitHub integration is enabled and the branch has been created."
+            echo "::error::Available branches: $(echo "$BRANCHES" | jq -r '[.[].name] | join(", ")')"
+            exit 1
+          fi
+
+          # Branch API URL format
+          BRANCH_API_URL="https://${BRANCH_REF}.supabase.co"
+
+          echo "Found Supabase branch!"
+          echo "  Branch ref: $BRANCH_REF"
+          echo "  API URL: $BRANCH_API_URL"
+
+          echo "branch_url=$BRANCH_API_URL" >> $GITHUB_OUTPUT
+          echo "branch_ref=$BRANCH_REF" >> $GITHUB_OUTPUT
+          echo "branch_name=$GIT_BRANCH" >> $GITHUB_OUTPUT
+
+      - name: Get Supabase Branch Keys
+        id: supabase-keys
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          BRANCH_REF="${{ steps.supabase-branch.outputs.branch_ref }}"
+
+          # Get API keys for the branch
+          KEYS=$(supabase projects api-keys --project-ref "$BRANCH_REF" --output json 2>/dev/null || echo "[]")
+
+          ANON_KEY=$(echo "$KEYS" | jq -r '.[] | select(.name == "anon") | .api_key')
+          SERVICE_KEY=$(echo "$KEYS" | jq -r '.[] | select(.name == "service_role") | .api_key')
+
+          if [ -z "$ANON_KEY" ] || [ "$ANON_KEY" = "null" ]; then
+            echo "Warning: Could not get anon key, using production key as fallback"
+            ANON_KEY="${{ secrets.SUPABASE_ANON_KEY }}"
+          fi
+
+          if [ -z "$SERVICE_KEY" ] || [ "$SERVICE_KEY" = "null" ]; then
+            echo "Warning: Could not get service key, using production key as fallback"
+            SERVICE_KEY="${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}"
+          fi
+
+          # Mask secrets in logs
+          echo "::add-mask::$ANON_KEY"
+          echo "::add-mask::$SERVICE_KEY"
+
+          echo "anon_key=$ANON_KEY" >> $GITHUB_OUTPUT
+          echo "service_key=$SERVICE_KEY" >> $GITHUB_OUTPUT
+
+      - name: Push Database Migrations to Branch
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          BRANCH_REF="${{ steps.supabase-branch.outputs.branch_ref }}"
+          echo "Pushing migrations to branch $BRANCH_REF..."
+          supabase db push --project-ref "$BRANCH_REF"
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Deploy Runner to Railway Preview
+        env:
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+        run: |
+          cd runner
+
+          # Set environment name based on PR
+          ENVIRONMENT="pr-${{ github.event.number }}"
+
+          echo "Deploying runner to Railway environment: $ENVIRONMENT"
+
+          # Create environment if it doesn't exist and set variables
+          railway environment create "$ENVIRONMENT" 2>/dev/null || true
+
+          # Switch to the PR environment
+          railway environment "$ENVIRONMENT"
+
+          # Set environment variables for this preview
+          railway variables set \
+            SUPABASE_URL="${{ steps.supabase-branch.outputs.branch_url }}" \
+            SUPABASE_SERVICE_ROLE_KEY="${{ steps.supabase-keys.outputs.service_key }}" \
+            RUNNER_MODE="fake" \
+            RUNNER_ID="runner-pr-${{ github.event.number }}"
+
+          # Deploy
+          railway up --detach
+
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const branchUrl = '${{ steps.supabase-branch.outputs.branch_url }}';
+            const prNumber = context.issue.number;
+
+            const body = `## Preview Environment Ready
+
+            | Service | URL |
+            |---------|-----|
+            | Supabase Branch | \`${branchUrl}\` |
+            | Runner | Deployed to Railway (pr-${prNumber}) |
+
+            The runner is connected to this PR's Supabase branch and will process jobs automatically.
+            `;
+
+            // Find existing comment
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+            });
+
+            const botComment = comments.data.find(c =>
+              c.user.type === 'Bot' && c.body.includes('Preview Environment Ready')
+            );
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body: body
+              });
+            }
+
+  # Cleanup preview environment when PR is closed
+  cleanup-preview:
+    if: github.event.action == 'closed'
+    runs-on: ubuntu-latest
+
+    steps:
+      # Note: Supabase branch is managed by Supabase GitHub integration
+      # It will be deleted automatically when the git branch is deleted
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Delete Railway Preview Environment
+        env:
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+        run: |
+          ENVIRONMENT="pr-${{ github.event.number }}"
+          echo "Deleting Railway environment: $ENVIRONMENT"
+          railway environment delete "$ENVIRONMENT" --yes || true
