@@ -145,8 +145,11 @@ jobs:
             # Install dependencies
             npm ci --omit=dev
 
-            # Stop existing runner
-            pm2 delete cgra-runner 2>/dev/null || true
+            # Use PR-specific process name to allow multiple concurrent preview environments
+            PROCESS_NAME="cgra-runner-pr-${{ github.event.number }}"
+
+            # Stop existing runner for this PR
+            pm2 delete "$PROCESS_NAME" 2>/dev/null || true
 
             # Start runner with environment variables loaded via dotenv
             # Create a wrapper script that loads .env
@@ -159,7 +162,7 @@ jobs:
             STARTEOF
             chmod +x start.sh
 
-            pm2 start ./start.sh --name cgra-runner
+            pm2 start ./start.sh --name "$PROCESS_NAME"
             pm2 save
 
             # Show status and recent logs
@@ -168,7 +171,7 @@ jobs:
             sleep 2
             echo ""
             echo "=== Recent Logs ==="
-            pm2 logs cgra-runner --lines 20 --nostream || true
+            pm2 logs "$PROCESS_NAME" --lines 20 --nostream || true
 
       - name: Comment on PR
         uses: actions/github-script@v7
@@ -231,7 +234,8 @@ jobs:
           username: ${{ secrets.RUNNER_SSH_USER }}
           key: ${{ secrets.RUNNER_SSH_KEY }}
           script: |
-            echo "PR ${{ github.event.number }} closed - stopping runner"
-            pm2 delete cgra-runner 2>/dev/null || true
+            PROCESS_NAME="cgra-runner-pr-${{ github.event.number }}"
+            echo "PR ${{ github.event.number }} closed - stopping $PROCESS_NAME"
+            pm2 delete "$PROCESS_NAME" 2>/dev/null || true
             pm2 save
             rm -rf ~/cgra-runner/repo
