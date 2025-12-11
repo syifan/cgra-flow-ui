@@ -1,0 +1,73 @@
+name: Production Runner
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'runner/**'
+      - '.github/workflows/production-runner.yml'
+
+jobs:
+  deploy-production:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy Runner via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.RUNNER_SSH_HOST }}
+          port: ${{ secrets.RUNNER_SSH_PORT || 22 }}
+          username: ${{ secrets.RUNNER_SSH_USER }}
+          key: ${{ secrets.RUNNER_SSH_KEY }}
+          script: |
+            set -e
+
+            # Create runner directory
+            mkdir -p ~/cgra-runner
+            cd ~/cgra-runner
+
+            # Clean up and clone fresh
+            rm -rf repo
+            git clone --depth 1 https://github.com/${{ github.repository }}.git repo
+
+            cd repo/runner
+
+            # Write production environment file
+            cat > .env << 'ENVEOF'
+            SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+            SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+            RUNNER_MODE=fake
+            RUNNER_ID=runner-production
+            POLL_INTERVAL_MS=5000
+            ENVEOF
+
+            # Install dependencies
+            npm ci --omit=dev
+
+            # Stop existing production runner (keeps PR-specific runners intact)
+            pm2 delete cgra-runner 2>/dev/null || true
+
+            # Start production runner
+            cat > start.sh << 'STARTEOF'
+            #!/bin/bash
+            set -a
+            source .env
+            set +a
+            exec node index.js
+            STARTEOF
+            chmod +x start.sh
+
+            pm2 start ./start.sh --name cgra-runner
+            pm2 save
+
+            # Show status and recent logs
+            echo "=== PM2 Status ==="
+            pm2 status
+            sleep 2
+            echo ""
+            echo "=== Recent Logs ==="
+            pm2 logs cgra-runner --lines 20 --nostream || true
