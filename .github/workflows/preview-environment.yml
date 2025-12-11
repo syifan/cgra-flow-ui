@@ -33,7 +33,8 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
           # Supabase creates branches automatically via GitHub integration
-          # Branch name matches the git branch name
+          # But only when supabase files are changed in the PR
+          # Fall back to main project if no branch exists
           GIT_BRANCH="${{ github.head_ref }}"
 
           echo "Looking for Supabase branch: $GIT_BRANCH"
@@ -47,30 +48,31 @@ jobs:
           echo "$BRANCHES" | jq .
 
           # Check for API errors
-          if echo "$BRANCHES" | jq -e '.error' > /dev/null 2>&1; then
-            echo "::error::Failed to list branches: $(echo "$BRANCHES" | jq -r '.error')"
-            exit 1
-          fi
+          if echo "$BRANCHES" | jq -e '.message' > /dev/null 2>&1; then
+            echo "::warning::Failed to list branches: $(echo "$BRANCHES" | jq -r '.message')"
+            echo "Falling back to main project"
+            BRANCH_REF="$SUPABASE_PROJECT_ID"
+          else
+            echo "Available branches:"
+            echo "$BRANCHES" | jq -r '.[].name // .[].git_branch // "unknown"'
 
-          echo "Available branches:"
-          echo "$BRANCHES" | jq -r '.[].name // .[].git_branch // "unknown"'
+            # Find the matching branch (check both 'name' and 'git_branch' fields)
+            BRANCH_REF=$(echo "$BRANCHES" | jq -r ".[] | select(.name == \"$GIT_BRANCH\" or .git_branch == \"$GIT_BRANCH\") | .project_ref // .id")
 
-          # Find the matching branch (check both 'name' and 'git_branch' fields)
-          BRANCH_REF=$(echo "$BRANCHES" | jq -r ".[] | select(.name == \"$GIT_BRANCH\" or .git_branch == \"$GIT_BRANCH\") | .project_ref // .id")
-
-          if [ -z "$BRANCH_REF" ] || [ "$BRANCH_REF" = "null" ]; then
-            echo "::error::Supabase branch '$GIT_BRANCH' not found."
-            echo "::error::Please ensure Supabase GitHub integration is enabled and the branch has been created."
-            echo "::error::Available branches: $(echo "$BRANCHES" | jq -r '[.[].name // .[].git_branch] | join(", ")')"
-            exit 1
+            if [ -z "$BRANCH_REF" ] || [ "$BRANCH_REF" = "null" ]; then
+              echo "::notice::Supabase branch '$GIT_BRANCH' not found. This is normal if no supabase files were changed."
+              echo "Falling back to main project: $SUPABASE_PROJECT_ID"
+              BRANCH_REF="$SUPABASE_PROJECT_ID"
+            else
+              echo "Found Supabase branch!"
+              echo "  Branch ref: $BRANCH_REF"
+            fi
           fi
 
           # Branch API URL format
           BRANCH_API_URL="https://${BRANCH_REF}.supabase.co"
 
-          echo "Found Supabase branch!"
-          echo "  Branch ref: $BRANCH_REF"
-          echo "  API URL: $BRANCH_API_URL"
+          echo "Using Supabase URL: $BRANCH_API_URL"
 
           echo "branch_url=$BRANCH_API_URL" >> $GITHUB_OUTPUT
           echo "branch_ref=$BRANCH_REF" >> $GITHUB_OUTPUT
