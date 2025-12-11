@@ -120,20 +120,26 @@ jobs:
 
           echo "Deploying runner to Railway..."
 
-          # List available services and link if needed
-          echo "Available services:"
-          railway service || echo "No services found"
+          # Use service name from secret (must match Railway service name)
+          SERVICE_NAME="${{ secrets.RAILWAY_SERVICE_NAME }}"
+
+          if [ -n "$SERVICE_NAME" ]; then
+            echo "Using service: $SERVICE_NAME"
+            SERVICE_FLAG="--service $SERVICE_NAME"
+          else
+            echo "No RAILWAY_SERVICE_NAME secret set, trying without service flag"
+            SERVICE_FLAG=""
+          fi
 
           # Set environment variables for this deployment
-          # These will be used by the runner to connect to the correct Supabase instance
-          railway variables \
+          railway variables $SERVICE_FLAG \
             --set "SUPABASE_URL=${{ steps.supabase-branch.outputs.branch_url }}" \
             --set "SUPABASE_SERVICE_ROLE_KEY=${{ steps.supabase-keys.outputs.service_key }}" \
             --set "RUNNER_MODE=fake" \
             --set "RUNNER_ID=runner-${{ github.event.number }}"
 
           # Deploy
-          railway up --detach
+          railway up $SERVICE_FLAG --detach
 
       - name: Comment on PR
         uses: actions/github-script@v7
