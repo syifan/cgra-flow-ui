@@ -120,6 +120,10 @@ jobs:
 
           echo "Deploying runner to Railway..."
 
+          # List available services and link if needed
+          echo "Available services:"
+          railway service || echo "No services found"
+
           # Set environment variables for this deployment
           # These will be used by the runner to connect to the correct Supabase instance
           railway variables \
