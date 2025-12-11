@@ -1,0 +1,241 @@
+name: Preview Environment
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_REF }}
+
+jobs:
+  # Create/update preview environment when PR is opened or updated
+  deploy-preview:
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Find Supabase Branch
+        id: supabase-branch
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          # Supabase creates branches automatically via GitHub integration
+          # But only when supabase files are changed in the PR
+          # Fall back to main project if no branch exists
+          GIT_BRANCH="${{ github.head_ref }}"
+
+          echo "Looking for Supabase branch: $GIT_BRANCH"
+
+          # Use Supabase Management API to list branches (CLI doesn't support JSON output)
+          BRANCHES=$(curl -s \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_ID/branches")
+
+          echo "API Response:"
+          echo "$BRANCHES" | jq .
+
+          # Check for API errors
+          if echo "$BRANCHES" | jq -e '.message' > /dev/null 2>&1; then
+            echo "::warning::Failed to list branches: $(echo "$BRANCHES" | jq -r '.message')"
+            echo "Falling back to main project"
+            BRANCH_REF="$SUPABASE_PROJECT_ID"
+          else
+            echo "Available branches:"
+            echo "$BRANCHES" | jq -r '.[].name // .[].git_branch // "unknown"'
+
+            # Find the matching branch (check both 'name' and 'git_branch' fields)
+            BRANCH_REF=$(echo "$BRANCHES" | jq -r ".[] | select(.name == \"$GIT_BRANCH\" or .git_branch == \"$GIT_BRANCH\") | .project_ref // .id")
+
+            if [ -z "$BRANCH_REF" ] || [ "$BRANCH_REF" = "null" ]; then
+              echo "::notice::Supabase branch '$GIT_BRANCH' not found. This is normal if no supabase files were changed."
+              echo "Falling back to main project: $SUPABASE_PROJECT_ID"
+              BRANCH_REF="$SUPABASE_PROJECT_ID"
+            else
+              echo "Found Supabase branch!"
+              echo "  Branch ref: $BRANCH_REF"
+            fi
+          fi
+
+          # Branch API URL format
+          BRANCH_API_URL="https://${BRANCH_REF}.supabase.co"
+
+          echo "Using Supabase URL: $BRANCH_API_URL"
+
+          echo "branch_url=$BRANCH_API_URL" >> $GITHUB_OUTPUT
+          echo "branch_ref=$BRANCH_REF" >> $GITHUB_OUTPUT
+          echo "branch_name=$GIT_BRANCH" >> $GITHUB_OUTPUT
+
+      - name: Get Supabase Branch Keys
+        id: supabase-keys
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          BRANCH_REF="${{ steps.supabase-branch.outputs.branch_ref }}"
+
+          # Get API keys for the branch
+          KEYS=$(supabase projects api-keys --project-ref "$BRANCH_REF" --output json 2>/dev/null || echo "[]")
+
+          ANON_KEY=$(echo "$KEYS" | jq -r '.[] | select(.name == "anon") | .api_key')
+          SERVICE_KEY=$(echo "$KEYS" | jq -r '.[] | select(.name == "service_role") | .api_key')
+
+          if [ -z "$ANON_KEY" ] || [ "$ANON_KEY" = "null" ]; then
+            echo "::warning::Could not get anon key, using production key as fallback"
+            ANON_KEY="${{ secrets.SUPABASE_ANON_KEY }}"
+          fi
+
+          if [ -z "$SERVICE_KEY" ] || [ "$SERVICE_KEY" = "null" ]; then
+            echo "::warning::Could not get service key, using production key as fallback"
+            SERVICE_KEY="${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}"
+          fi
+
+          # Mask secrets in logs
+          echo "::add-mask::$ANON_KEY"
+          echo "::add-mask::$SERVICE_KEY"
+
+          echo "anon_key=$ANON_KEY" >> $GITHUB_OUTPUT
+          echo "service_key=$SERVICE_KEY" >> $GITHUB_OUTPUT
+
+      - name: Deploy Runner via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.RUNNER_SSH_HOST }}
+          port: ${{ secrets.RUNNER_SSH_PORT || 22 }}
+          username: ${{ secrets.RUNNER_SSH_USER }}
+          key: ${{ secrets.RUNNER_SSH_KEY }}
+          script: |
+            set -e
+
+            # Create runner directory
+            mkdir -p ~/cgra-runner
+            cd ~/cgra-runner
+
+            # Clean up and clone fresh (simpler than trying to update)
+            rm -rf repo
+            git clone --depth 1 --branch ${{ github.head_ref }} https://github.com/${{ github.repository }}.git repo || \
+              git clone --depth 1 https://github.com/${{ github.repository }}.git repo
+
+            cd repo/runner
+
+            # Write environment file
+            cat > .env << 'ENVEOF'
+            SUPABASE_URL=${{ steps.supabase-branch.outputs.branch_url }}
+            SUPABASE_SERVICE_ROLE_KEY=${{ steps.supabase-keys.outputs.service_key }}
+            RUNNER_MODE=fake
+            RUNNER_ID=runner-${{ github.event.number }}
+            POLL_INTERVAL_MS=5000
+            ENVEOF
+
+            # Install dependencies
+            npm ci --omit=dev
+
+            # Use PR-specific process name to allow multiple concurrent preview environments
+            PROCESS_NAME="cgra-runner-pr-${{ github.event.number }}"
+
+            # Stop existing runner for this PR
+            pm2 delete "$PROCESS_NAME" 2>/dev/null || true
+
+            # Start runner with environment variables loaded via dotenv
+            # Create a wrapper script that loads .env
+            cat > start.sh << 'STARTEOF'
+            #!/bin/bash
+            set -a
+            source .env
+            set +a
+            exec node index.js
+            STARTEOF
+            chmod +x start.sh
+
+            pm2 start ./start.sh --name "$PROCESS_NAME"
+            pm2 save
+
+            # Show status and recent logs
+            echo "=== PM2 Status ==="
+            pm2 status
+            sleep 2
+            echo ""
+            echo "=== Recent Logs ==="
+            pm2 logs "$PROCESS_NAME" --lines 20 --nostream || true
+
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const branchUrl = '${{ steps.supabase-branch.outputs.branch_url }}';
+            const prNumber = context.issue.number;
+
+            const body = `## Preview Environment Ready
+
+            | Service | Status |
+            |---------|--------|
+            | Supabase Branch | \`${branchUrl}\` |
+            | Runner | Deployed via SSH (runner-${prNumber}) |
+
+            The runner is connected to this PR's Supabase branch and will process jobs automatically.
+            `;
+
+            // Find existing comment
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+            });
+
+            const botComment = comments.data.find(c =>
+              c.user.type === 'Bot' && c.body.includes('Preview Environment Ready')
+            );
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body: body
+              });
+            }
+
+  # Cleanup preview environment when PR is closed
+  cleanup-preview:
+    if: github.event.action == 'closed'
+    runs-on: ubuntu-latest
+
+    steps:
+      # Note: Supabase branch is managed by Supabase GitHub integration
+      # It will be deleted automatically when the git branch is deleted
+
+      - name: Stop Runner via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.RUNNER_SSH_HOST }}
+          port: ${{ secrets.RUNNER_SSH_PORT || 22 }}
+          username: ${{ secrets.RUNNER_SSH_USER }}
+          key: ${{ secrets.RUNNER_SSH_KEY }}
+          script: |
+            PROCESS_NAME="cgra-runner-pr-${{ github.event.number }}"
+            echo "PR ${{ github.event.number }} closed - stopping $PROCESS_NAME"
+            pm2 delete "$PROCESS_NAME" 2>/dev/null || true
+            pm2 save
+            rm -rf ~/cgra-runner/repo
