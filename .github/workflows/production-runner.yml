@@ -5,8 +5,8 @@ on:
     branches:
       - main
     paths:
-      - 'runner/**'
-      - '.github/workflows/production-runner.yml'
+      - "runner/**"
+      - ".github/workflows/production-runner.yml"
 
 jobs:
   deploy-production:
