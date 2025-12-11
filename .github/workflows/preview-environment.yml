@@ -120,45 +120,54 @@ jobs:
           username: ${{ secrets.RUNNER_SSH_USER }}
           key: ${{ secrets.RUNNER_SSH_KEY }}
           script: |
-            # Create runner directory if it doesn't exist
+            set -e
+
+            # Create runner directory
             mkdir -p ~/cgra-runner
             cd ~/cgra-runner
 
-            # Write environment file for this PR
-            cat > .env << EOF
+            # Clean up and clone fresh (simpler than trying to update)
+            rm -rf repo
+            git clone --depth 1 --branch ${{ github.head_ref }} https://github.com/${{ github.repository }}.git repo || \
+              git clone --depth 1 https://github.com/${{ github.repository }}.git repo
+
+            cd repo/runner
+
+            # Write environment file
+            cat > .env << 'ENVEOF'
             SUPABASE_URL=${{ steps.supabase-branch.outputs.branch_url }}
             SUPABASE_SERVICE_ROLE_KEY=${{ steps.supabase-keys.outputs.service_key }}
             RUNNER_MODE=fake
             RUNNER_ID=runner-${{ github.event.number }}
             POLL_INTERVAL_MS=5000
-            EOF
-
-            # Pull latest runner code (or clone if first time)
-            if [ -d "runner" ]; then
-              cd runner
-              git fetch origin
-              git checkout ${{ github.head_ref }} || git checkout main
-              git pull
-            else
-              git clone https://github.com/${{ github.repository }}.git temp
-              mv temp/runner .
-              rm -rf temp
-              cd runner
-            fi
+            ENVEOF
 
             # Install dependencies
-            npm ci --only=production
+            npm ci --omit=dev
 
-            # Restart runner (using pm2 for process management)
+            # Stop existing runner
             pm2 delete cgra-runner 2>/dev/null || true
-            pm2 start index.js --name cgra-runner --env-file ../.env
+
+            # Start runner with environment variables loaded via dotenv
+            # Create a wrapper script that loads .env
+            cat > start.sh << 'STARTEOF'
+            #!/bin/bash
+            set -a
+            source .env
+            set +a
+            exec node index.js
+            STARTEOF
+            chmod +x start.sh
+
+            pm2 start ./start.sh --name cgra-runner
             pm2 save
 
             # Show status and recent logs
             echo "=== PM2 Status ==="
             pm2 status
+            sleep 2
             echo ""
-            echo "=== Recent Logs (last 20 lines) ==="
+            echo "=== Recent Logs ==="
             pm2 logs cgra-runner --lines 20 --nostream || true
 
       - name: Comment on PR
@@ -225,4 +234,4 @@ jobs:
             echo "PR ${{ github.event.number }} closed - stopping runner"
             pm2 delete cgra-runner 2>/dev/null || true
             pm2 save
-            rm -f ~/cgra-runner/.env
+            rm -rf ~/cgra-runner/repo
