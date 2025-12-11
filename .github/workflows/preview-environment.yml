@@ -122,11 +122,11 @@ jobs:
 
           # Set environment variables for this deployment
           # These will be used by the runner to connect to the correct Supabase instance
-          railway variables set \
-            SUPABASE_URL="${{ steps.supabase-branch.outputs.branch_url }}" \
-            SUPABASE_SERVICE_ROLE_KEY="${{ steps.supabase-keys.outputs.service_key }}" \
-            RUNNER_MODE="fake" \
-            RUNNER_ID="runner-${{ github.event.number }}"
+          railway variables \
+            --set "SUPABASE_URL=${{ steps.supabase-branch.outputs.branch_url }}" \
+            --set "SUPABASE_SERVICE_ROLE_KEY=${{ steps.supabase-keys.outputs.service_key }}" \
+            --set "RUNNER_MODE=fake" \
+            --set "RUNNER_ID=runner-${{ github.event.number }}"
 
           # Deploy
           railway up --detach
