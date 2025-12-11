@@ -96,12 +96,12 @@ jobs:
           SERVICE_KEY=$(echo "$KEYS" | jq -r '.[] | select(.name == "service_role") | .api_key')
 
           if [ -z "$ANON_KEY" ] || [ "$ANON_KEY" = "null" ]; then
-            echo "Warning: Could not get anon key, using production key as fallback"
+            echo "::warning::Could not get anon key, using production key as fallback"
             ANON_KEY="${{ secrets.SUPABASE_ANON_KEY }}"
           fi
 
           if [ -z "$SERVICE_KEY" ] || [ "$SERVICE_KEY" = "null" ]; then
-            echo "Warning: Could not get service key, using production key as fallback"
+            echo "::warning::Could not get service key, using production key as fallback"
             SERVICE_KEY="${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}"
           fi
 

@@ -43,6 +43,9 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /cgra
 
 # Clone and build LLVM/MLIR
+# Commit 6146a88 is a known working version for CGRA dataflow compilation
+# Full SHA: 6146a88e0b09a52025e7e1cb0adbf5dce4538b64 (LLVM ~18.x development)
+# This specific commit is required for compatibility with the dataflow project
 RUN git clone https://github.com/llvm/llvm-project.git && \
     cd llvm-project && \
     git checkout 6146a88 && \
@@ -75,7 +78,9 @@ FROM llvm-base AS final
 
 WORKDIR /cgra
 
-# Install Verilator
+# Install Verilator 4.036
+# This specific version is required for compatibility with pymtl3.1
+# Newer versions have breaking API changes that affect VectorCGRA simulation
 RUN wget https://github.com/tancheng/pymtl-verilator/raw/master/verilator-travis-4.036.tar.gz && \
     tar -xzf verilator-travis-4.036.tar.gz && \
     rm verilator-travis-4.036.tar.gz
@@ -109,6 +114,8 @@ RUN python3.12 -m venv /cgra/venv
 ENV PATH="/cgra/venv/bin:${PATH}"
 ENV VIRTUAL_ENV="/cgra/venv"
 
+# py==1.11.0 is required by older pytest versions used in pymtl3
+# pymtl3.1@yo-struct-list-fix includes fixes for struct list handling in VectorCGRA
 RUN pip install --upgrade pip && \
     pip install py==1.11.0 && \
     pip install wheel && \
