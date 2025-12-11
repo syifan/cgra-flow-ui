@@ -114,7 +114,7 @@ jobs:
       - name: Deploy Runner to Railway Preview
         env:
           # Use Project Token (not API Token) - auto-links to the project
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_PROJECT_TOKEN }}
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: |
           cd runner
 
@@ -198,7 +198,7 @@ jobs:
       - name: Delete Railway Preview Environment
         env:
           # Use Project Token (not API Token) - auto-links to the project
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_PROJECT_TOKEN }}
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: |
           ENVIRONMENT="pr-${{ github.event.number }}"
           echo "Deleting Railway environment: $ENVIRONMENT"
