@@ -103,11 +103,11 @@ describe('Architecture Converter - Basic Structure', () => {
     assert.equal(result.multi_cgra_defaults.base_topology, 'mesh');
     assert.equal(result.multi_cgra_defaults.memory.capacity, 512);
 
-    // Check per-CGRA defaults
+    // Check per-CGRA defaults (minimum enforced is 4x4)
     assert.ok(result.per_cgra_defaults, 'Should have per_cgra_defaults');
-    assert.equal(result.per_cgra_defaults.rows, 2);
-    assert.equal(result.per_cgra_defaults.columns, 2);
-    assert.equal(result.per_cgra_defaults.ctrl_mem_items, 10);
+    assert.equal(result.per_cgra_defaults.rows, 4);
+    assert.equal(result.per_cgra_defaults.columns, 4);
+    assert.equal(result.per_cgra_defaults.ctrl_mem_items, 20); // minimum enforced
     assert.equal(result.per_cgra_defaults.base_topology, 'mesh');
     assert.equal(result.per_cgra_defaults.memory.banks, 4);
 
@@ -126,7 +126,7 @@ describe('Architecture Converter - Basic Structure', () => {
 });
 
 describe('Architecture Converter - Functional Units', () => {
-  it('should convert tileFunctionalUnits to operations list', () => {
+  it('should normalize operations to include all base operations', () => {
     const input = {
       version: 1,
       architecture: {
@@ -147,14 +147,6 @@ describe('Architecture Converter - Functional Units', () => {
                 disabled: false,
                 tileFunctionalUnits: {
                   phi: true,
-                  shift: false,
-                  select: true,
-                  mac: false,
-                  return: true,
-                  logic: true,
-                  load: true,
-                  store: false,
-                  compare: true,
                   add: true,
                   mul: true
                 }
@@ -167,20 +159,24 @@ describe('Architecture Converter - Functional Units', () => {
 
     const result = convertJsonToYaml(input);
 
-    const expectedOps = ['phi', 'select', 'return', 'logic', 'load', 'compare', 'add', 'mul'];
-    const unexpectedOps = ['shift', 'mac', 'store'];
+    // All base operations should be included regardless of UI settings
+    const baseOps = [
+      'add', 'mul', 'sub', 'div', 'rem',
+      'fadd', 'fmul', 'fsub', 'fdiv',
+      'or', 'not', 'icmp', 'fcmp', 'sel',
+      'cast', 'sext', 'zext', 'shl',
+      'vfmul', 'fadd_fadd', 'fmul_fadd',
+      'data_mov', 'ctrl_mov', 'reserve',
+      'grant_predicate', 'grant_once', 'grant_always',
+      'loop_control', 'phi', 'constant',
+      'load', 'store', 'return',
+      'load_indexed', 'store_indexed', 'alloca'
+    ];
 
-    expectedOps.forEach(op => {
+    baseOps.forEach(op => {
       assert.ok(
         result.tile_defaults.operations.includes(op),
-        `Should include operation: ${op}`
-      );
-    });
-
-    unexpectedOps.forEach(op => {
-      assert.ok(
-        !result.tile_defaults.operations.includes(op),
-        `Should NOT include disabled operation: ${op}`
+        `Should include base operation: ${op}`
       );
     });
   });
@@ -245,7 +241,9 @@ describe('Architecture Converter - Tile Overrides', () => {
     assert.equal(override.existence, false);
   });
 
-  it('should create tile override for custom functional units', () => {
+  it('should not create override when operations normalize to same set', () => {
+    // Since all tiles get normalized to include BASE_OPERATIONS,
+    // different UI functional unit settings don't create overrides
     const input = {
       version: 1,
       architecture: {
@@ -270,7 +268,7 @@ describe('Architecture Converter - Tile Overrides', () => {
                 x: 0,
                 y: 1,
                 disabled: false,
-                tileFunctionalUnits: { load: true } // Only load - specialized tile
+                tileFunctionalUnits: { load: true } // Different UI settings but normalizes to same
               }
             ]
           }
@@ -280,13 +278,9 @@ describe('Architecture Converter - Tile Overrides', () => {
 
     const result = convertJsonToYaml(input);
 
+    // No overrides should be created since operations normalize to the same set
     assert.ok(Array.isArray(result.tile_overrides));
-    const customTile = result.tile_overrides.find(
-      t => t.tile_x === 0 && t.tile_y === 1
-    );
-
-    assert.ok(customTile, 'Should have override for specialized tile');
-    assert.deepEqual(customTile.operations, ['load']);
+    assert.equal(result.tile_overrides.length, 0, 'No overrides when operations normalize equally');
   });
 });
 
