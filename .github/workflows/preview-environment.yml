@@ -21,6 +21,51 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Comment Deploying Status
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = context.issue.number;
+            const dockerTag = `cgra-flow:pr-${prNumber}`;
+
+            const body = `## Preview Environment Deploying...
+
+            | Service | Status |
+            |---------|--------|
+            | Supabase Branch | Connecting... |
+            | Runner | Deploying... |
+            | Docker Image | Building \`${dockerTag}\`... |
+
+            Please wait while the preview environment is being set up. This may take a few minutes.
+            `;
+
+            // Find existing comment
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+            });
+
+            const botComment = comments.data.find(c =>
+              c.user.type === 'Bot' && c.body.includes('Preview Environment')
+            );
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body: body
+              });
+            }
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
