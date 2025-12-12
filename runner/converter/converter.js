@@ -1,5 +1,28 @@
 import yaml from 'js-yaml';
 
+// Base operations and minimum resources required by the compiler/test suite
+const BASE_OPERATIONS = [
+  'add', 'mul', 'sub', 'div', 'rem',
+  'fadd', 'fmul', 'fsub', 'fdiv',
+  'or', 'not', 'icmp', 'fcmp', 'sel',
+  'cast', 'sext', 'zext', 'shl',
+  'vfmul', 'fadd_fadd', 'fmul_fadd',
+  'data_mov', 'ctrl_mov', 'reserve',
+  'grant_predicate', 'grant_once', 'grant_always',
+  'loop_control', 'phi', 'constant',
+  'load', 'store', 'return',
+  'load_indexed', 'store_indexed', 'alloca'
+];
+const MIN_PER_CGRA_ROWS = 4;
+const MIN_PER_CGRA_COLUMNS = 4;
+const MIN_CTRL_MEM_ITEMS = 20;
+
+function normalizeOperations(operations = []) {
+  const opSet = new Set(BASE_OPERATIONS);
+  operations.forEach(op => opSet.add(op));
+  return Array.from(opSet);
+}
+
 /**
  * Maps functional unit booleans to operation string list
  * @param {Object} tileFunctionalUnits - Object with operation names as keys, booleans as values
@@ -99,8 +122,9 @@ function operationsEqual(ops1, ops2) {
  * @param {Array<string>} defaultOperations - Default operations list
  * @returns {Array} - Array of tile override objects
  */
-function generateTileOverrides(cgras, defaultOperations) {
+function generateTileOverrides(cgras, defaultOperations, normalizeOps = ops => ops) {
   const overrides = [];
+  const normalizedDefault = normalizeOps(defaultOperations || []);
 
   cgras.forEach(cgra => {
     if (!Array.isArray(cgra?.PEs)) return;
@@ -125,8 +149,8 @@ function generateTileOverrides(cgras, defaultOperations) {
       }
 
       // Check if tile has custom operations
-      const tileOps = functionalUnitsToOperations(pe.tileFunctionalUnits);
-      if (!operationsEqual(tileOps, defaultOperations)) {
+      const tileOps = normalizeOps(functionalUnitsToOperations(pe.tileFunctionalUnits));
+      if (!operationsEqual(tileOps, normalizedDefault)) {
         overrides.push({
           cgra_x: cgraX,
           cgra_y: cgraY,
@@ -160,7 +184,9 @@ export function convertJsonToYaml(jsonArchitecture) {
     : {};
 
   // Derive default operations from all tiles
-  const defaultOperations = deriveDefaultOperations(arch.CGRAs || []);
+  const defaultOperations = normalizeOperations(
+    deriveDefaultOperations(arch.CGRAs || [])
+  );
 
   // Build the target YAML structure
   const yamlStructure = {
@@ -176,9 +202,9 @@ export function convertJsonToYaml(jsonArchitecture) {
     },
 
     per_cgra_defaults: {
-      rows: firstCgra.perCgraRows ?? 4,
-      columns: firstCgra.perCgraColumns ?? 4,
-      ctrl_mem_items: firstCgra.configMemoryEntries ?? 20,
+      rows: Math.max(firstCgra.perCgraRows ?? MIN_PER_CGRA_ROWS, MIN_PER_CGRA_ROWS),
+      columns: Math.max(firstCgra.perCgraColumns ?? MIN_PER_CGRA_COLUMNS, MIN_PER_CGRA_COLUMNS),
+      ctrl_mem_items: Math.max(firstCgra.configMemoryEntries ?? MIN_CTRL_MEM_ITEMS, MIN_CTRL_MEM_ITEMS),
       base_topology: (firstCgra.intraTopology || 'Mesh').toLowerCase()
     },
 
@@ -194,7 +220,11 @@ export function convertJsonToYaml(jsonArchitecture) {
 
     link_overrides: [],
 
-    tile_overrides: generateTileOverrides(arch.CGRAs || [], defaultOperations),
+    tile_overrides: generateTileOverrides(
+      arch.CGRAs || [],
+      defaultOperations,
+      normalizeOperations
+    ),
 
     extensions: {
       crossbar: false
