@@ -251,6 +251,7 @@ async function processBenchmark(jobDir, benchmark, archYamlPath) {
     // Write outputs to files
     await fs.writeFile(path.join(benchmarkDir, 'stdout.txt'), stdout, 'utf8');
     await fs.writeFile(path.join(benchmarkDir, 'stderr.txt'), stderr, 'utf8');
+    await convertDotFilesWithGraphviz(benchmarkDir);
 
     // Parse llvm-lit output for results
     const passed = stdout.includes('pass 1') || stdout.includes('Passed: 1');
@@ -280,6 +281,8 @@ async function processBenchmark(jobDir, benchmark, archYamlPath) {
     if (error.stderr) {
       await fs.writeFile(path.join(benchmarkDir, 'stderr.txt'), error.stderr, 'utf8');
     }
+    // Best effort conversion even on failure
+    await convertDotFilesWithGraphviz(benchmarkDir);
 
     // Enhance error message
     if (error.killed && error.signal === 'SIGTERM') {
@@ -299,5 +302,26 @@ export async function cleanupJobDirectory(jobDir) {
     console.log(`  Cleaned up job directory: ${jobDir}`);
   } catch (error) {
     console.error(`  Warning: Failed to cleanup ${jobDir}: ${error.message}`);
+  }
+}
+
+/**
+ * Convert any DOT files in the benchmark directory to JSON using Graphviz.
+ * Writes <name>.json next to each <name>.dot. Warnings are logged but do not fail the job.
+ */
+async function convertDotFilesWithGraphviz(benchmarkDir) {
+  const entries = await fs.readdir(benchmarkDir, { withFileTypes: true });
+  const dotFiles = entries
+    .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith('.dot'))
+    .map((entry) => path.join(benchmarkDir, entry.name));
+
+  for (const dotPath of dotFiles) {
+    const outPath = dotPath.replace(/\.dot$/i, '.json');
+    const cmd = `dot -Tjson "${dotPath}" -o "${outPath}"`;
+    try {
+      await execAsync(cmd);
+    } catch (err) {
+      console.warn(`      ⚠️  Failed to convert ${dotPath} to JSON with Graphviz: ${err.message}`);
+    }
   }
 }
