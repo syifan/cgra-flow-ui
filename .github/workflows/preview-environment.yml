@@ -258,7 +258,7 @@ jobs:
             });
 
             const botComment = comments.data.find(c =>
-              c.user.type === 'Bot' && c.body.includes('Preview Environment Ready')
+              c.user.type === 'Bot' && c.body.includes('Preview Environment')
             );
 
             if (botComment) {
