@@ -7,8 +7,8 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "test": "node --test",
-    "test:watch": "node --test --watch",
+    "test": "node --test 'converter/*.test.js'",
+    "test:watch": "node --test --watch 'converter/*.test.js'",
     "test:converter": "node --test converter/converter.test.js",
     "create-test-job": "node test-create-job.js"
   },
