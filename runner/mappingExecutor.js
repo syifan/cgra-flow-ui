@@ -252,6 +252,7 @@ async function processBenchmark(jobDir, benchmark, archYamlPath) {
     await fs.writeFile(path.join(benchmarkDir, 'stdout.txt'), stdout, 'utf8');
     await fs.writeFile(path.join(benchmarkDir, 'stderr.txt'), stderr, 'utf8');
     await convertDotFilesWithGraphviz(benchmarkDir);
+    const graphJson = await collectGraphJson(benchmarkDir);
 
     // Parse llvm-lit output for results
     const passed = stdout.includes('pass 1') || stdout.includes('Passed: 1');
@@ -268,6 +269,7 @@ async function processBenchmark(jobDir, benchmark, archYamlPath) {
       compiled_ii: compiledIiMatch ? parseInt(compiledIiMatch[1]) : null,
       rec_mii: recMiiMatch ? parseInt(recMiiMatch[1]) : null,
       res_mii: resMiiMatch ? parseInt(resMiiMatch[1]) : null,
+      graphs: graphJson,
       stdout_length: stdout.length,
       stderr_length: stderr.length
     };
@@ -324,4 +326,29 @@ async function convertDotFilesWithGraphviz(benchmarkDir) {
       console.warn(`      ⚠️  Failed to convert ${dotPath} to JSON with Graphviz: ${err.message}`);
     }
   }
+}
+
+/**
+ * Collect parsed JSON graphs written by Graphviz.
+ */
+async function collectGraphJson(benchmarkDir) {
+  const entries = await fs.readdir(benchmarkDir, { withFileTypes: true });
+  const jsonFiles = entries
+    .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith('.json'))
+    .map((entry) => path.join(benchmarkDir, entry.name));
+
+  const graphs = [];
+  for (const jsonPath of jsonFiles) {
+    try {
+      const content = await fs.readFile(jsonPath, 'utf8');
+      const parsed = JSON.parse(content);
+      graphs.push({
+        file: path.basename(jsonPath),
+        graph: parsed
+      });
+    } catch (err) {
+      console.warn(`      ⚠️  Failed to read graph JSON ${jsonPath}: ${err.message}`);
+    }
+  }
+  return graphs;
 }
