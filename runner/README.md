@@ -7,12 +7,14 @@ Job runner service for CGRA Flow UI that processes mapping jobs using the datafl
 ```
 runner/
 ├── index.js              # Main entry point
-├── jobProcessor.js       # Job processing logic
+├── jobProcessor.js       # Job claim/update logic
+├── mappingExecutor.js    # Real mapping job executor
 ├── converter/            # Architecture format converter
 │   ├── converter.js      # Conversion logic
 │   ├── converter.test.js # Test suite
 │   ├── example.js        # Example usage
 │   └── README.md         # Converter documentation
+├── JOB_FORMAT.md         # Job structure documentation
 ├── .env.example          # Environment template
 └── package.json          # Dependencies & scripts
 ```
@@ -35,12 +37,25 @@ npm install
 Copy `.env.example` to `.env` and configure:
 
 ```bash
+# Supabase connection
 SUPABASE_URL=your_supabase_url
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+
+# Runner settings
 RUNNER_MODE=fake  # or 'real' for actual Docker execution
 RUNNER_ID=runner-local
 POLL_INTERVAL_MS=5000
+
+# Real mode settings (required for RUNNER_MODE=real)
+JOBS_DIR=./jobs
+DOCKER_IMAGE=cgra-flow:latest
+DOCKER_TIMEOUT_MS=600000
 ```
+
+#### Runner Modes
+
+- **fake**: Simulates job execution (no Docker required)
+- **real**: Executes actual CGRA mapping in Docker container
 
 ## Usage
 
@@ -85,13 +100,33 @@ console.log(yamlString);
 node converter/example.js
 ```
 
-### Job Processor
+### Mapping Executor
 
-Handles CGRA mapping jobs from the queue:
-1. Polls Supabase for pending jobs
-2. Converts architecture to YAML
-3. Runs mapping in Docker container
-4. Updates job status and results
+Handles real CGRA mapping jobs:
+
+1. **Setup**: Creates job directory structure
+2. **Convert**: Writes architecture JSON and converts to YAML
+3. **Process**: Iterates through benchmarks, running llvm-lit for each
+4. **Collect**: Gathers results, stdout, stderr, and mapping metrics
+5. **Update**: Returns summary with execution times and status
+
+**Job Directory Structure:**
+```
+jobs/<job-id>/
+├── architecture.json     # Original from UI
+├── architecture.yaml      # Converted for dataflow
+└── benchmarks/
+    ├── fir/
+    │   ├── architecture.yaml
+    │   ├── stdout.txt
+    │   └── stderr.txt
+    └── mm/
+        ├── architecture.yaml
+        ├── stdout.txt
+        └── stderr.txt
+```
+
+**See:** [JOB_FORMAT.md](./JOB_FORMAT.md) for complete job schema
 
 ## Development
 

@@ -262,6 +262,7 @@ function DashboardPage() {
                     bgcolor: 'background.paper',
                     border: '1px solid rgba(148, 163, 184, 0.15)',
                     transition: 'transform 0.2s, border-color 0.2s',
+                    position: 'relative',
                     '&:hover': {
                       transform: 'translateY(-2px)',
                       borderColor: 'primary.main'
@@ -273,24 +274,9 @@ function DashboardPage() {
                     sx={{ height: '100%' }}
                   >
                     <CardContent>
-                      <Box
-                        sx={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'flex-start'
-                        }}
-                      >
-                        <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
-                          {project.name}
-                        </Typography>
-                        <IconButton
-                          size="small"
-                          onClick={(e) => handleMenuOpen(e, project)}
-                          sx={{ ml: 1, mt: -0.5 }}
-                        >
-                          <MoreVertIcon fontSize="small" />
-                        </IconButton>
-                      </Box>
+                      <Typography variant="h6" sx={{ fontWeight: 600, mb: 1, pr: 5 }}>
+                        {project.name}
+                      </Typography>
                       <Typography
                         variant="body2"
                         sx={{
@@ -311,6 +297,18 @@ function DashboardPage() {
                       </Typography>
                     </CardContent>
                   </CardActionArea>
+                  <IconButton
+                    size="small"
+                    onClick={(e) => handleMenuOpen(e, project)}
+                    sx={{
+                      position: 'absolute',
+                      top: 16,
+                      right: 16,
+                      zIndex: 1
+                    }}
+                  >
+                    <MoreVertIcon fontSize="small" />
+                  </IconButton>
                 </Card>
               </Grid>
             ))}

@@ -9,7 +9,8 @@
     "start": "node index.js",
     "test": "node --test",
     "test:watch": "node --test --watch",
-    "test:converter": "node --test converter/converter.test.js"
+    "test:converter": "node --test converter/converter.test.js",
+    "create-test-job": "node test-create-job.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.86.2",
