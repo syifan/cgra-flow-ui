@@ -132,7 +132,18 @@ export async function executeMappingJob(job) {
   const endTime = Date.now();
   const executionTimeMs = endTime - startTime;
 
-  console.log(`\n  Summary: ${successCount} succeeded, ${failureCount} failed`);
+  console.log(`\n  Summary: ${successCount} benchmark(s) succeeded, ${failureCount} benchmark(s) failed`);
+
+  // If any benchmark failed, propagate failure so the job is marked failed in DB
+  if (failureCount > 0) {
+    const failedList = Object.entries(results)
+      .filter(([, r]) => r.status === 'failed')
+      .map(([name, r]) => `${name}${r.error ? `: ${r.error}` : ''}`)
+      .join('; ');
+    const error = new Error(`Benchmark failures detected (${failureCount}/${benchmarks.length}): ${failedList}`);
+    error.results = results;
+    throw error;
+  }
 
   return {
     execution_time_ms: executionTimeMs,
@@ -183,6 +194,9 @@ async function verifyDockerImage() {
 async function processBenchmark(jobDir, benchmark, archYamlPath) {
   const benchmarkDir = path.join(jobDir, 'benchmarks', benchmark);
   await fs.mkdir(benchmarkDir, { recursive: true });
+  const benchmarkOutputDir = path.join(benchmarkDir, 'Output');
+  await fs.mkdir(benchmarkOutputDir, { recursive: true });
+  const absoluteBenchmarkDir = path.resolve(benchmarkDir);
 
   // Determine test file path in Docker container
   const testFilePath = `/cgra/dataflow/test/e2e/${benchmark}/${benchmark}_kernel.mlir`;
@@ -191,20 +205,32 @@ async function processBenchmark(jobDir, benchmark, archYamlPath) {
   const benchmarkArchPath = path.join(benchmarkDir, 'architecture.yaml');
   await fs.copyFile(archYamlPath, benchmarkArchPath);
 
+  // Seed the benchmark directory with the original test files from the image so that
+  // writes in /cgra/dataflow/test/e2e/<benchmark> (dot/png/etc.) land on the host.
+  // This copies once per run and lets us bind-mount the entire benchmark folder.
+  const seedCommand = [
+    'docker run --rm',
+    `-v "${absoluteBenchmarkDir}:/workspace"`,
+    DOCKER_IMAGE,
+    'bash -lc',
+    `"shopt -s dotglob && cp -r /cgra/dataflow/test/e2e/${benchmark}/* /workspace/"`,
+  ].join(' ');
+  await execAsync(seedCommand);
+
   // Run Docker container with mounted volumes
   const containerName = `cgra-job-${path.basename(jobDir)}-${benchmark}`;
 
   // Absolute paths for mounting
   const absoluteJobDir = path.resolve(jobDir);
-  const absoluteBenchmarkDir = path.resolve(benchmarkDir);
 
   const dockerCommand = [
     'docker run',
     '--rm',
     `--name ${containerName}`,
-    `-v "${absoluteBenchmarkDir}:/workspace"`,
+    `-v "${absoluteBenchmarkDir}:/cgra/dataflow/test/e2e/${benchmark}"`,
     `-v "${absoluteJobDir}/architecture.yaml:/cgra/dataflow/test/arch_spec/architecture.yaml:ro"`,
-    `-w /cgra/dataflow/test/e2e/${benchmark}`,
+    '-w',
+    `/cgra/dataflow/test/e2e/${benchmark}`,
     DOCKER_IMAGE,
     `/cgra/llvm-project/build/bin/llvm-lit -v ${testFilePath}`
   ].join(' ');
