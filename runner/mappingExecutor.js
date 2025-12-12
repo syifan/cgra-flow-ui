@@ -32,6 +32,8 @@ const supabase = createClient(
 const JOBS_DIR = process.env.JOBS_DIR || './jobs';
 const DOCKER_IMAGE = process.env.DOCKER_IMAGE || 'cgra-flow:latest';
 const DOCKER_TIMEOUT_MS = parseInt(process.env.DOCKER_TIMEOUT_MS || '600000', 10); // 10 minutes
+const GRAPH_BUCKET = process.env.SUPABASE_STORAGE_BUCKET || 'job-artifacts';
+let graphBucketReady = false;
 
 /**
  * Execute a mapping job
@@ -99,6 +101,9 @@ export async function executeMappingJob(job) {
   // Step 4: Verify Docker image exists
   await verifyDockerImage();
 
+  // Ensure storage bucket exists (best-effort)
+  await ensureGraphBucket();
+
   // Step 5: Process each benchmark
   const benchmarks = job.info.benchmarks || [];
   const results = {};
@@ -111,7 +116,7 @@ export async function executeMappingJob(job) {
     console.log(`\n  → Benchmark: ${benchmark}`);
 
     try {
-      const benchmarkResult = await processBenchmark(jobDir, benchmark, archYamlPath);
+      const benchmarkResult = await processBenchmark(jobDir, job.id, benchmark, archYamlPath);
       results[benchmark] = {
         status: 'success',
         ...benchmarkResult
@@ -191,7 +196,7 @@ async function verifyDockerImage() {
  * @param {string} archYamlPath - Path to architecture YAML file
  * @returns {Promise<object>} Benchmark result
  */
-async function processBenchmark(jobDir, benchmark, archYamlPath) {
+async function processBenchmark(jobDir, jobId, benchmark, archYamlPath) {
   const benchmarkDir = path.join(jobDir, 'benchmarks', benchmark);
   await fs.mkdir(benchmarkDir, { recursive: true });
   const benchmarkOutputDir = path.join(benchmarkDir, 'Output');
@@ -251,8 +256,8 @@ async function processBenchmark(jobDir, benchmark, archYamlPath) {
     // Write outputs to files
     await fs.writeFile(path.join(benchmarkDir, 'stdout.txt'), stdout, 'utf8');
     await fs.writeFile(path.join(benchmarkDir, 'stderr.txt'), stderr, 'utf8');
-    await convertDotFilesWithGraphviz(benchmarkDir);
-    const graphJson = await collectGraphJson(benchmarkDir);
+    await convertDotFilesWithGraphviz(benchmarkDir, benchmark);
+    const graphUploads = await uploadGraphJsonFiles(jobId, benchmark, benchmarkDir);
 
     // Parse llvm-lit output for results
     const passed = stdout.includes('pass 1') || stdout.includes('Passed: 1');
@@ -269,7 +274,7 @@ async function processBenchmark(jobDir, benchmark, archYamlPath) {
       compiled_ii: compiledIiMatch ? parseInt(compiledIiMatch[1]) : null,
       rec_mii: recMiiMatch ? parseInt(recMiiMatch[1]) : null,
       res_mii: resMiiMatch ? parseInt(resMiiMatch[1]) : null,
-      graphs: graphJson,
+      graph_files: graphUploads,
       stdout_length: stdout.length,
       stderr_length: stderr.length
     };
@@ -284,7 +289,7 @@ async function processBenchmark(jobDir, benchmark, archYamlPath) {
       await fs.writeFile(path.join(benchmarkDir, 'stderr.txt'), error.stderr, 'utf8');
     }
     // Best effort conversion even on failure
-    await convertDotFilesWithGraphviz(benchmarkDir);
+    await convertDotFilesWithGraphviz(benchmarkDir, benchmark);
 
     // Enhance error message
     if (error.killed && error.signal === 'SIGTERM') {
@@ -311,10 +316,14 @@ export async function cleanupJobDirectory(jobDir) {
  * Convert any DOT files in the benchmark directory to JSON using Graphviz.
  * Writes <name>.json next to each <name>.dot. Warnings are logged but do not fail the job.
  */
-async function convertDotFilesWithGraphviz(benchmarkDir) {
+async function convertDotFilesWithGraphviz(benchmarkDir, benchmark) {
   const entries = await fs.readdir(benchmarkDir, { withFileTypes: true });
   const dotFiles = entries
-    .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith('.dot'))
+    .filter(
+      (entry) =>
+        entry.isFile() &&
+        entry.name.toLowerCase() === `${benchmark.toLowerCase()}_kernel.dot`
+    )
     .map((entry) => path.join(benchmarkDir, entry.name));
 
   for (const dotPath of dotFiles) {
@@ -329,26 +338,67 @@ async function convertDotFilesWithGraphviz(benchmarkDir) {
 }
 
 /**
- * Collect parsed JSON graphs written by Graphviz.
+ * Upload graph JSON files to Supabase storage.
+ * Returns an array of { file, path, publicUrl } entries.
  */
-async function collectGraphJson(benchmarkDir) {
+async function uploadGraphJsonFiles(jobId, benchmark, benchmarkDir) {
+  if (!graphBucketReady) {
+    console.warn(`      ⚠️  Graph bucket "${GRAPH_BUCKET}" is not available; skipping uploads.`);
+    return [];
+  }
+
   const entries = await fs.readdir(benchmarkDir, { withFileTypes: true });
   const jsonFiles = entries
     .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith('.json'))
     .map((entry) => path.join(benchmarkDir, entry.name));
 
-  const graphs = [];
+  const uploads = [];
   for (const jsonPath of jsonFiles) {
+    const fileName = path.basename(jsonPath);
+    const storagePath = `jobs/${jobId}/${benchmark}/${fileName}`;
     try {
-      const content = await fs.readFile(jsonPath, 'utf8');
-      const parsed = JSON.parse(content);
-      graphs.push({
-        file: path.basename(jsonPath),
-        graph: parsed
+      const fileBuffer = await fs.readFile(jsonPath);
+      const { error: uploadError } = await supabase.storage
+        .from(GRAPH_BUCKET)
+        .upload(storagePath, fileBuffer, {
+          contentType: 'application/json',
+          upsert: true
+        });
+      if (uploadError) {
+        throw uploadError;
+      }
+      const { data: publicData } = supabase.storage.from(GRAPH_BUCKET).getPublicUrl(storagePath);
+      uploads.push({
+        file: fileName,
+        path: storagePath,
+        publicUrl: publicData?.publicUrl || null
       });
     } catch (err) {
-      console.warn(`      ⚠️  Failed to read graph JSON ${jsonPath}: ${err.message}`);
+      console.warn(`      ⚠️  Failed to upload graph ${jsonPath}: ${err.message}`);
     }
   }
-  return graphs;
+  return uploads;
+}
+
+/**
+ * Ensure the storage bucket for graph uploads exists (best-effort).
+ */
+async function ensureGraphBucket() {
+  if (graphBucketReady) return;
+  try {
+    const { data: buckets, error: listError } = await supabase.storage.listBuckets();
+    if (listError) throw listError;
+    const exists = buckets?.some((b) => b.name === GRAPH_BUCKET);
+    if (!exists) {
+      const { error: createError } = await supabase.storage.createBucket(GRAPH_BUCKET, {
+        public: true
+      });
+      if (createError) throw createError;
+      console.log(`  ✓ Created storage bucket: ${GRAPH_BUCKET}`);
+    }
+    graphBucketReady = true;
+  } catch (err) {
+    console.warn(`  ⚠️  Unable to ensure bucket "${GRAPH_BUCKET}": ${err.message}`);
+    graphBucketReady = false;
+  }
 }

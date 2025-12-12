@@ -147,6 +147,7 @@ function Workspace() {
   const [latestMappingJob, setLatestMappingJob] = useState(null);
   const savedStateRef = useRef(null);
   const appStateRef = useRef(null);
+  const latestJobGraphsLoggedRef = useRef(null);
   const autoSaveIntervalRef = useRef(null);
   const { showError, showSuccess, showConfirm } = useNotification();
 
@@ -181,6 +182,64 @@ function Workspace() {
   useEffect(() => {
     appStateRef.current = appState;
   }, [appState]);
+
+  // Fetch and log graph JSONs when a mapping job finishes
+  useEffect(() => {
+    const logGraphs = async () => {
+      if (!latestMappingJob || latestMappingJob.status !== 'success') return;
+      if (latestJobGraphsLoggedRef.current === latestMappingJob.id) return;
+
+      const benchmarks = latestMappingJob.info?.benchmarks || latestMappingJob.info || {};
+      const graphFilesByBenchmark = {};
+
+      // Normalize structure: latestMappingJob.info may be an object keyed by benchmark
+      for (const [bench, result] of Object.entries(benchmarks)) {
+        if (result && Array.isArray(result.graph_files)) {
+          graphFilesByBenchmark[bench] = result.graph_files;
+        }
+      }
+
+      const fetchGraph = async (url) => {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json();
+      };
+
+      const allFetches = [];
+      for (const [bench, files] of Object.entries(graphFilesByBenchmark)) {
+        files.forEach((f) => {
+          if (f?.publicUrl) {
+            allFetches.push(
+              fetchGraph(f.publicUrl)
+                .then((json) => ({ bench, file: f.file, json }))
+                .catch((err) => {
+                  console.warn(`Failed to fetch graph ${f.file} for ${bench}: ${err.message}`);
+                  return null;
+                })
+            );
+          }
+        });
+      }
+
+      const graphs = (await Promise.all(allFetches)).filter(Boolean);
+
+      if (graphs.length > 0) {
+        const grouped = graphs.reduce((acc, g) => {
+          const key = g.bench || 'unknown';
+          acc[key] = acc[key] || [];
+          acc[key].push({ file: g.file, json: g.json });
+          return acc;
+        }, {});
+        console.log('Mapping graphs for job', latestMappingJob.id, grouped);
+      } else {
+        console.log('Mapping job has no graphs to display', latestMappingJob.id);
+      }
+
+      latestJobGraphsLoggedRef.current = latestMappingJob.id;
+    };
+
+    logGraphs();
+  }, [latestMappingJob]);
 
   // Fetch and subscribe to jobs for this project
   useEffect(() => {
@@ -1126,4 +1185,3 @@ function Workspace() {
 }
 
 export default Workspace;
-
