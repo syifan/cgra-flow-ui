@@ -138,6 +138,9 @@ jobs:
             docker build -t "$DOCKER_TAG" .
             echo "Docker image built successfully"
 
+            # Clean up dangling images to save disk space
+            docker image prune -f
+
             cd ../runner
 
             # Write environment file
