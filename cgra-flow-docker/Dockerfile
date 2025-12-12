@@ -69,7 +69,10 @@ RUN cmake -G Ninja ../llvm \
     -DCMAKE_C_COMPILER_LAUNCHER=ccache \
     -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
-RUN cmake --build . --target check-mlir
+RUN cmake --build . --target clang llvm-extract mlir-translate FileCheck check-mlir
+
+# Add LLVM tools to PATH
+ENV PATH="/cgra/llvm-project/build/bin:${PATH}"
 
 # ============================================
 # Stage 2: Full image (faster to rebuild)
@@ -81,7 +84,7 @@ WORKDIR /cgra
 # Install Verilator 4.036
 # This specific version is required for compatibility with pymtl3.1
 # Newer versions have breaking API changes that affect VectorCGRA simulation
-RUN wget https://github.com/tancheng/pymtl-verilator/raw/master/verilator-travis-4.036.tar.gz && \
+RUN wget https://github.com/tancheng/pymtl-verilator/raw/refs/heads/master/verilator-travis-4.036.tar.gz && \
     tar -xzf verilator-travis-4.036.tar.gz && \
     rm verilator-travis-4.036.tar.gz
 
@@ -92,6 +95,9 @@ ENV PATH="${PATH}:/cgra/verilator/bin"
 
 # Clone and build dataflow
 RUN git clone https://github.com/coredac/dataflow.git && \
+    cd dataflow && \
+    git submodule update --init --recursive && \
+    cd /cgra && \
     mkdir dataflow/build
 
 WORKDIR /cgra/dataflow/build

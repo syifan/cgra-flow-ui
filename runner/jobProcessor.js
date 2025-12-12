@@ -2,6 +2,8 @@
  * Job processor for claiming and executing jobs from the queue.
  */
 
+import { executeMappingJob } from './mappingExecutor.js';
+
 /**
  * Claim the next available job atomically.
  * Uses FOR UPDATE SKIP LOCKED to prevent race conditions between multiple runners.
@@ -85,5 +87,25 @@ export async function executeJobFake(job) {
     execution_time_ms: durationMs,
     completed_by: 'fake_runner',
     result: `Fake ${job.type} completed successfully`
+  }
+}
+
+/**
+ * Execute a job based on its type (real implementation)
+ *
+ * @param {object} job - The job to process
+ * @returns {Promise<object>} Result info
+ */
+export async function executeJob(job) {
+  switch (job.type) {
+    case 'mapping':
+      return await executeMappingJob(job);
+
+    case 'verification':
+    case 'layout':
+      throw new Error(`Job type "${job.type}" not yet implemented`);
+
+    default:
+      throw new Error(`Unknown job type: ${job.type}`);
   }
 }
