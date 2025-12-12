@@ -131,15 +131,25 @@ jobs:
             git clone --depth 1 --branch ${{ github.head_ref }} https://github.com/${{ github.repository }}.git repo || \
               git clone --depth 1 https://github.com/${{ github.repository }}.git repo
 
-            cd repo/runner
+            # Build PR-specific Docker image
+            DOCKER_TAG="cgra-flow:pr-${{ github.event.number }}"
+            echo "Building Docker image: $DOCKER_TAG"
+            cd repo/cgra-flow-docker
+            docker build -t "$DOCKER_TAG" .
+            echo "Docker image built successfully"
+
+            cd ../runner
 
             # Write environment file
-            cat > .env << 'ENVEOF'
+            cat > .env << ENVEOF
             SUPABASE_URL=${{ steps.supabase-branch.outputs.branch_url }}
             SUPABASE_SERVICE_ROLE_KEY=${{ steps.supabase-keys.outputs.service_key }}
-            RUNNER_MODE=fake
+            RUNNER_MODE=real
             RUNNER_ID=runner-${{ github.event.number }}
             POLL_INTERVAL_MS=5000
+            JOBS_DIR=./jobs
+            DOCKER_IMAGE=$DOCKER_TAG
+            DOCKER_TIMEOUT_MS=600000
             ENVEOF
 
             # Install dependencies
@@ -179,6 +189,7 @@ jobs:
           script: |
             const branchUrl = '${{ steps.supabase-branch.outputs.branch_url }}';
             const prNumber = context.issue.number;
+            const dockerTag = `cgra-flow:pr-${prNumber}`;
 
             const body = `## Preview Environment Ready
 
@@ -186,8 +197,9 @@ jobs:
             |---------|--------|
             | Supabase Branch | \`${branchUrl}\` |
             | Runner | Deployed via SSH (runner-${prNumber}) |
+            | Docker Image | \`${dockerTag}\` |
 
-            The runner is connected to this PR's Supabase branch and will process jobs automatically.
+            The runner is connected to this PR's Supabase branch and will process jobs using the PR-specific Docker image.
             `;
 
             // Find existing comment
@@ -235,7 +247,16 @@ jobs:
           key: ${{ secrets.RUNNER_SSH_KEY }}
           script: |
             PROCESS_NAME="cgra-runner-pr-${{ github.event.number }}"
-            echo "PR ${{ github.event.number }} closed - stopping $PROCESS_NAME"
+            DOCKER_TAG="cgra-flow:pr-${{ github.event.number }}"
+            echo "PR ${{ github.event.number }} closed - cleaning up"
+
+            # Stop the runner process
             pm2 delete "$PROCESS_NAME" 2>/dev/null || true
             pm2 save
+
+            # Remove PR-specific Docker image
+            echo "Removing Docker image: $DOCKER_TAG"
+            docker rmi "$DOCKER_TAG" 2>/dev/null || true
+
+            # Clean up repo directory
             rm -rf ~/cgra-runner/repo
