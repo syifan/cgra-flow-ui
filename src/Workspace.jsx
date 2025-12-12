@@ -32,6 +32,7 @@ import { Layout, Model } from 'flexlayout-react';
 import 'flexlayout-react/style/dark.css';
 import MainCanvas from './main_cancas';
 import PropertyInspector from './PropertyInspector';
+import DotGraph from './components/DotGraph';
 import { defaultAppData } from './app_data';
 import {
   normalizeArchitecture,
@@ -145,6 +146,7 @@ function Workspace() {
   const [autoSaveCountdown, setAutoSaveCountdown] = useState(0);
   const [pendingJob, setPendingJob] = useState(null);
   const [latestMappingJob, setLatestMappingJob] = useState(null);
+  const [graphData, setGraphData] = useState({});
   const savedStateRef = useRef(null);
   const appStateRef = useRef(null);
   const latestJobGraphsLoggedRef = useRef(null);
@@ -230,8 +232,10 @@ function Workspace() {
           acc[key].push({ file: g.file, json: g.json });
           return acc;
         }, {});
+        setGraphData(grouped);
         console.log('Mapping graphs for job', latestMappingJob.id, grouped);
       } else {
+        setGraphData({});
         console.log('Mapping job has no graphs to display', latestMappingJob.id);
       }
 
@@ -937,6 +941,28 @@ function Workspace() {
                   Start Mapping
                 </Button>
               </Box>
+              {Object.keys(graphData).length > 0 && (
+                <Box sx={{ mt: 3, width: '100%' }}>
+                  <Typography variant="subtitle2" sx={{ mb: 1, color: 'text.secondary' }}>
+                    Mapping Graphs
+                  </Typography>
+                  {Object.entries(graphData).map(([bench, graphs]) => (
+                    <Box key={bench} sx={{ mb: 2, p: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                      <Typography variant="body2" sx={{ mb: 1, fontWeight: 600 }}>
+                        {bench}
+                      </Typography>
+                      {graphs.map((g) => (
+                        <Box key={g.file} sx={{ mb: 1.5 }}>
+                          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                            {g.file}
+                          </Typography>
+                          <DotGraph graph={g.json} />
+                        </Box>
+                      ))}
+                    </Box>
+                  ))}
+                </Box>
+              )}
             </Box>
           );
         }
@@ -978,7 +1004,7 @@ function Workspace() {
           return null;
       }
     },
-    [architecture, handlePropertyChange, selection, selectedBenchmarks, setSelectedBenchmarks, isLocked, handleStartMapping, latestMappingJob]
+    [architecture, handlePropertyChange, selection, selectedBenchmarks, setSelectedBenchmarks, isLocked, handleStartMapping, latestMappingJob, graphData]
   );
 
   // Show loading state
