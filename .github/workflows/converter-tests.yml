@@ -85,7 +85,7 @@ jobs:
               const content = fs.readFileSync(file, 'utf8');
 
               // Check for console.log in production code (excluding example.js)
-              if (!file.includes('example.js') && !file.includes('.test.js')) {
+              if (!file.endsWith('example.js') && !file.endsWith('.test.js')) {
                 if (content.includes('console.log(') || content.includes('console.error(')) {
                   console.error(\`❌ \${file}: Found console.log/console.error\`);
                   hasErrors = true;
@@ -93,17 +93,25 @@ jobs:
               }
 
               // Check for proper export statements
-              if (file.includes('converter.js')) {
+              if (file.endsWith('converter.js')) {
                 if (!content.includes('export function')) {
                   console.error(\`❌ \${file}: Missing export statements\`);
                   hasErrors = true;
                 }
               }
 
-              // Check for proper imports
-              if (!content.includes('import')) {
-                console.error(\`❌ \${file}: Missing import statements\`);
+              // Check for proper ES module imports
+              if (!/import\s+.*\s+from\s+/.test(content)) {
+                console.error(\`❌ \${file}: Missing ES module import statements\`);
                 hasErrors = true;
+              }
+
+              // Check that test and example files import from converter.js
+              if (file.endsWith('.test.js') || file.endsWith('example.js')) {
+                if (!content.includes(\"from './converter.js'\")) {
+                  console.error(\`❌ \${file}: Should import from './converter.js'\`);
+                  hasErrors = true;
+                }
               }
 
               console.log(\`✓ \${file}: Basic checks passed\`);

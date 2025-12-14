@@ -120,7 +120,7 @@ jobs/<job-id>/
     │   ├── architecture.yaml
     │   ├── stdout.txt
     │   └── stderr.txt
-    └── mm/
+    └── bicg/
         ├── architecture.yaml
         ├── stdout.txt
         └── stderr.txt

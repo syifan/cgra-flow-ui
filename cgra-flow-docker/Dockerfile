@@ -84,7 +84,8 @@ WORKDIR /cgra
 # Install Verilator 4.036
 # This specific version is required for compatibility with pymtl3.1
 # Newer versions have breaking API changes that affect VectorCGRA simulation
-RUN wget https://github.com/tancheng/pymtl-verilator/raw/refs/heads/master/verilator-travis-4.036.tar.gz && \
+# Pinned to commit c6f5151 for reproducible builds
+RUN wget https://github.com/tancheng/pymtl-verilator/raw/c6f515121248acc3cbe91eb40b293e7734c5023f/verilator-travis-4.036.tar.gz && \
     tar -xzf verilator-travis-4.036.tar.gz && \
     rm verilator-travis-4.036.tar.gz
 
@@ -94,8 +95,10 @@ ENV PYMTL_VERILATOR_INCLUDE_DIR=/cgra/verilator/share/verilator/include
 ENV PATH="${PATH}:/cgra/verilator/bin"
 
 # Clone and build dataflow
+# Pinned to commit 19f2a17 for reproducible builds and supply chain security
 RUN git clone https://github.com/coredac/dataflow.git && \
     cd dataflow && \
+    git checkout 19f2a17 && \
     git submodule update --init --recursive && \
     cd /cgra && \
     mkdir dataflow/build

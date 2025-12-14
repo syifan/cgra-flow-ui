@@ -4,7 +4,7 @@
 
 import { promises as fs } from 'fs';
 import path from 'path';
-import { exec } from 'child_process';
+import { exec, execFile } from 'child_process';
 import { promisify } from 'util';
 import { createClient } from '@supabase/supabase-js';
 import { config } from 'dotenv';
@@ -13,6 +13,15 @@ import { convertJsonToYamlString } from './converter/converter.js';
 config();
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
+
+// Validate required environment variables
+if (!process.env.SUPABASE_URL) {
+  throw new Error('SUPABASE_URL environment variable is required');
+}
+if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  throw new Error('SUPABASE_SERVICE_ROLE_KEY environment variable is required');
+}
 
 // Create Supabase client for fetching project data
 const supabase = createClient(
@@ -32,8 +41,22 @@ const supabase = createClient(
 const JOBS_DIR = process.env.JOBS_DIR || './jobs';
 const DOCKER_IMAGE = process.env.DOCKER_IMAGE || 'cgra-flow:latest';
 const DOCKER_TIMEOUT_MS = parseInt(process.env.DOCKER_TIMEOUT_MS || '600000', 10); // 10 minutes
+
+// Validate Docker image name to prevent shell injection
+// Valid format: [registry/][namespace/]name[:tag]
+const DOCKER_IMAGE_PATTERN = /^[a-z0-9][a-z0-9._/:@-]*$/i;
+if (!DOCKER_IMAGE_PATTERN.test(DOCKER_IMAGE)) {
+  throw new Error(`Invalid DOCKER_IMAGE format: "${DOCKER_IMAGE}". Image name contains invalid characters.`);
+}
 const GRAPH_BUCKET = process.env.SUPABASE_STORAGE_BUCKET || 'job-artifacts';
 let graphBucketReady = false;
+let graphBucketLastAttempt = 0;
+const GRAPH_BUCKET_RETRY_INTERVAL_MS = 60000; // Retry bucket creation after 1 minute on failure
+
+// Docker container paths - these match the structure in cgra-flow-docker/Dockerfile
+const DOCKER_DATAFLOW_TEST_DIR = process.env.DOCKER_DATAFLOW_TEST_DIR || '/cgra/dataflow/test';
+const DOCKER_ARCH_SPEC_PATH = process.env.DOCKER_ARCH_SPEC_PATH || '/cgra/dataflow/test/arch_spec/architecture.yaml';
+const DOCKER_LLVM_LIT_PATH = process.env.DOCKER_LLVM_LIT_PATH || '/cgra/llvm-project/build/bin/llvm-lit';
 
 /**
  * Execute a mapping job
@@ -73,6 +96,14 @@ export async function executeMappingJob(job) {
     throw new Error(`Project ${job.project_id} has no data`);
   }
 
+  // Validate architecture structure
+  if (!project.data.architecture || typeof project.data.architecture !== 'object') {
+    throw new Error(`Project ${job.project_id} data is missing 'architecture' object`);
+  }
+  if (!Array.isArray(project.data.architecture.CGRAs) || project.data.architecture.CGRAs.length === 0) {
+    throw new Error(`Project ${job.project_id} architecture is missing a non-empty 'CGRAs' array`);
+  }
+
   // project.data contains the full structure: { version: 1, architecture: { ... } }
   const architectureData = project.data;
   console.log(`  ✓ Fetched architecture from project`);
@@ -94,7 +125,12 @@ export async function executeMappingJob(job) {
 
   // Step 3: Convert to YAML
   const archYamlPath = path.join(jobDir, 'architecture.yaml');
-  const yamlContent = convertJsonToYamlString(architectureData);
+  let yamlContent;
+  try {
+    yamlContent = convertJsonToYamlString(architectureData);
+  } catch (conversionError) {
+    throw new Error(`Failed to convert architecture to YAML: ${conversionError.message}`);
+  }
   await fs.writeFile(archYamlPath, yamlContent, 'utf8');
   console.log(`  ✓ Converted to architecture.yaml`);
 
@@ -182,8 +218,8 @@ async function verifyDockerImage() {
     await execAsync(`docker image inspect ${DOCKER_IMAGE}`);
   } catch (error) {
     throw new Error(
-      `Docker image ${DOCKER_IMAGE} not found. Please build it first with:\n` +
-      `  cd cgra-flow-docker && docker build -t ${DOCKER_IMAGE} .`
+      `Docker image "${DOCKER_IMAGE}" not found. ` +
+      `Build it from the cgra-flow-docker directory using: docker build -t ${DOCKER_IMAGE} .`
     );
   }
 }
@@ -192,7 +228,7 @@ async function verifyDockerImage() {
  * Process a single benchmark
  *
  * @param {string} jobDir - Job directory path
- * @param {string} benchmark - Benchmark name (e.g., 'fir', 'mm')
+ * @param {string} benchmark - Benchmark name (e.g., 'fir', 'bicg', 'relu')
  * @param {string} archYamlPath - Path to architecture YAML file
  * @returns {Promise<object>} Benchmark result
  */
@@ -204,21 +240,22 @@ async function processBenchmark(jobDir, jobId, benchmark, archYamlPath) {
   const absoluteBenchmarkDir = path.resolve(benchmarkDir);
 
   // Determine test file path in Docker container
-  const testFilePath = `/cgra/dataflow/test/e2e/${benchmark}/${benchmark}_kernel.mlir`;
+  const benchmarkTestDir = `${DOCKER_DATAFLOW_TEST_DIR}/e2e/${benchmark}`;
+  const testFilePath = `${benchmarkTestDir}/${benchmark}_kernel.mlir`;
 
   // Copy architecture.yaml to benchmark directory
   const benchmarkArchPath = path.join(benchmarkDir, 'architecture.yaml');
   await fs.copyFile(archYamlPath, benchmarkArchPath);
 
   // Seed the benchmark directory with the original test files from the image so that
-  // writes in /cgra/dataflow/test/e2e/<benchmark> (dot/png/etc.) land on the host.
+  // writes in the benchmark directory (dot/png/etc.) land on the host.
   // This copies once per run and lets us bind-mount the entire benchmark folder.
   const seedCommand = [
     'docker run --rm',
     `-v "${absoluteBenchmarkDir}:/workspace"`,
     DOCKER_IMAGE,
     'bash -lc',
-    `"shopt -s dotglob && cp -r /cgra/dataflow/test/e2e/${benchmark}/* /workspace/"`,
+    `"shopt -s dotglob && cp -r ${benchmarkTestDir}/* /workspace/"`,
   ].join(' ');
   await execAsync(seedCommand);
 
@@ -232,12 +269,12 @@ async function processBenchmark(jobDir, jobId, benchmark, archYamlPath) {
     'docker run',
     '--rm',
     `--name ${containerName}`,
-    `-v "${absoluteBenchmarkDir}:/cgra/dataflow/test/e2e/${benchmark}"`,
-    `-v "${absoluteJobDir}/architecture.yaml:/cgra/dataflow/test/arch_spec/architecture.yaml:ro"`,
+    `-v "${absoluteBenchmarkDir}:${benchmarkTestDir}"`,
+    `-v "${absoluteJobDir}/architecture.yaml:${DOCKER_ARCH_SPEC_PATH}:ro"`,
     '-w',
-    `/cgra/dataflow/test/e2e/${benchmark}`,
+    benchmarkTestDir,
     DOCKER_IMAGE,
-    `/cgra/llvm-project/build/bin/llvm-lit -v ${testFilePath}`
+    `${DOCKER_LLVM_LIT_PATH} -v ${testFilePath}`
   ].join(' ');
 
   console.log(`    Running: llvm-lit ${testFilePath}`);
@@ -259,9 +296,9 @@ async function processBenchmark(jobDir, jobId, benchmark, archYamlPath) {
     await convertDotFilesWithGraphviz(benchmarkDir, benchmark);
     const graphUploads = await uploadGraphJsonFiles(jobId, benchmark, benchmarkDir);
 
-    // Parse llvm-lit output for results
-    const passed = stdout.includes('pass 1') || stdout.includes('Passed: 1');
-    const failed = stdout.includes('fail 1') || stdout.includes('Failed: 1');
+    // Parse llvm-lit output for results (case-insensitive for robustness)
+    const passed = /pass(?:ed)?:?\s*1/i.test(stdout);
+    const failed = /fail(?:ed)?:?\s*1/i.test(stdout);
 
     // Extract compiled_ii and mapping info from output
     const compiledIiMatch = stdout.match(/compiled_ii\s*=\s*(\d+)/);
@@ -281,15 +318,19 @@ async function processBenchmark(jobDir, jobId, benchmark, archYamlPath) {
   } catch (error) {
     const endTime = Date.now();
 
-    // Save error output
-    if (error.stdout) {
-      await fs.writeFile(path.join(benchmarkDir, 'stdout.txt'), error.stdout, 'utf8');
+    // Save error output (best effort - don't let save failures hide the original error)
+    try {
+      if (error.stdout) {
+        await fs.writeFile(path.join(benchmarkDir, 'stdout.txt'), error.stdout, 'utf8');
+      }
+      if (error.stderr) {
+        await fs.writeFile(path.join(benchmarkDir, 'stderr.txt'), error.stderr, 'utf8');
+      }
+      // Best effort conversion even on failure
+      await convertDotFilesWithGraphviz(benchmarkDir, benchmark);
+    } catch (saveError) {
+      console.error(`    Warning: Failed to save error output: ${saveError.message}`);
     }
-    if (error.stderr) {
-      await fs.writeFile(path.join(benchmarkDir, 'stderr.txt'), error.stderr, 'utf8');
-    }
-    // Best effort conversion even on failure
-    await convertDotFilesWithGraphviz(benchmarkDir, benchmark);
 
     // Enhance error message
     if (error.killed && error.signal === 'SIGTERM') {
@@ -328,9 +369,9 @@ async function convertDotFilesWithGraphviz(benchmarkDir, benchmark) {
 
   for (const dotPath of dotFiles) {
     const outPath = dotPath.replace(/\.dot$/i, '.json');
-    const cmd = `dot -Tjson "${dotPath}" -o "${outPath}"`;
     try {
-      await execAsync(cmd);
+      // Use execFileAsync to avoid shell interpolation vulnerabilities
+      await execFileAsync('dot', ['-Tjson', dotPath, '-o', outPath]);
     } catch (err) {
       console.warn(`      ⚠️  Failed to convert ${dotPath} to JSON with Graphviz: ${err.message}`);
     }
@@ -382,9 +423,18 @@ async function uploadGraphJsonFiles(jobId, benchmark, benchmarkDir) {
 
 /**
  * Ensure the storage bucket for graph uploads exists (best-effort).
+ * Retries after GRAPH_BUCKET_RETRY_INTERVAL_MS if previous attempt failed.
  */
 async function ensureGraphBucket() {
   if (graphBucketReady) return;
+
+  // Don't retry too frequently after a failure
+  const now = Date.now();
+  if (graphBucketLastAttempt > 0 && (now - graphBucketLastAttempt) < GRAPH_BUCKET_RETRY_INTERVAL_MS) {
+    return;
+  }
+  graphBucketLastAttempt = now;
+
   try {
     const { data: buckets, error: listError } = await supabase.storage.listBuckets();
     if (listError) throw listError;
@@ -398,7 +448,6 @@ async function ensureGraphBucket() {
     }
     graphBucketReady = true;
   } catch (err) {
-    console.warn(`  ⚠️  Unable to ensure bucket "${GRAPH_BUCKET}": ${err.message}`);
-    graphBucketReady = false;
+    console.warn(`  ⚠️  Unable to ensure bucket "${GRAPH_BUCKET}": ${err.message}. Will retry after ${GRAPH_BUCKET_RETRY_INTERVAL_MS / 1000}s.`);
   }
 }

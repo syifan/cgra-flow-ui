@@ -1,25 +1,12 @@
 import yaml from 'js-yaml';
 
-// Base operations and minimum resources required by the compiler/test suite
-const BASE_OPERATIONS = [
-  'add', 'mul', 'sub', 'div', 'rem',
-  'fadd', 'fmul', 'fsub', 'fdiv',
-  'or', 'not', 'icmp', 'fcmp', 'sel',
-  'cast', 'sext', 'zext', 'shl',
-  'vfmul', 'fadd_fadd', 'fmul_fadd',
-  'data_mov', 'ctrl_mov', 'reserve',
-  'grant_predicate', 'grant_once', 'grant_always',
-  'loop_control', 'phi', 'constant',
-  'load', 'store', 'return',
-  'load_indexed', 'store_indexed', 'alloca'
-];
-const MIN_PER_CGRA_ROWS = 4;
-const MIN_PER_CGRA_COLUMNS = 4;
-const MIN_CTRL_MEM_ITEMS = 20;
+// Default values used when not specified in the input JSON
+const DEFAULT_PER_CGRA_ROWS = 4;
+const DEFAULT_PER_CGRA_COLUMNS = 4;
+const DEFAULT_CTRL_MEM_ITEMS = 20;
 
 function normalizeOperations(operations = []) {
-  const opSet = new Set(BASE_OPERATIONS);
-  operations.forEach(op => opSet.add(op));
+  const opSet = new Set(operations);
   return Array.from(opSet);
 }
 
@@ -91,13 +78,11 @@ function deriveDefaultOperations(cgras) {
     }
   }
 
-  // If no common set, use comprehensive default
+  // If no common set, use all UI-supported operations as default
+  // These must match the operations in operationMap from functionalUnitsToOperations
   if (commonOps.length === 0) {
-    commonOps = ['add', 'mul', 'sub', 'div', 'rem', 'fadd', 'fmul', 'fsub', 'fdiv',
-                 'or', 'not', 'icmp', 'fcmp', 'sel', 'cast', 'sext', 'zext', 'shl',
-                 'data_mov', 'ctrl_mov', 'reserve', 'grant_predicate', 'grant_once',
-                 'grant_always', 'loop_control', 'phi', 'constant', 'load', 'store',
-                 'return', 'load_indexed', 'store_indexed'];
+    commonOps = ['phi', 'shift', 'select', 'mac', 'return', 'logic',
+                 'load', 'store', 'compare', 'add', 'mul'];
   }
 
   return commonOps;
@@ -202,9 +187,9 @@ export function convertJsonToYaml(jsonArchitecture) {
     },
 
     per_cgra_defaults: {
-      rows: Math.max(firstCgra.perCgraRows ?? MIN_PER_CGRA_ROWS, MIN_PER_CGRA_ROWS),
-      columns: Math.max(firstCgra.perCgraColumns ?? MIN_PER_CGRA_COLUMNS, MIN_PER_CGRA_COLUMNS),
-      ctrl_mem_items: Math.max(firstCgra.configMemoryEntries ?? MIN_CTRL_MEM_ITEMS, MIN_CTRL_MEM_ITEMS),
+      rows: firstCgra.perCgraRows ?? DEFAULT_PER_CGRA_ROWS,
+      columns: firstCgra.perCgraColumns ?? DEFAULT_PER_CGRA_COLUMNS,
+      ctrl_mem_items: firstCgra.configMemoryEntries ?? DEFAULT_CTRL_MEM_ITEMS,
       base_topology: (firstCgra.intraTopology || 'Mesh').toLowerCase()
     },
 

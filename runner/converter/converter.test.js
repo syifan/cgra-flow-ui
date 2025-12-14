@@ -103,11 +103,11 @@ describe('Architecture Converter - Basic Structure', () => {
     assert.equal(result.multi_cgra_defaults.base_topology, 'mesh');
     assert.equal(result.multi_cgra_defaults.memory.capacity, 512);
 
-    // Check per-CGRA defaults (minimum enforced is 4x4)
+    // Check per-CGRA defaults (user values passed through)
     assert.ok(result.per_cgra_defaults, 'Should have per_cgra_defaults');
-    assert.equal(result.per_cgra_defaults.rows, 4);
-    assert.equal(result.per_cgra_defaults.columns, 4);
-    assert.equal(result.per_cgra_defaults.ctrl_mem_items, 20); // minimum enforced
+    assert.equal(result.per_cgra_defaults.rows, 2);
+    assert.equal(result.per_cgra_defaults.columns, 2);
+    assert.equal(result.per_cgra_defaults.ctrl_mem_items, 10);
     assert.equal(result.per_cgra_defaults.base_topology, 'mesh');
     assert.equal(result.per_cgra_defaults.memory.banks, 4);
 
@@ -126,7 +126,7 @@ describe('Architecture Converter - Basic Structure', () => {
 });
 
 describe('Architecture Converter - Functional Units', () => {
-  it('should normalize operations to include all base operations', () => {
+  it('should preserve operations as specified without forcing base operations', () => {
     const input = {
       version: 1,
       architecture: {
@@ -159,26 +159,20 @@ describe('Architecture Converter - Functional Units', () => {
 
     const result = convertJsonToYaml(input);
 
-    // All base operations should be included regardless of UI settings
-    const baseOps = [
-      'add', 'mul', 'sub', 'div', 'rem',
-      'fadd', 'fmul', 'fsub', 'fdiv',
-      'or', 'not', 'icmp', 'fcmp', 'sel',
-      'cast', 'sext', 'zext', 'shl',
-      'vfmul', 'fadd_fadd', 'fmul_fadd',
-      'data_mov', 'ctrl_mov', 'reserve',
-      'grant_predicate', 'grant_once', 'grant_always',
-      'loop_control', 'phi', 'constant',
-      'load', 'store', 'return',
-      'load_indexed', 'store_indexed', 'alloca'
-    ];
-
-    baseOps.forEach(op => {
+    // Only specified operations should be included
+    const expectedOps = ['phi', 'add', 'mul'];
+    expectedOps.forEach(op => {
       assert.ok(
         result.tile_defaults.operations.includes(op),
-        `Should include base operation: ${op}`
+        `Should include specified operation: ${op}`
       );
     });
+
+    // Operations not specified should not be included
+    assert.ok(
+      !result.tile_defaults.operations.includes('sub'),
+      'Should not include unspecified operation: sub'
+    );
   });
 });
 
@@ -241,9 +235,8 @@ describe('Architecture Converter - Tile Overrides', () => {
     assert.equal(override.existence, false);
   });
 
-  it('should not create override when operations normalize to same set', () => {
-    // Since all tiles get normalized to include BASE_OPERATIONS,
-    // different UI functional unit settings don't create overrides
+  it('should create override when tile has different operations than default', () => {
+    // Tiles with different operations should generate overrides
     const input = {
       version: 1,
       architecture: {
@@ -268,7 +261,7 @@ describe('Architecture Converter - Tile Overrides', () => {
                 x: 0,
                 y: 1,
                 disabled: false,
-                tileFunctionalUnits: { load: true } // Different UI settings but normalizes to same
+                tileFunctionalUnits: { load: true } // Different operations - should create override
               }
             ]
           }
@@ -278,9 +271,14 @@ describe('Architecture Converter - Tile Overrides', () => {
 
     const result = convertJsonToYaml(input);
 
-    // No overrides should be created since operations normalize to the same set
+    // Override should be created for tile with different operations
     assert.ok(Array.isArray(result.tile_overrides));
-    assert.equal(result.tile_overrides.length, 0, 'No overrides when operations normalize equally');
+    assert.equal(result.tile_overrides.length, 1, 'Override created for tile with different operations');
+
+    const override = result.tile_overrides[0];
+    assert.equal(override.tile_x, 0);
+    assert.equal(override.tile_y, 1);
+    assert.deepEqual(override.operations, ['load']);
   });
 });
 
