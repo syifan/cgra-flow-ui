@@ -6,6 +6,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { exec, execFile } from 'child_process';
 import { promisify } from 'util';
+import { tmpdir } from 'os';
 import { createClient } from '@supabase/supabase-js';
 import { config } from 'dotenv';
 import { convertJsonToYamlString } from './converter/converter.js';
@@ -498,9 +499,10 @@ async function ensureGraphBucket() {
  * Archive the entire job directory into a gzipped tarball.
  * Returns the archive path and size in bytes.
  */
-async function archiveJobDirectory(jobDir) {
-  const archivePath = path.join(jobDir, 'job-package.tar.gz');
-  const tarCommand = `tar -czf "${archivePath}" -C "${jobDir}" .`;
+async function archiveJobDirectory(jobId, jobDir) {
+  const archivePath = path.join(tmpdir(), `job-package-${jobId}.tar.gz`);
+  // Exclude the archive itself (defensive) and write outside jobDir to avoid tar mutation warnings.
+  const tarCommand = `tar -czf "${archivePath}" --exclude="job-package.tar.gz" -C "${jobDir}" .`;
   await execAsync(tarCommand);
   const stats = await fs.stat(archivePath);
   return { archivePath, size: stats.size };
@@ -516,7 +518,7 @@ async function uploadJobPackage(jobId, jobDir) {
   }
 
   try {
-    const { archivePath, size } = await archiveJobDirectory(jobDir);
+    const { archivePath, size } = await archiveJobDirectory(jobId, jobDir);
     const fileBuffer = await fs.readFile(archivePath);
     const storagePath = `jobs/${jobId}/job-package.tar.gz`;
     const { error: uploadError } = await supabase.storage
@@ -542,5 +544,13 @@ async function uploadJobPackage(jobId, jobDir) {
   } catch (error) {
     console.warn(`  ⚠️  Failed to upload job package: ${error.message}`);
     return null;
+  } finally {
+    // Best-effort cleanup of the temp archive
+    try {
+      const tmpPath = path.join(tmpdir(), `job-package-${jobId}.tar.gz`);
+      await fs.unlink(tmpPath);
+    } catch (cleanupErr) {
+      // Ignore cleanup errors
+    }
   }
 }
