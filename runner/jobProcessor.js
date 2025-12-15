@@ -52,14 +52,20 @@ export async function completeJob(supabase, jobId, resultInfo = {}) {
  * @param {string} jobId
  * @param {string} errorMessage
  */
-export async function failJob(supabase, jobId, errorMessage) {
+export async function failJob(supabase, jobId, errorMessage, info) {
+  const update = {
+    status: 'failed',
+    completed_at: new Date().toISOString(),
+    error_message: errorMessage
+  }
+
+  if (info !== undefined) {
+    update.info = info
+  }
+
   const { error } = await supabase
     .from('jobs')
-    .update({
-      status: 'failed',
-      completed_at: new Date().toISOString(),
-      error_message: errorMessage
-    })
+    .update(update)
     .eq('id', jobId)
 
   if (error) throw error

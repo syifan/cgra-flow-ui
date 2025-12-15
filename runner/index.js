@@ -75,7 +75,7 @@ async function runLoop() {
           if (execError.stack) {
             console.error(`  Stack trace: ${execError.stack}`)
           }
-          await failJob(supabase, job.id, execError.message)
+          await failJob(supabase, job.id, execError.message, execError.jobInfo)
           console.log('')
         }
 

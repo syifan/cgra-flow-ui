@@ -69,6 +69,11 @@ const DOCKER_LLVM_LIT_PATH = process.env.DOCKER_LLVM_LIT_PATH || '/cgra/llvm-pro
 export async function executeMappingJob(job) {
   const startTime = Date.now();
   const jobDir = path.join(JOBS_DIR, job.id);
+  let results = {};
+  let successCount = 0;
+  let failureCount = 0;
+  let resultInfo = null;
+  let caughtError = null;
 
   // Validate job structure
   if (!job.info) {
@@ -156,60 +161,83 @@ export async function executeMappingJob(job) {
 
   // Step 5: Process each benchmark
   const benchmarks = job.info.benchmarks || [];
-  const results = {};
-  let successCount = 0;
-  let failureCount = 0;
 
   console.log(`  Processing ${benchmarks.length} benchmark(s)...`);
 
-  for (const benchmark of benchmarks) {
-    console.log(`\n  → Benchmark: ${benchmark}`);
+  try {
+    for (const benchmark of benchmarks) {
+      console.log(`\n  → Benchmark: ${benchmark}`);
 
-    try {
-      const benchmarkResult = await processBenchmark(jobDir, job.id, benchmark, archYamlPath);
-      results[benchmark] = {
-        status: 'success',
-        ...benchmarkResult
-      };
-      successCount++;
-      console.log(`    ✓ ${benchmark} completed successfully`);
-    } catch (error) {
-      results[benchmark] = {
-        status: 'failed',
-        error: error.message,
-        stderr: error.stderr || ''
-      };
-      failureCount++;
-      console.log(`    ✗ ${benchmark} failed: ${error.message}`);
+      try {
+        const benchmarkResult = await processBenchmark(jobDir, job.id, benchmark, archYamlPath);
+        results[benchmark] = {
+          status: 'success',
+          ...benchmarkResult
+        };
+        successCount++;
+        console.log(`    ✓ ${benchmark} completed successfully`);
+      } catch (error) {
+        results[benchmark] = {
+          status: 'failed',
+          error: error.message,
+          stderr: error.stderr || ''
+        };
+        failureCount++;
+        console.log(`    ✗ ${benchmark} failed: ${error.message}`);
+      }
+    }
+
+    const endTime = Date.now();
+    const executionTimeMs = endTime - startTime;
+
+    console.log(`\n  Summary: ${successCount} benchmark(s) succeeded, ${failureCount} benchmark(s) failed`);
+
+    // If any benchmark failed, propagate failure so the job is marked failed in DB
+    if (failureCount > 0) {
+      const failedList = Object.entries(results)
+        .filter(([, r]) => r.status === 'failed')
+        .map(([name, r]) => `${name}${r.error ? `: ${r.error}` : ''}`)
+        .join('; ');
+      const error = new Error(`Benchmark failures detected (${failureCount}/${benchmarks.length}): ${failedList}`);
+      error.results = results;
+      throw error;
+    }
+
+    resultInfo = {
+      execution_time_ms: executionTimeMs,
+      job_directory: jobDir,
+      benchmarks: results,
+      summary: {
+        total: benchmarks.length,
+        success: successCount,
+        failed: failureCount
+      }
+    };
+  } catch (error) {
+    caughtError = error;
+    if (!caughtError.results && Object.keys(results).length > 0) {
+      caughtError.results = results;
+    }
+  } finally {
+    const jobPackage = await uploadJobPackage(job.id, jobDir);
+    if (resultInfo) {
+      resultInfo.job_package = jobPackage;
+    }
+    if (caughtError) {
+      const jobInfo = caughtError.jobInfo || {};
+      if (caughtError.results || Object.keys(results).length > 0) {
+        jobInfo.benchmarks = caughtError.results || results;
+      }
+      jobInfo.job_package = jobPackage;
+      caughtError.jobInfo = jobInfo;
     }
   }
 
-  const endTime = Date.now();
-  const executionTimeMs = endTime - startTime;
-
-  console.log(`\n  Summary: ${successCount} benchmark(s) succeeded, ${failureCount} benchmark(s) failed`);
-
-  // If any benchmark failed, propagate failure so the job is marked failed in DB
-  if (failureCount > 0) {
-    const failedList = Object.entries(results)
-      .filter(([, r]) => r.status === 'failed')
-      .map(([name, r]) => `${name}${r.error ? `: ${r.error}` : ''}`)
-      .join('; ');
-    const error = new Error(`Benchmark failures detected (${failureCount}/${benchmarks.length}): ${failedList}`);
-    error.results = results;
-    throw error;
+  if (caughtError) {
+    throw caughtError;
   }
 
-  return {
-    execution_time_ms: executionTimeMs,
-    job_directory: jobDir,
-    benchmarks: results,
-    summary: {
-      total: benchmarks.length,
-      success: successCount,
-      failed: failureCount
-    }
-  };
+  return resultInfo;
 }
 
 /**
@@ -463,5 +491,56 @@ async function ensureGraphBucket() {
     graphBucketReady = true;
   } catch (err) {
     console.warn(`  ⚠️  Unable to ensure bucket "${GRAPH_BUCKET}": ${err.message}. Will retry after ${GRAPH_BUCKET_RETRY_INTERVAL_MS / 1000}s.`);
+  }
+}
+
+/**
+ * Archive the entire job directory into a gzipped tarball.
+ * Returns the archive path and size in bytes.
+ */
+async function archiveJobDirectory(jobDir) {
+  const archivePath = path.join(jobDir, 'job-package.tar.gz');
+  const tarCommand = `tar -czf "${archivePath}" -C "${jobDir}" .`;
+  await execAsync(tarCommand);
+  const stats = await fs.stat(archivePath);
+  return { archivePath, size: stats.size };
+}
+
+/**
+ * Upload the full job package archive to Supabase storage.
+ */
+async function uploadJobPackage(jobId, jobDir) {
+  if (!graphBucketReady) {
+    console.warn(`  ⚠️  Graph bucket "${GRAPH_BUCKET}" is not available; skipping job package upload.`);
+    return null;
+  }
+
+  try {
+    const { archivePath, size } = await archiveJobDirectory(jobDir);
+    const fileBuffer = await fs.readFile(archivePath);
+    const storagePath = `jobs/${jobId}/job-package.tar.gz`;
+    const { error: uploadError } = await supabase.storage
+      .from(GRAPH_BUCKET)
+      .upload(storagePath, fileBuffer, {
+        contentType: 'application/gzip',
+        upsert: true
+      });
+
+    if (uploadError) {
+      throw uploadError;
+    }
+
+    const { data: publicData } = supabase.storage.from(GRAPH_BUCKET).getPublicUrl(storagePath);
+
+    return {
+      file: 'job-package.tar.gz',
+      path: storagePath,
+      bucket: GRAPH_BUCKET,
+      size,
+      publicUrl: publicData?.publicUrl || null
+    };
+  } catch (error) {
+    console.warn(`  ⚠️  Failed to upload job package: ${error.message}`);
+    return null;
   }
 }

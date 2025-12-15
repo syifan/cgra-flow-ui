@@ -28,6 +28,7 @@ import LockIcon from '@mui/icons-material/Lock';
 import ErrorIcon from '@mui/icons-material/Error';
 import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import DownloadIcon from '@mui/icons-material/Download';
 import { Layout, Model } from 'flexlayout-react';
 import 'flexlayout-react/style/dark.css';
 import MainCanvas from './main_cancas';
@@ -775,6 +776,16 @@ function Workspace() {
             const benchmarks = Array.isArray(latestMappingJob.info?.benchmarks)
               ? latestMappingJob.info.benchmarks.join(', ')
               : 'N/A';
+            const jobPackage = latestMappingJob.info?.job_package;
+            const packageUrl = (() => {
+              if (!jobPackage) return null;
+              if (jobPackage.publicUrl) return jobPackage.publicUrl;
+              if (jobPackage.path && jobPackage.bucket) {
+                const { data } = supabase.storage.from(jobPackage.bucket).getPublicUrl(jobPackage.path);
+                return data?.publicUrl || null;
+              }
+              return null;
+            })();
 
             const statusConfig = {
               queued: { icon: <HourglassEmptyIcon fontSize="small" />, color: 'info', label: 'Queued' },
@@ -807,6 +818,19 @@ function Workspace() {
                   <Typography variant="caption" sx={{ color: 'error.main', display: 'block', mt: 0.5 }}>
                     Error: {latestMappingJob.error_message}
                   </Typography>
+                )}
+                {packageUrl && (
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<DownloadIcon fontSize="small" />}
+                    href={packageUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    sx={{ mt: 1 }}
+                  >
+                    Download job package
+                  </Button>
                 )}
               </Box>
             );
