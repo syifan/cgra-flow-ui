@@ -167,12 +167,18 @@ jobs:
           script: |
             set -e
 
-            # Create runner directory
-            mkdir -p ~/cgra-runner
-            cd ~/cgra-runner
+            # Per-PR runner directory and process name
+            PROCESS_NAME="cgra-runner-pr-${{ github.event.number }}"
+            PR_DIR=~/cgra-runner/pr-${{ github.event.number }}
+
+            # Stop existing runner and clean up directory on redeploy
+            pm2 delete "$PROCESS_NAME" 2>/dev/null || true
+            rm -rf "$PR_DIR"
+
+            mkdir -p "$PR_DIR"
+            cd "$PR_DIR"
 
             # Clean up and clone fresh (simpler than trying to update)
-            rm -rf repo
             git clone --depth 1 --branch ${{ github.head_ref }} https://github.com/${{ github.repository }}.git repo || \
               git clone --depth 1 https://github.com/${{ github.repository }}.git repo
 
@@ -202,12 +208,6 @@ jobs:
 
             # Install dependencies
             npm ci --omit=dev
-
-            # Use PR-specific process name to allow multiple concurrent preview environments
-            PROCESS_NAME="cgra-runner-pr-${{ github.event.number }}"
-
-            # Stop existing runner for this PR
-            pm2 delete "$PROCESS_NAME" 2>/dev/null || true
 
             # Start runner with environment variables loaded via dotenv
             # Create a wrapper script that loads .env
@@ -296,6 +296,7 @@ jobs:
           script: |
             PROCESS_NAME="cgra-runner-pr-${{ github.event.number }}"
             DOCKER_TAG="cgra-flow:pr-${{ github.event.number }}"
+            PR_DIR=~/cgra-runner/pr-${{ github.event.number }}
             echo "PR ${{ github.event.number }} closed - cleaning up"
 
             # Stop the runner process
@@ -306,5 +307,5 @@ jobs:
             echo "Removing Docker image: $DOCKER_TAG"
             docker rmi "$DOCKER_TAG" 2>/dev/null || true
 
-            # Clean up repo directory
-            rm -rf ~/cgra-runner/repo
+            # Clean up PR-specific directory
+            rm -rf "$PR_DIR"
