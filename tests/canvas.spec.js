@@ -6,34 +6,24 @@ test.describe('Canvas rendering', () => {
 
     const cgraLayer = page.locator('svg .layer-cgra-nodes');
     await expect(cgraLayer).toBeVisible();
-    await expect(cgraLayer.locator('g.cgra-node').first()).toBeVisible();
+    await expect(cgraLayer.locator('g.cgra-node')).toHaveCount(1);
 
     const peLayer = page.locator('svg .layer-pe-nodes');
     await expect(peLayer).toBeVisible();
-    await expect(peLayer.locator('g.pe-node').first()).toBeVisible();
+    const peNodes = peLayer.locator('g.pe-node');
+    await expect(peNodes).toHaveCount(16);
 
     const cgraConnectionsLayer = page.locator('svg .layer-cgra-connections');
     await expect(cgraConnectionsLayer).toBeVisible();
     const cgraConnectionLocator = cgraConnectionsLayer.locator('line.cgra-connection');
     const cgraConnectionCount = await cgraConnectionLocator.count();
-    expect(cgraConnectionCount).toBeGreaterThan(0);
-    let cgraHasVisible = false;
-    for (let index = 0; index < cgraConnectionCount; index += 1) {
-      const connection = cgraConnectionLocator.nth(index);
-      const handle = await connection.elementHandle();
-      const box = await handle?.boundingBox();
-      if (box && (box.width > 0 || box.height > 0)) {
-        cgraHasVisible = true;
-        break;
-      }
-    }
-    expect(cgraHasVisible).toBeTruthy();
+    expect(cgraConnectionCount).toBe(0);
 
     const peConnectionsLayer = page.locator('svg .layer-pe-connections');
     await expect(peConnectionsLayer).toBeVisible();
     const peConnectionLocator = peConnectionsLayer.locator('line.pe-connection');
     const peConnectionCount = await peConnectionLocator.count();
-    expect(peConnectionCount).toBeGreaterThan(0);
+    expect(peConnectionCount).toBe(48);
     let peHasVisible = false;
     for (let index = 0; index < peConnectionCount; index += 1) {
       const connection = peConnectionLocator.nth(index);
@@ -73,7 +63,7 @@ test.describe('Canvas rendering', () => {
     // workspacePage fixture already navigates to the workspace
 
     const cgraNodes = page.locator('svg .layer-cgra-nodes g.cgra-node');
-    await expect(cgraNodes).toHaveCount(16);
+    await expect(cgraNodes).toHaveCount(1);
 
     const rowsInput = page.getByTestId('property-multiCgraRows');
     const columnsInput = page.getByTestId('property-multiCgraColumns');
@@ -81,24 +71,30 @@ test.describe('Canvas rendering', () => {
     await expect(rowsInput).toBeVisible();
     await expect(columnsInput).toBeVisible();
 
-    await rowsInput.fill('5');
-    await expect(cgraNodes).toHaveCount(20);
+    await rowsInput.fill('2');
+    await expect(cgraNodes).toHaveCount(2);
 
-    await columnsInput.fill('5');
-    await expect(cgraNodes).toHaveCount(25);
+    await columnsInput.fill('3');
+    await expect(cgraNodes).toHaveCount(6);
 
-    await rowsInput.fill('3');
-    await expect(cgraNodes).toHaveCount(15);
+    await rowsInput.fill('4');
+    await expect(cgraNodes).toHaveCount(12);
 
     await columnsInput.fill('2');
-    await expect(cgraNodes).toHaveCount(6);
+    await expect(cgraNodes).toHaveCount(8);
   });
 
   test('positions CGRAs using a bottom-left origin', async ({ workspacePage: page }) => {
     // workspacePage fixture already navigates to the workspace
 
+    const rowsInput = page.getByTestId('property-multiCgraRows');
+    const columnsInput = page.getByTestId('property-multiCgraColumns');
+
+    await rowsInput.fill('2');
+    await columnsInput.fill('3');
+
     const cgraNodes = page.locator('svg .layer-cgra-nodes g.cgra-node');
-    await expect(cgraNodes).toHaveCount(16);
+    await expect(cgraNodes).toHaveCount(6);
 
     const nodeCount = await cgraNodes.count();
     const nodes = [];
@@ -117,7 +113,7 @@ test.describe('Canvas rendering', () => {
       });
     }
 
-    expect(nodes).toHaveLength(16);
+    expect(nodes).toHaveLength(6);
 
     const tolerance = 5;
     const rowCenters = [];
@@ -127,7 +123,7 @@ test.describe('Canvas rendering', () => {
       }
     }
 
-    expect(rowCenters).toHaveLength(4);
+    expect(rowCenters).toHaveLength(2);
 
     const nodesInRow = (targetCy) =>
       nodes.filter((node) => Math.abs(node.cy - targetCy) <= tolerance);
@@ -135,20 +131,20 @@ test.describe('Canvas rendering', () => {
 
     const bottomRowNodes = nodesInRow(rowCenters[0]);
     const bottomRowSorted = sortByCx(bottomRowNodes);
-    expect(bottomRowSorted.length).toBeGreaterThanOrEqual(2);
+    expect(bottomRowSorted).toHaveLength(3);
 
     const secondRowNodes = nodesInRow(rowCenters[1]);
     const secondRowSorted = sortByCx(secondRowNodes);
-    expect(secondRowSorted.length).toBeGreaterThan(0);
+    expect(secondRowSorted).toHaveLength(3);
     const secondRowLeft = secondRowSorted[0];
 
     const topRowNodes = nodesInRow(rowCenters[rowCenters.length - 1]);
     const topRowSorted = sortByCx(topRowNodes);
-    expect(topRowSorted.length).toBeGreaterThan(0);
+    expect(topRowSorted).toHaveLength(3);
 
     expect(bottomRowSorted[0].label).toBe('CGRA (0, 0)');
     expect(bottomRowSorted[1].label).toBe('CGRA (1, 0)');
+    expect(topRowSorted[topRowSorted.length - 1].label).toBe('CGRA (2, 1)');
     expect(secondRowLeft.label).toBe('CGRA (0, 1)');
-    expect(topRowSorted[topRowSorted.length - 1].label).toBe('CGRA (3, 3)');
   });
 });

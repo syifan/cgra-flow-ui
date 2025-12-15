@@ -1,21 +1,21 @@
 import { createDefaultPeConnections } from './peConnections.js';
 
 const appData = (() => {
-  const MULTI_CGRA_ROWS = 4;
-  const MULTI_CGRA_COLUMNS = 4;
+  const MULTI_CGRA_ROWS = 1;
+  const MULTI_CGRA_COLUMNS = 1;
   const PE_ROWS = 4;
   const PE_COLUMNS = 4;
 
   const functionalUnitDefaults = {
     phi: true,
     shift: true,
-    select: false,
+    select: true,
     mac: true,
-    return: false,
+    return: true,
     logic: true,
     load: true,
     store: true,
-    compare: false,
+    compare: true,
     add: true,
     mul: true
   };

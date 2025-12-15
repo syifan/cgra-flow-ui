@@ -10,11 +10,11 @@ test.describe('Workspace save functionality', () => {
     // Make a change to the project - update CGRA rows
     const rowsInput = page.getByTestId('property-multiCgraRows');
     await expect(rowsInput).toBeVisible();
-    await rowsInput.fill('3');
+    await rowsInput.fill('2');
 
     // Wait for the change to be reflected
     const cgraNodes = page.locator('svg .layer-cgra-nodes g.cgra-node');
-    await expect(cgraNodes).toHaveCount(12); // 3 rows x 4 columns = 12
+    await expect(cgraNodes).toHaveCount(2);
 
     // Should show unsaved indicator
     await expect(page.locator('.MuiChip-label:has-text("To be saved")')).toBeVisible();
@@ -24,11 +24,11 @@ test.describe('Workspace save functionality', () => {
     // Make a change to the project - update CGRA rows
     const rowsInput = page.getByTestId('property-multiCgraRows');
     await expect(rowsInput).toBeVisible();
-    await rowsInput.fill('3');
+    await rowsInput.fill('2');
 
     // Wait for the change to be reflected
     const cgraNodes = page.locator('svg .layer-cgra-nodes g.cgra-node');
-    await expect(cgraNodes).toHaveCount(12); // 3 rows x 4 columns = 12
+    await expect(cgraNodes).toHaveCount(2);
 
     // Open the menu and save
     await page.locator('[aria-label="open settings"]').click();
