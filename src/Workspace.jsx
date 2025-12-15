@@ -157,14 +157,17 @@ function Workspace() {
   const isLocked = pendingJob !== null;
 
   // Selected benchmarks are stored in appState (memoized by values to prevent unnecessary re-renders)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const selectedBenchmarks = useMemo(() => {
     return appState?.selectedBenchmarks || DEFAULT_BENCHMARKS;
-  }, [
-    appState?.selectedBenchmarks?.bicg,
-    appState?.selectedBenchmarks?.fir,
-    appState?.selectedBenchmarks?.histogram,
-    appState?.selectedBenchmarks?.relu
-  ]);
+  }, [JSON.stringify(appState?.selectedBenchmarks)]);
+
+  // Helper to get list of selected benchmark names
+  const getSelectedBenchmarkNames = useCallback(() => {
+    return Object.entries(selectedBenchmarks)
+      .filter(([, selected]) => selected)
+      .map(([name]) => name);
+  }, [selectedBenchmarks]);
 
   const setSelectedBenchmarks = useCallback((updater) => {
     if (isLocked) return;
@@ -204,6 +207,10 @@ function Workspace() {
       const fetchGraph = async (url) => {
         const response = await fetch(url);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+          throw new Error(`Expected JSON but got '${contentType}'`);
+        }
         return response.json();
       };
 
@@ -348,17 +355,11 @@ function Workspace() {
       }
 
       // Normalize selectedBenchmarks to include all available benchmarks
-      if (!initialState.selectedBenchmarks) {
-        initialState.selectedBenchmarks = { ...DEFAULT_BENCHMARKS };
-      } else {
-        // Merge with defaults to ensure all benchmarks exist
-        initialState.selectedBenchmarks = {
-          bicg: initialState.selectedBenchmarks.bicg ?? DEFAULT_BENCHMARKS.bicg,
-          fir: initialState.selectedBenchmarks.fir ?? DEFAULT_BENCHMARKS.fir,
-          histogram: initialState.selectedBenchmarks.histogram ?? DEFAULT_BENCHMARKS.histogram,
-          relu: initialState.selectedBenchmarks.relu ?? DEFAULT_BENCHMARKS.relu
-        };
-      }
+      // Spread defaults first, then override with any existing values
+      initialState.selectedBenchmarks = {
+        ...DEFAULT_BENCHMARKS,
+        ...initialState.selectedBenchmarks
+      };
 
       setAppState(initialState);
       savedStateRef.current = JSON.stringify(initialState);
@@ -672,11 +673,7 @@ function Workspace() {
     if (!projectId || isLocked || !appState) return;
 
     // Collect selected benchmarks
-    const benchmarks = [];
-    if (selectedBenchmarks.bicg) benchmarks.push('bicg');
-    if (selectedBenchmarks.fir) benchmarks.push('fir');
-    if (selectedBenchmarks.histogram) benchmarks.push('histogram');
-    if (selectedBenchmarks.relu) benchmarks.push('relu');
+    const benchmarks = getSelectedBenchmarkNames();
 
     if (benchmarks.length === 0) {
       showError('Please select at least one benchmark');
@@ -730,7 +727,7 @@ function Workspace() {
       setLatestMappingJob(newJob);
       showSuccess('Mapping job queued successfully');
     }
-  }, [projectId, isLocked, appState, selectedBenchmarks, showError, showSuccess]);
+  }, [projectId, isLocked, appState, getSelectedBenchmarkNames, showError, showSuccess]);
 
   const factory = useCallback(
     (node) => {
@@ -935,7 +932,7 @@ function Workspace() {
               <Box sx={{ display: 'flex', alignItems: 'flex-start', ml: 2 }}>
                 <Button
                   variant="contained"
-                  disabled={isLocked || (!selectedBenchmarks.bicg && !selectedBenchmarks.fir && !selectedBenchmarks.histogram && !selectedBenchmarks.relu)}
+                  disabled={isLocked || getSelectedBenchmarkNames().length === 0}
                   onClick={handleStartMapping}
                 >
                   Start Mapping

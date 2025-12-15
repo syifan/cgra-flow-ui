@@ -79,6 +79,20 @@ export async function executeMappingJob(job) {
     throw new Error('Job info.benchmarks is missing or empty');
   }
 
+  // Validate job ID format (UUID) to prevent command injection
+  const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID_PATTERN.test(job.id)) {
+    throw new Error(`Invalid job ID format: "${job.id}"`);
+  }
+
+  // Validate benchmark names (alphanumeric, underscore, hyphen) to prevent command injection
+  const BENCHMARK_PATTERN = /^[a-zA-Z0-9_-]+$/;
+  for (const benchmark of job.info.benchmarks) {
+    if (!BENCHMARK_PATTERN.test(benchmark)) {
+      throw new Error(`Invalid benchmark name: "${benchmark}"`);
+    }
+  }
+
   // Fetch architecture from project (single source of truth)
   console.log(`  Fetching architecture from project ${job.project_id}...`);
 

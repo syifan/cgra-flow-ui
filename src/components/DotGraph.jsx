@@ -52,8 +52,6 @@ export default function DotGraph({ graph, width = 800, height = 600 }) {
       return o._draw_ || o._ldraw_;
     });
 
-    const nodeSet = new Set(nodes.map(n => n.name || String(n._gvid)));
-
     // Include all edges
     const visibleEdges = edges;
 
@@ -220,9 +218,11 @@ export default function DotGraph({ graph, width = 800, height = 600 }) {
       renderDrawOps(nodeGroup, null, node._ldraw_);
     });
 
-    // Tooltip
+    // Tooltip - remove any stale tooltips first to handle edge cases (hot reload, early returns)
+    d3.selectAll('.dot-graph-tooltip').remove();
     const tooltip = d3.select('body')
       .append('div')
+      .attr('class', 'dot-graph-tooltip')
       .style('position', 'fixed')
       .style('pointer-events', 'none')
       .style('background', 'rgba(17,24,39,0.95)')

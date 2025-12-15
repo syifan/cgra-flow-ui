@@ -33,49 +33,13 @@ Compiles C/C++ kernels to CGRA using the dataflow compiler.
 **Info Structure:**
 ```json
 {
-  "architecture": {
-    "version": 1,
-    "architecture": {
-      "id": "device-001",
-      "name": "My CGRA Device",
-      "totalSramKb": 1024,
-      "interTopology": "Mesh",
-      "multiCgraRows": 1,
-      "multiCgraColumns": 1,
-      "vectorLanes": 1,
-      "dataBitwidth": 32,
-      "CGRAs": [
-        {
-          "id": "cgra-0-0",
-          "x": 0,
-          "y": 0,
-          "intraTopology": "Mesh",
-          "sramBanks": 4,
-          "perCgraRows": 4,
-          "perCgraColumns": 4,
-          "configMemoryEntries": 20,
-          "PEs": [
-            {
-              "id": "pe-0-0-0-0",
-              "x": 0,
-              "y": 0,
-              "disabled": false,
-              "tileFunctionalUnits": {
-                "phi": true,
-                "add": true,
-                "mul": true,
-                "load": true,
-                "store": true
-              }
-            }
-          ]
-        }
-      ]
-    }
-  },
-  "benchmarks": ["fir", "mm", "conv"]
+  "benchmarks": ["fir", "bicg", "relu"]
 }
 ```
+
+> **Note:** The architecture is not stored in the job's `info` field. Instead, the runner
+> fetches it from the associated project at execution time. This ensures the job always
+> uses the current project architecture (single source of truth).
 
 **Result Structure:**
 ```json
@@ -93,7 +57,7 @@ Compiles C/C++ kernels to CGRA using the dataflow compiler.
       "stdout_length": 15234,
       "stderr_length": 0
     },
-    "mm": {
+    "bicg": {
       "status": "success",
       "execution_time_ms": 18400,
       "test_passed": true,
@@ -101,7 +65,7 @@ Compiles C/C++ kernels to CGRA using the dataflow compiler.
       "rec_mii": 6,
       "res_mii": 4
     },
-    "conv": {
+    "relu": {
       "status": "failed",
       "error": "Benchmark timed out after 600000ms",
       "stderr": "..."
@@ -117,18 +81,12 @@ Compiles C/C++ kernels to CGRA using the dataflow compiler.
 
 ## Available Benchmarks
 
-Benchmarks are located in `/cgra/dataflow/test/e2e/` in the Docker container:
+Benchmarks are located in `/cgra/dataflow/test/e2e/` in the Docker container.
 
-- `fir` - Finite Impulse Response filter
-- `mm` - Matrix multiplication
-- `conv` - Convolution
-- `stencil` - Stencil computation
-- `atax` - Matrix transpose and vector multiplication
 - `bicg` - BiConjugate Gradient
-- `gemm` - General matrix multiply
-- `gesummv` - Scalar, vector and matrix multiplication
-- `mvt` - Matrix vector product and transpose
-- `syrk` - Symmetric rank-k operations
+- `fir` - Finite Impulse Response filter
+- `histogram` - Histogram computation
+- `relu` - Rectified Linear Unit activation
 
 ## Job Directory Structure
 
@@ -144,11 +102,11 @@ jobs/
         │   ├── architecture.yaml   # Architecture copy
         │   ├── stdout.txt          # Test output
         │   └── stderr.txt          # Error output
-        ├── mm/
+        ├── bicg/
         │   ├── architecture.yaml
         │   ├── stdout.txt
         │   └── stderr.txt
-        └── conv/
+        └── relu/
             ├── architecture.yaml
             ├── stdout.txt
             └── stderr.txt
@@ -161,16 +119,15 @@ Example code to create a mapping job from the web UI:
 ```javascript
 import { supabase } from './lib/supabase';
 
-async function createMappingJob(projectId, architecture, benchmarks) {
+async function createMappingJob(projectId, userId, benchmarks) {
   const { data, error } = await supabase
     .from('jobs')
     .insert({
       project_id: projectId,
+      user_id: userId,
       type: 'mapping',
-      info: {
-        architecture: architecture,  // Full architecture object from UI
-        benchmarks: benchmarks       // Array of benchmark names
-      }
+      status: 'queued',
+      info: { benchmarks }  // Only benchmarks; architecture is fetched from project
     })
     .select()
     .single();
@@ -182,8 +139,8 @@ async function createMappingJob(projectId, architecture, benchmarks) {
 // Usage
 const job = await createMappingJob(
   'project-uuid',
-  architectureObject,
-  ['fir', 'mm', 'conv']
+  'user-uuid',
+  ['fir', 'bicg', 'relu']
 );
 ```
 
