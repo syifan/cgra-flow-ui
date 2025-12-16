@@ -20,30 +20,28 @@ const REQUIRED_OPERATIONS = [
   'return'
 ];
 
-// Map UI functional unit names (including legacy keys) to YAML operation names
-// Keep this list aligned with dataflow/lib/NeuraDialect/Architecture/Architecture.cpp
-const OPERATION_MAP = {
-  phi: 'phi',
-  shift: 'shl',
-  shl: 'shl',
-  select: 'sel',
-  sel: 'sel',
-  mac: 'mac',
-  return: 'return',
-  logic: 'logic',
-  load: 'load',
-  store: 'store',
-  compare: 'icmp',
-  icmp: 'icmp',
-  not: 'not',
-  add: 'add',
-  mul: 'mul',
-  grant_once: 'grant_once',
-  grantOnce: 'grant_once',
-  grant_predicate: 'grant_predicate',
-  grantPredicate: 'grant_predicate',
-  gep: 'gep'
-};
+// All supported MLIR operations that can be configured as functional units.
+// Uses MLIR operation names directly - no mapping needed.
+const SUPPORTED_OPERATIONS = new Set([
+  // Arithmetic
+  'add', 'mul', 'div', 'rem', 'shl',
+  // Floating point
+  'fadd', 'fmul', 'fdiv', 'fmul_fadd',
+  // Memory
+  'load', 'store', 'gep', 'memset',
+  // Control
+  'phi', 'sel', 'not', 'icmp', 'return',
+  // Data movement
+  'data_mov', 'ctrl_mov', 'reserve',
+  // Grants
+  'grant_once', 'grant_predicate',
+  // Type conversion
+  'cast', 'zext', 'sext',
+  // Other
+  'constant', 'mac',
+  // Vector
+  'vadd', 'vmul'
+]);
 
 function normalizeOperations(operations = []) {
   const opSet = new Set(operations);
@@ -63,8 +61,8 @@ function functionalUnitsToOperations(tileFunctionalUnits) {
   const operations = [];
 
   for (const [key, value] of Object.entries(tileFunctionalUnits)) {
-    if (value === true && OPERATION_MAP[key]) {
-      operations.push(OPERATION_MAP[key]);
+    if (value === true && SUPPORTED_OPERATIONS.has(key)) {
+      operations.push(key);
     }
   }
 
@@ -103,11 +101,9 @@ function deriveDefaultOperations(cgras) {
     }
   }
 
-  // If no common set, use all known operations plus required operations as default
-  // These must match the operations in operationMap from functionalUnitsToOperations
+  // If no common set, use all supported operations plus required operations as default
   if (commonOps.length === 0) {
-    const allKnown = Array.from(new Set(Object.values(OPERATION_MAP)));
-    commonOps = [...allKnown, ...REQUIRED_OPERATIONS];
+    commonOps = [...SUPPORTED_OPERATIONS, ...REQUIRED_OPERATIONS];
   }
 
   return commonOps;

@@ -15,61 +15,16 @@ const DOCKER_IMAGE = process.env.DOCKER_IMAGE || 'cgra-flow:latest';
 const DOCKER_BENCHMARK_DIR = process.env.DOCKER_BENCHMARK_DIR || '/cgra/dataflow/test/e2e';
 const OUTPUT_PATH = path.resolve(process.cwd(), 'public/benchmark_ops_index.json');
 
-// Map MLIR neura op names to architecture operation strings.
-const OPERATION_MAP = {
-  phi: 'phi',
-  select: 'sel',
-  sel: 'sel',
-  shl: 'shl',
-  shift: 'shl',
-  add: 'add',
-  sub: 'sub',
-  mul: 'mul',
-  div: 'div',
-  rem: 'rem',
-  fadd: 'fadd',
-  fsub: 'fsub',
-  fmul: 'fmul',
-  fdiv: 'fdiv',
-  fmul_fadd: 'fmul_fadd',
-  fadd_fadd: 'fadd_fadd',
-  mac: 'mac',
-  icmp: 'icmp',
-  fcmp: 'fcmp',
-  not: 'not',
-  selp: 'sel',
-  load: 'load',
-  store: 'store',
-  load_indexed: 'load',
-  store_indexed: 'store',
-  gep: 'gep',
-  cast: 'cast',
-  sext: 'sext',
-  zext: 'zext',
-  constant: 'constant',
-  grant_once: 'grant_once',
-  grant_predicate: 'grant_predicate',
-  grant_always: 'grant_always',
-  reserve: 'reserve',
-  data_mov: 'data_mov',
-  ctrl_mov: 'ctrl_mov',
-  loop_control: 'loop_control',
-  memset: 'memset',
-  return: 'return'
-};
-
-const mapOp = (op) => OPERATION_MAP[op] || op;
-
+// Extract neura operations from MLIR text.
+// Returns the raw MLIR operation names directly - no mapping needed.
 const collectNeuraOpsFromText = (text) => {
   const regex = /\bneura\.([A-Za-z0-9_]+)\b/g;
-  const raw = new Set();
+  const ops = new Set();
   let match;
   while ((match = regex.exec(text)) !== null) {
-    raw.add(match[1]);
+    ops.add(match[1]);
   }
-  const mapped = new Set();
-  raw.forEach((op) => mapped.add(mapOp(op)));
-  return { raw: Array.from(raw).sort(), ops: Array.from(mapped).sort() };
+  return Array.from(ops).sort();
 };
 
 const hashContent = (content) => {
@@ -135,15 +90,13 @@ const collectBenchmarkFromDocker = async (benchmarkName) => {
 
   if (mlirFiles.length === 0) return null;
 
-  const allRaw = new Set();
   const allOps = new Set();
   const fileHashes = {};
 
   for (const filePath of mlirFiles) {
     const content = await readFileFromDocker(filePath);
-    const { raw, ops } = collectNeuraOpsFromText(content);
-    raw.forEach((r) => allRaw.add(r));
-    ops.forEach((o) => allOps.add(o));
+    const ops = collectNeuraOpsFromText(content);
+    ops.forEach((op) => allOps.add(op));
     fileHashes[path.basename(filePath)] = hashContent(content);
   }
 
@@ -151,7 +104,6 @@ const collectBenchmarkFromDocker = async (benchmarkName) => {
     name: benchmarkName,
     path: `${DOCKER_BENCHMARK_DIR}/${benchmarkName}`,
     ops: Array.from(allOps).sort(),
-    raw_ops: Array.from(allRaw).sort(),
     files: mlirFiles.map((p) => path.basename(p)).sort(),
     file_hashes: fileHashes
   };

@@ -9,24 +9,48 @@ const normalizeLabelText = (raw) => {
   return String(raw).replace(/\s+/g, ' ').trim();
 };
 
+// Functional units using MLIR operation names directly.
+// Operations are grouped by category for clarity.
 const FUNCTIONAL_UNIT_DEFAULTS = {
-  phi: true,
-  shift: true,
-  sel: true,
-  select: false, // legacy key
-  mac: true,
-  return: true,
-  logic: true,
+  // Arithmetic
+  add: true,
+  mul: true,
+  div: false,
+  rem: false,
+  shl: true,
+  // Floating point
+  fadd: false,
+  fmul: false,
+  fdiv: false,
+  fmul_fadd: false,
+  // Memory
   load: true,
   store: true,
-  icmp: true,
-  compare: false, // legacy key
+  gep: true,
+  memset: false,
+  // Control
+  phi: true,
+  sel: true,
   not: true,
+  icmp: true,
+  return: true,
+  // Data movement
+  data_mov: false,
+  ctrl_mov: false,
+  reserve: false,
+  // Grants
   grant_once: true,
   grant_predicate: true,
-  gep: true,
-  add: true,
-  mul: true
+  // Type conversion
+  cast: false,
+  zext: false,
+  sext: false,
+  // Other
+  constant: false,
+  mac: true,
+  // Vector
+  vadd: false,
+  vmul: false
 };
 
 const ensurePositiveInt = (value, fallback = 1) => {

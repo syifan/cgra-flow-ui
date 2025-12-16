@@ -1,54 +1,36 @@
-// Shared operation mapping utilities between frontend checks and converter expectations
+// Shared operation utilities between frontend checks and converter.
+// Uses MLIR operation names directly - no mapping needed.
 
-export const OPERATION_MAP = {
-  phi: 'phi',
-  shift: 'shl',
-  shl: 'shl',
-  select: 'sel',
-  sel: 'sel',
-  mac: 'mac',
-  return: 'return',
-  logic: 'logic',
-  load: 'load',
-  store: 'store',
-  compare: 'icmp',
-  icmp: 'icmp',
-  not: 'not',
-  add: 'add',
-  mul: 'mul',
-  grant_once: 'grant_once',
-  grantOnce: 'grant_once',
-  grant_predicate: 'grant_predicate',
-  grantPredicate: 'grant_predicate',
-  gep: 'gep',
-  data_mov: 'data_mov',
-  ctrl_mov: 'ctrl_mov',
-  reserve: 'reserve',
-  constant: 'constant',
-  zext: 'zext',
-  sext: 'sext',
-  cast: 'cast',
-  fadd: 'fadd',
-  fmul: 'fmul',
-  fsub: 'fsub',
-  fdiv: 'fdiv',
-  fmul_fadd: 'fmul_fadd',
-  fadd_fadd: 'fadd_fadd',
-  memset: 'memset',
-  loop_control: 'loop_control'
-};
-
-export const mapFunctionalUnitKeyToOp = (key) => OPERATION_MAP[key] || key;
+// All supported MLIR operations that can be configured as functional units.
+export const SUPPORTED_OPERATIONS = new Set([
+  // Arithmetic
+  'add', 'mul', 'div', 'rem', 'shl',
+  // Floating point
+  'fadd', 'fmul', 'fdiv', 'fmul_fadd',
+  // Memory
+  'load', 'store', 'gep', 'memset',
+  // Control
+  'phi', 'sel', 'not', 'icmp', 'return',
+  // Data movement
+  'data_mov', 'ctrl_mov', 'reserve',
+  // Grants
+  'grant_once', 'grant_predicate',
+  // Type conversion
+  'cast', 'zext', 'sext',
+  // Other
+  'constant', 'mac',
+  // Vector
+  'vadd', 'vmul'
+]);
 
 export const functionalUnitsToOps = (tileFunctionalUnits = {}) => {
   const ops = [];
   Object.entries(tileFunctionalUnits || {}).forEach(([key, enabled]) => {
-    if (enabled) {
-      const mapped = mapFunctionalUnitKeyToOp(key);
-      if (mapped) ops.push(mapped);
+    if (enabled && SUPPORTED_OPERATIONS.has(key)) {
+      ops.push(key);
     }
   });
-  return Array.from(new Set(ops));
+  return ops;
 };
 
 export const collectArchitectureOps = (architecture) => {

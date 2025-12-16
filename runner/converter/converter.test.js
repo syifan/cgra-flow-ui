@@ -210,7 +210,7 @@ describe('Architecture Converter - Functional Units', () => {
     });
   });
 
-  it('should map legacy compare/select keys to compiler names', () => {
+  it('should use MLIR operation names directly (icmp, sel)', () => {
     const input = {
       version: 1,
       architecture: {
@@ -230,8 +230,8 @@ describe('Architecture Converter - Functional Units', () => {
                 y: 0,
                 disabled: false,
                 tileFunctionalUnits: {
-                  compare: true,
-                  select: true
+                  icmp: true,
+                  sel: true
                 }
               }
             ]
