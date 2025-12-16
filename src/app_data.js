@@ -9,13 +9,17 @@ const appData = (() => {
   const functionalUnitDefaults = {
     phi: true,
     shift: true,
-    select: true,
+    sel: true,
     mac: true,
     return: true,
     logic: true,
     load: true,
     store: true,
-    compare: true,
+    icmp: true,
+    not: true,
+    grant_once: true,
+    grant_predicate: true,
+    gep: true,
     add: true,
     mul: true
   };

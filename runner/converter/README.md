@@ -59,6 +59,27 @@ The test suite covers:
    - Multiple CGRA instances
    - Grid layouts
 
+## Operations and Required Set
+
+- UI functional units are translated to compiler ops using this map (legacy keys supported):
+  - `phi → phi`
+  - `shift|shl → shl`
+  - `select|sel → sel`
+  - `mac → mac`
+  - `logic → logic`
+  - `load → load`
+  - `store → store`
+  - `compare|icmp → icmp`
+  - `not → not`
+  - `add → add`
+  - `mul → mul`
+  - `grant_once → grant_once`
+  - `grant_predicate → grant_predicate`
+  - `gep → gep`
+
+- The converter always injects the following **required operations** to every tile to keep parity with the dataflow compiler (see issue #205): `add, load, mul, phi, icmp, grant_once, not, grant_predicate, gep, return`.
+- If no common set of operations is found across tiles, the default includes all known mapped ops plus the required set.
+
 ## Conversion Mapping
 
 | JSON Field | YAML Field | Notes |
@@ -120,7 +141,8 @@ per_cgra_defaults:
   base_topology: "mesh"
 
 tile_defaults:
-  operations: ["add", "mul"]
+  # Includes required operations even if not listed in JSON
+  operations: ["add", "mul", "load", "phi", "icmp", "grant_once", "not", "grant_predicate", "gep", "return", "sel", "shl", "logic", "store", "mac"]
   num_registers: 32
 
 link_defaults:

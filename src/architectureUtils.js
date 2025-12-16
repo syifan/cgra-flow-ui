@@ -12,13 +12,19 @@ const normalizeLabelText = (raw) => {
 const FUNCTIONAL_UNIT_DEFAULTS = {
   phi: true,
   shift: true,
-  select: false,
+  sel: true,
+  select: false, // legacy key
   mac: true,
-  return: false,
+  return: true,
   logic: true,
   load: true,
   store: true,
-  compare: false,
+  icmp: true,
+  compare: false, // legacy key
+  not: true,
+  grant_once: true,
+  grant_predicate: true,
+  gep: true,
   add: true,
   mul: true
 };

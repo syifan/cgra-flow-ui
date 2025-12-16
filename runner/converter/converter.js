@@ -5,6 +5,46 @@ const DEFAULT_PER_CGRA_ROWS = 4;
 const DEFAULT_PER_CGRA_COLUMNS = 4;
 const DEFAULT_CTRL_MEM_ITEMS = 20;
 
+// Operations the dataflow compiler requires to be present on every tile to
+// successfully lower common kernels (see dataflow issue #205).
+const REQUIRED_OPERATIONS = [
+  'add',
+  'load',
+  'mul',
+  'phi',
+  'icmp',
+  'grant_once',
+  'not',
+  'grant_predicate',
+  'gep',
+  'return'
+];
+
+// Map UI functional unit names (including legacy keys) to YAML operation names
+// Keep this list aligned with dataflow/lib/NeuraDialect/Architecture/Architecture.cpp
+const OPERATION_MAP = {
+  phi: 'phi',
+  shift: 'shl',
+  shl: 'shl',
+  select: 'sel',
+  sel: 'sel',
+  mac: 'mac',
+  return: 'return',
+  logic: 'logic',
+  load: 'load',
+  store: 'store',
+  compare: 'icmp',
+  icmp: 'icmp',
+  not: 'not',
+  add: 'add',
+  mul: 'mul',
+  grant_once: 'grant_once',
+  grantOnce: 'grant_once',
+  grant_predicate: 'grant_predicate',
+  grantPredicate: 'grant_predicate',
+  gep: 'gep'
+};
+
 function normalizeOperations(operations = []) {
   const opSet = new Set(operations);
   return Array.from(opSet);
@@ -20,26 +60,11 @@ function functionalUnitsToOperations(tileFunctionalUnits) {
     return [];
   }
 
-  // Map UI functional unit names to YAML operation names
-  const operationMap = {
-    phi: 'phi',
-    shift: 'shift',
-    select: 'select',
-    mac: 'mac',
-    return: 'return',
-    logic: 'logic',
-    load: 'load',
-    store: 'store',
-    compare: 'compare',
-    add: 'add',
-    mul: 'mul'
-  };
-
   const operations = [];
 
   for (const [key, value] of Object.entries(tileFunctionalUnits)) {
-    if (value === true && operationMap[key]) {
-      operations.push(operationMap[key]);
+    if (value === true && OPERATION_MAP[key]) {
+      operations.push(OPERATION_MAP[key]);
     }
   }
 
@@ -78,11 +103,11 @@ function deriveDefaultOperations(cgras) {
     }
   }
 
-  // If no common set, use all UI-supported operations as default
+  // If no common set, use all known operations plus required operations as default
   // These must match the operations in operationMap from functionalUnitsToOperations
   if (commonOps.length === 0) {
-    commonOps = ['phi', 'shift', 'select', 'mac', 'return', 'logic',
-                 'load', 'store', 'compare', 'add', 'mul'];
+    const allKnown = Array.from(new Set(Object.values(OPERATION_MAP)));
+    commonOps = [...allKnown, ...REQUIRED_OPERATIONS];
   }
 
   return commonOps;
@@ -109,7 +134,10 @@ function operationsEqual(ops1, ops2) {
  */
 function generateTileOverrides(cgras, defaultOperations, normalizeOps = ops => ops) {
   const overrides = [];
-  const normalizedDefault = normalizeOps(defaultOperations || []);
+  const normalizedDefault = normalizeOps([
+    ...(defaultOperations || []),
+    ...REQUIRED_OPERATIONS
+  ]);
 
   cgras.forEach(cgra => {
     if (!Array.isArray(cgra?.PEs)) return;
@@ -134,7 +162,10 @@ function generateTileOverrides(cgras, defaultOperations, normalizeOps = ops => o
       }
 
       // Check if tile has custom operations
-      const tileOps = normalizeOps(functionalUnitsToOperations(pe.tileFunctionalUnits));
+      const tileOps = normalizeOps([
+        ...functionalUnitsToOperations(pe.tileFunctionalUnits),
+        ...REQUIRED_OPERATIONS
+      ]);
       if (!operationsEqual(tileOps, normalizedDefault)) {
         overrides.push({
           cgra_x: cgraX,
@@ -169,9 +200,10 @@ export function convertJsonToYaml(jsonArchitecture) {
     : {};
 
   // Derive default operations from all tiles
-  const defaultOperations = normalizeOperations(
-    deriveDefaultOperations(arch.CGRAs || [])
-  );
+  const defaultOperations = normalizeOperations([
+    ...deriveDefaultOperations(arch.CGRAs || []),
+    ...REQUIRED_OPERATIONS
+  ]);
 
   // Build the target YAML structure
   const yamlStructure = {

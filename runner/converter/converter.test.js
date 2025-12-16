@@ -2,6 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { convertJsonToYaml } from './converter.js';
 
+const REQUIRED_OPS = ['add', 'load', 'mul', 'phi', 'icmp', 'grant_once', 'not', 'grant_predicate', 'gep', 'return'];
+
 describe('Architecture Converter - Basic Structure', () => {
   it('should convert minimal architecture with single CGRA', () => {
     const input = {
@@ -117,6 +119,9 @@ describe('Architecture Converter - Basic Structure', () => {
     assert.ok(result.tile_defaults.operations.includes('add'));
     assert.ok(result.tile_defaults.operations.includes('mul'));
     assert.ok(result.tile_defaults.operations.includes('phi'));
+    REQUIRED_OPS.forEach((op) => {
+      assert.ok(result.tile_defaults.operations.includes(op), `Required op missing: ${op}`);
+    });
 
     // Check link defaults
     assert.ok(result.link_defaults, 'Should have link_defaults');
@@ -159,20 +164,85 @@ describe('Architecture Converter - Functional Units', () => {
 
     const result = convertJsonToYaml(input);
 
-    // Only specified operations should be included
     const expectedOps = ['phi', 'add', 'mul'];
     expectedOps.forEach(op => {
-      assert.ok(
-        result.tile_defaults.operations.includes(op),
-        `Should include specified operation: ${op}`
-      );
+      assert.ok(result.tile_defaults.operations.includes(op), `Should include specified operation: ${op}`);
     });
 
-    // Operations not specified should not be included
-    assert.ok(
-      !result.tile_defaults.operations.includes('sub'),
-      'Should not include unspecified operation: sub'
-    );
+    REQUIRED_OPS.forEach((op) => {
+      assert.ok(result.tile_defaults.operations.includes(op), `Required op missing: ${op}`);
+    });
+
+    assert.ok(!result.tile_defaults.operations.includes('sub'), 'Should not include unspecified non-required operation: sub');
+  });
+
+  it('should inject required operations even if none are specified', () => {
+    const input = {
+      version: 1,
+      architecture: {
+        multiCgraRows: 1,
+        multiCgraColumns: 1,
+        dataBitwidth: 32,
+        CGRAs: [
+          {
+            x: 0,
+            y: 0,
+            perCgraRows: 1,
+            perCgraColumns: 1,
+            configMemoryEntries: 10,
+            PEs: [
+              {
+                x: 0,
+                y: 0,
+                disabled: false,
+                tileFunctionalUnits: {}
+              }
+            ]
+          }
+        ]
+      }
+    };
+
+    const result = convertJsonToYaml(input);
+
+    REQUIRED_OPS.forEach((op) => {
+      assert.ok(result.tile_defaults.operations.includes(op), `Required op missing: ${op}`);
+    });
+  });
+
+  it('should map legacy compare/select keys to compiler names', () => {
+    const input = {
+      version: 1,
+      architecture: {
+        multiCgraRows: 1,
+        multiCgraColumns: 1,
+        dataBitwidth: 32,
+        CGRAs: [
+          {
+            x: 0,
+            y: 0,
+            perCgraRows: 1,
+            perCgraColumns: 1,
+            configMemoryEntries: 10,
+            PEs: [
+              {
+                x: 0,
+                y: 0,
+                disabled: false,
+                tileFunctionalUnits: {
+                  compare: true,
+                  select: true
+                }
+              }
+            ]
+          }
+        ]
+      }
+    };
+
+    const result = convertJsonToYaml(input);
+    assert.ok(result.tile_defaults.operations.includes('icmp'));
+    assert.ok(result.tile_defaults.operations.includes('sel'));
   });
 });
 
@@ -278,7 +348,11 @@ describe('Architecture Converter - Tile Overrides', () => {
     const override = result.tile_overrides[0];
     assert.equal(override.tile_x, 0);
     assert.equal(override.tile_y, 1);
-    assert.deepEqual(override.operations, ['load']);
+
+    const opsSet = new Set(override.operations);
+    assert.ok(opsSet.has('load'));
+    assert.ok(!opsSet.has('store'));
+    REQUIRED_OPS.forEach((op) => assert.ok(opsSet.has(op), `Override missing required op ${op}`));
   });
 });
 

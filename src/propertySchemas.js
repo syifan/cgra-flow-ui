@@ -115,8 +115,8 @@ export const PROPERTY_SCHEMAS = {
       toggleGroup: 'tileFunctionalUnits'
     },
     {
-      key: 'tileFunctionalUnits.select',
-      label: 'Select',
+      key: 'tileFunctionalUnits.sel',
+      label: 'Select (sel)',
       type: 'boolean',
       mutable: true,
       section: 'Tile Functional Units',
@@ -169,8 +169,44 @@ export const PROPERTY_SCHEMAS = {
       toggleGroup: 'tileFunctionalUnits'
     },
     {
-      key: 'tileFunctionalUnits.compare',
-      label: 'Compare',
+      key: 'tileFunctionalUnits.icmp',
+      label: 'ICmp',
+      type: 'boolean',
+      mutable: true,
+      section: 'Tile Functional Units',
+      disabledWhen: { key: 'disabled', equals: true },
+      toggleGroup: 'tileFunctionalUnits'
+    },
+    {
+      key: 'tileFunctionalUnits.not',
+      label: 'Not',
+      type: 'boolean',
+      mutable: true,
+      section: 'Tile Functional Units',
+      disabledWhen: { key: 'disabled', equals: true },
+      toggleGroup: 'tileFunctionalUnits'
+    },
+    {
+      key: 'tileFunctionalUnits.grant_once',
+      label: 'Grant Once',
+      type: 'boolean',
+      mutable: true,
+      section: 'Tile Functional Units',
+      disabledWhen: { key: 'disabled', equals: true },
+      toggleGroup: 'tileFunctionalUnits'
+    },
+    {
+      key: 'tileFunctionalUnits.grant_predicate',
+      label: 'Grant Predicate',
+      type: 'boolean',
+      mutable: true,
+      section: 'Tile Functional Units',
+      disabledWhen: { key: 'disabled', equals: true },
+      toggleGroup: 'tileFunctionalUnits'
+    },
+    {
+      key: 'tileFunctionalUnits.gep',
+      label: 'GEP',
       type: 'boolean',
       mutable: true,
       section: 'Tile Functional Units',
