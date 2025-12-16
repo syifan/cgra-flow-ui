@@ -15,42 +15,46 @@ const FUNCTIONAL_UNIT_DEFAULTS = {
   // Arithmetic
   add: true,
   mul: true,
-  div: false,
-  rem: false,
+  div: true,
+  rem: true,
   shl: true,
   // Floating point
-  fadd: false,
-  fmul: false,
-  fdiv: false,
-  fmul_fadd: false,
+  fadd: true,
+  fmul: true,
+  fdiv: true,
+  fmul_fadd: true,
   // Memory
   load: true,
   store: true,
   gep: true,
-  memset: false,
+  memset: true,
   // Control
   phi: true,
   sel: true,
   not: true,
   icmp: true,
   return: true,
+  br: true,
+  cond_br: true,
   // Data movement
-  data_mov: false,
-  ctrl_mov: false,
-  reserve: false,
+  data_mov: true,
+  ctrl_mov: true,
+  reserve: true,
+  data: true,
   // Grants
   grant_once: true,
   grant_predicate: true,
   // Type conversion
-  cast: false,
-  zext: false,
-  sext: false,
+  cast: true,
+  zext: true,
+  sext: true,
   // Other
-  constant: false,
+  constant: true,
   mac: true,
   // Vector
-  vadd: false,
-  vmul: false
+  vadd: true,
+  vmul: true,
+  vector: true
 };
 
 const ensurePositiveInt = (value, fallback = 1) => {

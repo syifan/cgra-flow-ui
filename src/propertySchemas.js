@@ -271,6 +271,24 @@ export const PROPERTY_SCHEMAS = {
       disabledWhen: { key: 'disabled', equals: true },
       toggleGroup: 'tileFunctionalUnits'
     },
+    {
+      key: 'tileFunctionalUnits.br',
+      label: 'br',
+      type: 'boolean',
+      mutable: true,
+      section: 'Control',
+      disabledWhen: { key: 'disabled', equals: true },
+      toggleGroup: 'tileFunctionalUnits'
+    },
+    {
+      key: 'tileFunctionalUnits.cond_br',
+      label: 'cond_br',
+      type: 'boolean',
+      mutable: true,
+      section: 'Control',
+      disabledWhen: { key: 'disabled', equals: true },
+      toggleGroup: 'tileFunctionalUnits'
+    },
     // Data movement operations
     {
       key: 'tileFunctionalUnits.data_mov',
@@ -293,6 +311,15 @@ export const PROPERTY_SCHEMAS = {
     {
       key: 'tileFunctionalUnits.reserve',
       label: 'reserve',
+      type: 'boolean',
+      mutable: true,
+      section: 'Data Movement',
+      disabledWhen: { key: 'disabled', equals: true },
+      toggleGroup: 'tileFunctionalUnits'
+    },
+    {
+      key: 'tileFunctionalUnits.data',
+      label: 'data',
       type: 'boolean',
       mutable: true,
       section: 'Data Movement',
@@ -369,6 +396,15 @@ export const PROPERTY_SCHEMAS = {
     {
       key: 'tileFunctionalUnits.vmul',
       label: 'vmul',
+      type: 'boolean',
+      mutable: true,
+      section: 'Vector',
+      disabledWhen: { key: 'disabled', equals: true },
+      toggleGroup: 'tileFunctionalUnits'
+    },
+    {
+      key: 'tileFunctionalUnits.vector',
+      label: 'vector',
       type: 'boolean',
       mutable: true,
       section: 'Vector',

@@ -30,9 +30,9 @@ const SUPPORTED_OPERATIONS = new Set([
   // Memory
   'load', 'store', 'gep', 'memset',
   // Control
-  'phi', 'sel', 'not', 'icmp', 'return',
+  'phi', 'sel', 'not', 'icmp', 'return', 'br', 'cond_br',
   // Data movement
-  'data_mov', 'ctrl_mov', 'reserve',
+  'data_mov', 'ctrl_mov', 'reserve', 'data',
   // Grants
   'grant_once', 'grant_predicate',
   // Type conversion
@@ -40,7 +40,7 @@ const SUPPORTED_OPERATIONS = new Set([
   // Other
   'constant', 'mac',
   // Vector
-  'vadd', 'vmul'
+  'vadd', 'vmul', 'vector'
 ]);
 
 function normalizeOperations(operations = []) {
