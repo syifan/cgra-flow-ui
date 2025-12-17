@@ -10,7 +10,7 @@ import ErrorIcon from '@mui/icons-material/Error';
 import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import DownloadIcon from '@mui/icons-material/Download';
-import DotGraph from '../components/DotGraph';
+import DotGraph from './DotGraph';
 import { supabase } from '../lib/supabase';
 
 function MappingTab({

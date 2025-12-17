@@ -20,7 +20,7 @@ import { createCgraNodesLayer } from './canvas/cgraNodesLayer';
 import { buildCanvasLayout } from './canvas/layout';
 import { createPeConnectionsLayer } from './canvas/peConnectionsLayer';
 import { createPeNodesLayer } from './canvas/peNodesLayer';
-import LayerControl from './components/LayerControl';
+import LayerControl from './LayerControl';
 
 const LAYER_VALUES = {
   AUTO: 'auto',

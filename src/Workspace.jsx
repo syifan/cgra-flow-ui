@@ -23,17 +23,17 @@ import HomeIcon from '@mui/icons-material/Home';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import LockIcon from '@mui/icons-material/Lock';
 import 'flexlayout-react/style/dark.css';
-import { defaultAppData } from './app_data';
+import { defaultAppData } from './workspace/app_data';
 import {
   normalizeArchitecture,
   resizeArchitectureGrid,
   updateCgraDimensions
-} from './architectureUtils';
+} from './workspace/architectureUtils';
 import {
   reconcilePeConnectionsAfterCgraResize,
   updatePeConnectionsForDirection
-} from './peConnections.js';
-import { collectArchitectureOps } from './opMapping';
+} from './workspace/peConnections.js';
+import { collectArchitectureOps } from './workspace/opMapping';
 import {
   DesignTab,
   MappingTab,

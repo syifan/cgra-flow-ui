@@ -1,7 +1,7 @@
 import { Box } from '@mui/material';
 import PropTypes from 'prop-types';
-import MainCanvas from '../main_canvas';
-import PropertyInspector from '../PropertyInspector';
+import MainCanvas from './MainCanvas';
+import PropertyInspector from './PropertyInspector';
 
 function DesignTab({
   architecture,
