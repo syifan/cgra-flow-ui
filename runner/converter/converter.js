@@ -5,21 +5,6 @@ const DEFAULT_PER_CGRA_ROWS = 4;
 const DEFAULT_PER_CGRA_COLUMNS = 4;
 const DEFAULT_CTRL_MEM_ITEMS = 20;
 
-// Operations the dataflow compiler requires to be present on every tile to
-// successfully lower common kernels (see dataflow issue #205).
-const REQUIRED_OPERATIONS = [
-  'add',
-  'load',
-  'mul',
-  'phi',
-  'icmp',
-  'grant_once',
-  'not',
-  'grant_predicate',
-  'gep',
-  'return'
-];
-
 // All supported MLIR operations that can be configured as functional units.
 // Uses MLIR operation names directly - no mapping needed.
 const SUPPORTED_OPERATIONS = new Set([
@@ -101,9 +86,9 @@ function deriveDefaultOperations(cgras) {
     }
   }
 
-  // If no common set, use all supported operations plus required operations as default
+  // If no common set, use all supported operations as default
   if (commonOps.length === 0) {
-    commonOps = [...SUPPORTED_OPERATIONS, ...REQUIRED_OPERATIONS];
+    commonOps = [...SUPPORTED_OPERATIONS];
   }
 
   return commonOps;
@@ -130,10 +115,7 @@ function operationsEqual(ops1, ops2) {
  */
 function generateTileOverrides(cgras, defaultOperations, normalizeOps = ops => ops) {
   const overrides = [];
-  const normalizedDefault = normalizeOps([
-    ...(defaultOperations || []),
-    ...REQUIRED_OPERATIONS
-  ]);
+  const normalizedDefault = normalizeOps(defaultOperations || []);
 
   cgras.forEach(cgra => {
     if (!Array.isArray(cgra?.PEs)) return;
@@ -158,10 +140,9 @@ function generateTileOverrides(cgras, defaultOperations, normalizeOps = ops => o
       }
 
       // Check if tile has custom operations
-      const tileOps = normalizeOps([
-        ...functionalUnitsToOperations(pe.tileFunctionalUnits),
-        ...REQUIRED_OPERATIONS
-      ]);
+      const tileOps = normalizeOps(
+        functionalUnitsToOperations(pe.tileFunctionalUnits)
+      );
       if (!operationsEqual(tileOps, normalizedDefault)) {
         overrides.push({
           cgra_x: cgraX,
@@ -196,10 +177,9 @@ export function convertJsonToYaml(jsonArchitecture) {
     : {};
 
   // Derive default operations from all tiles
-  const defaultOperations = normalizeOperations([
-    ...deriveDefaultOperations(arch.CGRAs || []),
-    ...REQUIRED_OPERATIONS
-  ]);
+  const defaultOperations = normalizeOperations(
+    deriveDefaultOperations(arch.CGRAs || [])
+  );
 
   // Build the target YAML structure
   const yamlStructure = {

@@ -359,8 +359,6 @@ async function processBenchmark(jobDir, jobId, benchmark, archYamlPath) {
       stderr_length: stderr.length
     };
   } catch (error) {
-    const endTime = Date.now();
-
     // Save error output (best effort - don't let save failures hide the original error)
     try {
       if (error.stdout) {

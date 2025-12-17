@@ -2,8 +2,6 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { convertJsonToYaml } from './converter.js';
 
-const REQUIRED_OPS = ['add', 'load', 'mul', 'phi', 'icmp', 'grant_once', 'not', 'grant_predicate', 'gep', 'return'];
-
 describe('Architecture Converter - Basic Structure', () => {
   it('should convert minimal architecture with single CGRA', () => {
     const input = {
@@ -113,15 +111,14 @@ describe('Architecture Converter - Basic Structure', () => {
     assert.equal(result.per_cgra_defaults.base_topology, 'mesh');
     assert.equal(result.per_cgra_defaults.memory.banks, 4);
 
-    // Check tile defaults
+    // Check tile defaults - should only contain operations from tileFunctionalUnits
     assert.ok(result.tile_defaults, 'Should have tile_defaults');
     assert.ok(Array.isArray(result.tile_defaults.operations));
     assert.ok(result.tile_defaults.operations.includes('add'));
     assert.ok(result.tile_defaults.operations.includes('mul'));
     assert.ok(result.tile_defaults.operations.includes('phi'));
-    REQUIRED_OPS.forEach((op) => {
-      assert.ok(result.tile_defaults.operations.includes(op), `Required op missing: ${op}`);
-    });
+    assert.ok(result.tile_defaults.operations.includes('load'));
+    assert.ok(result.tile_defaults.operations.includes('store'));
 
     // Check link defaults
     assert.ok(result.link_defaults, 'Should have link_defaults');
@@ -164,19 +161,18 @@ describe('Architecture Converter - Functional Units', () => {
 
     const result = convertJsonToYaml(input);
 
+    // Should only include the operations specified in tileFunctionalUnits
     const expectedOps = ['phi', 'add', 'mul'];
     expectedOps.forEach(op => {
       assert.ok(result.tile_defaults.operations.includes(op), `Should include specified operation: ${op}`);
     });
 
-    REQUIRED_OPS.forEach((op) => {
-      assert.ok(result.tile_defaults.operations.includes(op), `Required op missing: ${op}`);
-    });
-
-    assert.ok(!result.tile_defaults.operations.includes('sub'), 'Should not include unspecified non-required operation: sub');
+    // Should NOT include operations that weren't specified
+    assert.ok(!result.tile_defaults.operations.includes('sub'), 'Should not include unspecified operation: sub');
+    assert.ok(!result.tile_defaults.operations.includes('load'), 'Should not include unspecified operation: load');
   });
 
-  it('should inject required operations even if none are specified', () => {
+  it('should use all supported operations as fallback when none are specified', () => {
     const input = {
       version: 1,
       architecture: {
@@ -205,9 +201,13 @@ describe('Architecture Converter - Functional Units', () => {
 
     const result = convertJsonToYaml(input);
 
-    REQUIRED_OPS.forEach((op) => {
-      assert.ok(result.tile_defaults.operations.includes(op), `Required op missing: ${op}`);
-    });
+    // When no operations are specified, it should fall back to all supported operations
+    assert.ok(Array.isArray(result.tile_defaults.operations));
+    assert.ok(result.tile_defaults.operations.length > 0, 'Should have fallback operations');
+    // Check a few common operations are present in the fallback
+    assert.ok(result.tile_defaults.operations.includes('add'));
+    assert.ok(result.tile_defaults.operations.includes('mul'));
+    assert.ok(result.tile_defaults.operations.includes('load'));
   });
 
   it('should use MLIR operation names directly (icmp, sel)', () => {
@@ -349,10 +349,11 @@ describe('Architecture Converter - Tile Overrides', () => {
     assert.equal(override.tile_x, 0);
     assert.equal(override.tile_y, 1);
 
+    // Override should only contain operations from tileFunctionalUnits
     const opsSet = new Set(override.operations);
-    assert.ok(opsSet.has('load'));
-    assert.ok(!opsSet.has('store'));
-    REQUIRED_OPS.forEach((op) => assert.ok(opsSet.has(op), `Override missing required op ${op}`));
+    assert.ok(opsSet.has('load'), 'Override should include specified operation: load');
+    assert.ok(!opsSet.has('store'), 'Override should not include unspecified operation: store');
+    assert.ok(!opsSet.has('add'), 'Override should not include unspecified operation: add');
   });
 });
 
