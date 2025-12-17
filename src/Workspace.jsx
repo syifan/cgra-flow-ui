@@ -311,9 +311,12 @@ function Workspace() {
         ...initialState.selectedBenchmarks
       };
 
-      // Restore current benchmark if saved
+      // Restore current benchmark if saved, otherwise default to FIR
       if (initialState.currentBenchmark) {
         setCurrentBenchmark(initialState.currentBenchmark);
+      } else {
+        setCurrentBenchmark('fir');
+        initialState.currentBenchmark = 'fir';
       }
 
       setAppState(initialState);
@@ -336,19 +339,26 @@ function Workspace() {
         setBenchmarkIndex(json);
 
         const names = (json?.benchmarks || []).map((b) => b.name);
-        const defaults = Object.fromEntries(names.map((n) => [n, false]));
+        // Default: only FIR selected
+        const defaults = Object.fromEntries(names.map((n) => [n, n === 'fir']));
         setAvailableBenchmarks(defaults);
 
         // Backfill any missing selectedBenchmarks in existing state
         setAppState((prev) => {
           if (!prev) return prev;
-          return {
+          const newState = {
             ...prev,
             selectedBenchmarks: {
               ...defaults,
               ...prev.selectedBenchmarks
             }
           };
+          // Default current benchmark to FIR if not set
+          if (!newState.currentBenchmark && names.includes('fir')) {
+            newState.currentBenchmark = 'fir';
+            setCurrentBenchmark('fir');
+          }
+          return newState;
         });
       } catch (err) {
         console.warn('Failed to load benchmark ops index; falling back to built-in list', err);
