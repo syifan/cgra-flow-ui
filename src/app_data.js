@@ -1,23 +1,56 @@
 import { createDefaultPeConnections } from './peConnections.js';
 
 const appData = (() => {
-  const MULTI_CGRA_ROWS = 4;
-  const MULTI_CGRA_COLUMNS = 4;
+  const MULTI_CGRA_ROWS = 1;
+  const MULTI_CGRA_COLUMNS = 1;
   const PE_ROWS = 4;
   const PE_COLUMNS = 4;
 
+  // Functional units using MLIR operation names directly
   const functionalUnitDefaults = {
-    phi: true,
-    shift: true,
-    select: false,
-    mac: true,
-    return: false,
-    logic: true,
+    // Arithmetic
+    add: true,
+    mul: true,
+    div: true,
+    rem: true,
+    shl: true,
+    // Floating point
+    fadd: true,
+    fmul: true,
+    fdiv: true,
+    fmul_fadd: true,
+    // Memory
     load: true,
     store: true,
-    compare: false,
-    add: true,
-    mul: true
+    gep: true,
+    memset: true,
+    // Control
+    phi: true,
+    sel: true,
+    not: true,
+    icmp: true,
+    return: true,
+    br: true,
+    cond_br: true,
+    // Data movement
+    data_mov: true,
+    ctrl_mov: true,
+    reserve: true,
+    data: true,
+    // Grants
+    grant_once: true,
+    grant_predicate: true,
+    // Type conversion
+    cast: true,
+    zext: true,
+    sext: true,
+    // Other
+    constant: true,
+    mac: true,
+    // Vector
+    vadd: true,
+    vmul: true,
+    vector: true
   };
 
   const buildProcessingElements = (offsetY, offsetX) => {

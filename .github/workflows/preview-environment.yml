@@ -21,6 +21,51 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Comment Deploying Status
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = context.issue.number;
+            const dockerTag = `cgra-flow:pr-${prNumber}`;
+
+            const body = `## Preview Environment Deploying...
+
+            | Service | Status |
+            |---------|--------|
+            | Supabase Branch | Connecting... |
+            | Runner | Deploying... |
+            | Docker Image | Building \`${dockerTag}\`... |
+
+            Please wait while the preview environment is being set up. This may take a few minutes.
+            `;
+
+            // Find existing comment
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+            });
+
+            const botComment = comments.data.find(c =>
+              c.user.type === 'Bot' && c.body.includes('Preview Environment')
+            );
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body: body
+              });
+            }
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -122,34 +167,47 @@ jobs:
           script: |
             set -e
 
-            # Create runner directory
-            mkdir -p ~/cgra-runner
-            cd ~/cgra-runner
+            # Per-PR runner directory and process name
+            PROCESS_NAME="cgra-runner-pr-${{ github.event.number }}"
+            PR_DIR=~/cgra-runner/pr-${{ github.event.number }}
+
+            # Stop existing runner and clean up directory on redeploy
+            pm2 delete "$PROCESS_NAME" 2>/dev/null || true
+            rm -rf "$PR_DIR"
+
+            mkdir -p "$PR_DIR"
+            cd "$PR_DIR"
 
             # Clean up and clone fresh (simpler than trying to update)
-            rm -rf repo
             git clone --depth 1 --branch ${{ github.head_ref }} https://github.com/${{ github.repository }}.git repo || \
               git clone --depth 1 https://github.com/${{ github.repository }}.git repo
 
-            cd repo/runner
+            # Build PR-specific Docker image
+            DOCKER_TAG="cgra-flow:pr-${{ github.event.number }}"
+            echo "Building Docker image: $DOCKER_TAG"
+            cd repo/cgra-flow-docker
+            docker build -t "$DOCKER_TAG" .
+            echo "Docker image built successfully"
+
+            # Clean up dangling images to save disk space
+            docker image prune -f
+
+            cd ../runner
 
             # Write environment file
-            cat > .env << 'ENVEOF'
+            cat > .env << ENVEOF
             SUPABASE_URL=${{ steps.supabase-branch.outputs.branch_url }}
             SUPABASE_SERVICE_ROLE_KEY=${{ steps.supabase-keys.outputs.service_key }}
-            RUNNER_MODE=fake
+            RUNNER_MODE=real
             RUNNER_ID=runner-${{ github.event.number }}
             POLL_INTERVAL_MS=5000
+            JOBS_DIR=./jobs
+            DOCKER_IMAGE=$DOCKER_TAG
+            DOCKER_TIMEOUT_MS=600000
             ENVEOF
 
             # Install dependencies
             npm ci --omit=dev
-
-            # Use PR-specific process name to allow multiple concurrent preview environments
-            PROCESS_NAME="cgra-runner-pr-${{ github.event.number }}"
-
-            # Stop existing runner for this PR
-            pm2 delete "$PROCESS_NAME" 2>/dev/null || true
 
             # Start runner with environment variables loaded via dotenv
             # Create a wrapper script that loads .env
@@ -179,6 +237,7 @@ jobs:
           script: |
             const branchUrl = '${{ steps.supabase-branch.outputs.branch_url }}';
             const prNumber = context.issue.number;
+            const dockerTag = `cgra-flow:pr-${prNumber}`;
 
             const body = `## Preview Environment Ready
 
@@ -186,8 +245,9 @@ jobs:
             |---------|--------|
             | Supabase Branch | \`${branchUrl}\` |
             | Runner | Deployed via SSH (runner-${prNumber}) |
+            | Docker Image | \`${dockerTag}\` |
 
-            The runner is connected to this PR's Supabase branch and will process jobs automatically.
+            The runner is connected to this PR's Supabase branch and will process jobs using the PR-specific Docker image.
             `;
 
             // Find existing comment
@@ -198,7 +258,7 @@ jobs:
             });
 
             const botComment = comments.data.find(c =>
-              c.user.type === 'Bot' && c.body.includes('Preview Environment Ready')
+              c.user.type === 'Bot' && c.body.includes('Preview Environment')
             );
 
             if (botComment) {
@@ -235,7 +295,17 @@ jobs:
           key: ${{ secrets.RUNNER_SSH_KEY }}
           script: |
             PROCESS_NAME="cgra-runner-pr-${{ github.event.number }}"
-            echo "PR ${{ github.event.number }} closed - stopping $PROCESS_NAME"
+            DOCKER_TAG="cgra-flow:pr-${{ github.event.number }}"
+            PR_DIR=~/cgra-runner/pr-${{ github.event.number }}
+            echo "PR ${{ github.event.number }} closed - cleaning up"
+
+            # Stop the runner process
             pm2 delete "$PROCESS_NAME" 2>/dev/null || true
             pm2 save
-            rm -rf ~/cgra-runner/repo
+
+            # Remove PR-specific Docker image
+            echo "Removing Docker image: $DOCKER_TAG"
+            docker rmi "$DOCKER_TAG" 2>/dev/null || true
+
+            # Clean up PR-specific directory
+            rm -rf "$PR_DIR"

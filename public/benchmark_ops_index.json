@@ -1,0 +1,125 @@
+{
+  "generated_at": "2025-12-16T18:42:41.042Z",
+  "docker_image": "cgra-flow:latest",
+  "benchmark_root": "/cgra/dataflow/test/e2e",
+  "benchmarks": [
+    {
+      "name": "bicg",
+      "path": "/cgra/dataflow/test/e2e/bicg",
+      "ops": [
+        "add",
+        "br",
+        "cond_br",
+        "constant",
+        "fmul_fadd",
+        "gep",
+        "icmp",
+        "load",
+        "memset",
+        "return",
+        "shl",
+        "store",
+        "zext"
+      ],
+      "files": [
+        "bicg_kernel.mlir"
+      ],
+      "file_hashes": {
+        "bicg_kernel.mlir": "c851e6cabeedfeff59aa78fc26ae7e37d358258e"
+      }
+    },
+    {
+      "name": "fir",
+      "path": "/cgra/dataflow/test/e2e/fir",
+      "ops": [
+        "add",
+        "ctrl_mov",
+        "data",
+        "data_mov",
+        "gep",
+        "grant_once",
+        "grant_predicate",
+        "icmp",
+        "load",
+        "mul",
+        "not",
+        "phi",
+        "reserve",
+        "return",
+        "vadd",
+        "vector",
+        "vmul"
+      ],
+      "files": [
+        "fir_kernel.mlir",
+        "fir_kernel_vec.mlir"
+      ],
+      "file_hashes": {
+        "fir_kernel_vec.mlir": "28174c1498dd1e3f9d81c7127dac8026069d435d",
+        "fir_kernel.mlir": "2fe1f3d7e82be2fe4ef6a9d50a7dfccf7e88d1e2"
+      }
+    },
+    {
+      "name": "histogram",
+      "path": "/cgra/dataflow/test/e2e/histogram",
+      "ops": [
+        "add",
+        "cast",
+        "ctrl_mov",
+        "data",
+        "data_mov",
+        "fadd",
+        "fdiv",
+        "fmul",
+        "gep",
+        "grant_once",
+        "grant_predicate",
+        "icmp",
+        "load",
+        "not",
+        "phi",
+        "reserve",
+        "return",
+        "sext",
+        "store"
+      ],
+      "files": [
+        "histogram_kernel.mlir"
+      ],
+      "file_hashes": {
+        "histogram_kernel.mlir": "994a600915824d6487140d05d501faa76bdef06f"
+      }
+    },
+    {
+      "name": "relu",
+      "path": "/cgra/dataflow/test/e2e/relu",
+      "ops": [
+        "add",
+        "cast",
+        "ctrl_mov",
+        "data",
+        "data_mov",
+        "div",
+        "gep",
+        "grant_once",
+        "grant_predicate",
+        "icmp",
+        "load",
+        "not",
+        "phi",
+        "rem",
+        "reserve",
+        "return",
+        "sel",
+        "store",
+        "zext"
+      ],
+      "files": [
+        "relu_kernel.mlir"
+      ],
+      "file_hashes": {
+        "relu_kernel.mlir": "6fab595e2a44b7dea252e6e07a8407c300246703"
+      }
+    }
+  ]
+}

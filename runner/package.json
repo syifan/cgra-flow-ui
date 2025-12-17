@@ -6,10 +6,15 @@
   "description": "Job runner for CGRA Flow UI",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "test": "node --test 'converter/*.test.js'",
+    "test:watch": "node --test --watch 'converter/*.test.js'",
+    "test:converter": "node --test converter/converter.test.js",
+    "create-test-job": "node test-create-job.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.86.2",
-    "dotenv": "^16.4.5"
+    "dotenv": "^16.4.5",
+    "js-yaml": "^4.1.0"
   }
 }

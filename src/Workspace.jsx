@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useNotification } from './contexts/NotificationContext';
 import { supabase } from './lib/supabase';
@@ -28,10 +28,12 @@ import LockIcon from '@mui/icons-material/Lock';
 import ErrorIcon from '@mui/icons-material/Error';
 import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import DownloadIcon from '@mui/icons-material/Download';
 import { Layout, Model } from 'flexlayout-react';
 import 'flexlayout-react/style/dark.css';
 import MainCanvas from './main_cancas';
 import PropertyInspector from './PropertyInspector';
+import DotGraph from './components/DotGraph';
 import { defaultAppData } from './app_data';
 import {
   normalizeArchitecture,
@@ -42,8 +44,11 @@ import {
   reconcilePeConnectionsAfterCgraResize,
   updatePeConnectionsForDirection
 } from './peConnections.js';
+import { collectArchitectureOps } from './opMapping';
 
 const NAVBAR_HEIGHT = 56;
+
+const DEFAULT_BENCHMARKS = {};
 
 const initialLayout = {
   global: {
@@ -104,11 +109,6 @@ const initialLayout = {
             type: 'tab',
             name: 'Properties',
             component: 'properties'
-          },
-          {
-            type: 'tab',
-            name: 'GenAI',
-            component: 'genai'
           }
         ]
       }
@@ -138,23 +138,39 @@ function Workspace() {
   const [autoSaveCountdown, setAutoSaveCountdown] = useState(0);
   const [pendingJob, setPendingJob] = useState(null);
   const [latestMappingJob, setLatestMappingJob] = useState(null);
+  const [graphData, setGraphData] = useState({});
+  // Benchmark index loaded from public/benchmark_ops_index.json
+  const [benchmarkIndex, setBenchmarkIndex] = useState(null);
+  const [availableBenchmarks, setAvailableBenchmarks] = useState(DEFAULT_BENCHMARKS);
   const savedStateRef = useRef(null);
   const appStateRef = useRef(null);
+  const latestJobGraphsLoggedRef = useRef(null);
   const autoSaveIntervalRef = useRef(null);
   const { showError, showSuccess, showConfirm } = useNotification();
 
   // Project is locked when there's a queued or running job
   const isLocked = pendingJob !== null;
 
-  // Selected benchmarks are stored in appState
-  const selectedBenchmarks = appState?.selectedBenchmarks ?? { fir: false, mm: false };
+  // Selected benchmarks are stored in appState (memoized by values to prevent unnecessary re-renders)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const selectedBenchmarks = useMemo(() => {
+    return appState?.selectedBenchmarks || DEFAULT_BENCHMARKS;
+  }, [JSON.stringify(appState?.selectedBenchmarks)]);
+
+  // Helper to get list of selected benchmark names
+  const getSelectedBenchmarkNames = useCallback(() => {
+    return Object.entries(selectedBenchmarks)
+      .filter(([, selected]) => selected)
+      .map(([name]) => name);
+  }, [selectedBenchmarks]);
 
   const setSelectedBenchmarks = useCallback((updater) => {
     if (isLocked) return;
     setAppState((prev) => {
       if (!prev) return prev;
+      const prevBenchmarks = prev.selectedBenchmarks || DEFAULT_BENCHMARKS;
       const newBenchmarks = typeof updater === 'function'
-        ? updater(prev.selectedBenchmarks ?? { fir: false, mm: false })
+        ? updater(prevBenchmarks)
         : updater;
       return { ...prev, selectedBenchmarks: newBenchmarks };
     });
@@ -166,6 +182,70 @@ function Workspace() {
   useEffect(() => {
     appStateRef.current = appState;
   }, [appState]);
+
+  // Fetch and log graph JSONs when a mapping job finishes
+  useEffect(() => {
+    const logGraphs = async () => {
+      if (!latestMappingJob || latestMappingJob.status !== 'success') return;
+      if (latestJobGraphsLoggedRef.current === latestMappingJob.id) return;
+
+      const benchmarks = latestMappingJob.info?.benchmarks || latestMappingJob.info || {};
+      const graphFilesByBenchmark = {};
+
+      // Normalize structure: latestMappingJob.info may be an object keyed by benchmark
+      for (const [bench, result] of Object.entries(benchmarks)) {
+        if (result && Array.isArray(result.graph_files)) {
+          graphFilesByBenchmark[bench] = result.graph_files;
+        }
+      }
+
+      const fetchGraph = async (url) => {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+          throw new Error(`Expected JSON but got '${contentType}'`);
+        }
+        return response.json();
+      };
+
+      const allFetches = [];
+      for (const [bench, files] of Object.entries(graphFilesByBenchmark)) {
+        files.forEach((f) => {
+          if (f?.publicUrl) {
+            allFetches.push(
+              fetchGraph(f.publicUrl)
+                .then((json) => ({ bench, file: f.file, json }))
+                .catch((err) => {
+                  console.warn(`Failed to fetch graph ${f.file} for ${bench}: ${err.message}`);
+                  return null;
+                })
+            );
+          }
+        });
+      }
+
+      const graphs = (await Promise.all(allFetches)).filter(Boolean);
+
+      if (graphs.length > 0) {
+        const grouped = graphs.reduce((acc, g) => {
+          const key = g.bench || 'unknown';
+          acc[key] = acc[key] || [];
+          acc[key].push({ file: g.file, json: g.json });
+          return acc;
+        }, {});
+        setGraphData(grouped);
+        console.log('Mapping graphs for job', latestMappingJob.id, grouped);
+      } else {
+        setGraphData({});
+        console.log('Mapping job has no graphs to display', latestMappingJob.id);
+      }
+
+      latestJobGraphsLoggedRef.current = latestMappingJob.id;
+    };
+
+    logGraphs();
+  }, [latestMappingJob]);
 
   // Fetch and subscribe to jobs for this project
   useEffect(() => {
@@ -268,6 +348,13 @@ function Workspace() {
       } else {
         initialState = cloneAppData(defaultAppData);
       }
+
+      // Normalize selectedBenchmarks to include available benchmarks once loaded later
+      initialState.selectedBenchmarks = {
+        ...availableBenchmarks,
+        ...initialState.selectedBenchmarks
+      };
+
       setAppState(initialState);
       savedStateRef.current = JSON.stringify(initialState);
       setHasUnsavedChanges(false);
@@ -276,7 +363,39 @@ function Workspace() {
     };
 
     loadProject();
-  }, [projectId, navigate, showError]);
+  }, [projectId, navigate, showError, availableBenchmarks]);
+
+  // Load benchmark ops index (generated by runner/collect_benchmark_ops.js)
+  useEffect(() => {
+    const loadIndex = async () => {
+      try {
+        const response = await fetch('/benchmark_ops_index.json');
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const json = await response.json();
+        setBenchmarkIndex(json);
+
+        const names = (json?.benchmarks || []).map((b) => b.name);
+        const defaults = Object.fromEntries(names.map((n) => [n, false]));
+        setAvailableBenchmarks(defaults);
+
+        // Backfill any missing selectedBenchmarks in existing state
+        setAppState((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            selectedBenchmarks: {
+              ...defaults,
+              ...prev.selectedBenchmarks
+            }
+          };
+        });
+      } catch (err) {
+        console.warn('Failed to load benchmark ops index; falling back to built-in list', err);
+      }
+    };
+
+    loadIndex();
+  }, []);
 
   // Track unsaved changes by comparing current state to saved state
   useEffect(() => {
@@ -580,13 +699,42 @@ function Workspace() {
     if (!projectId || isLocked || !appState) return;
 
     // Collect selected benchmarks
-    const benchmarks = [];
-    if (selectedBenchmarks.fir) benchmarks.push('fir');
-    if (selectedBenchmarks.mm) benchmarks.push('mm');
+    const benchmarks = getSelectedBenchmarkNames();
 
     if (benchmarks.length === 0) {
       showError('Please select at least one benchmark');
       return;
+    }
+
+    // Preflight: require benchmark index if available and check ops coverage
+    if (benchmarks.length > 0 && benchmarkIndex?.benchmarks) {
+      const indexMap = Object.fromEntries(
+        (benchmarkIndex.benchmarks || []).map((b) => [b.name, b])
+      );
+
+      const missingBenchmarks = benchmarks.filter((b) => !indexMap[b]);
+      if (missingBenchmarks.length > 0) {
+        showError(`Benchmarks not found in index: ${missingBenchmarks.join(', ')}`);
+        return;
+      }
+
+      const requiredOps = new Set();
+      benchmarks.forEach((b) => {
+        (indexMap[b]?.ops || []).forEach((op) => requiredOps.add(op));
+      });
+
+      const availableOps = collectArchitectureOps(appState.architecture || {});
+      const missingOps = Array.from(requiredOps).filter((op) => !availableOps.has(op));
+
+      if (missingOps.length > 0) {
+        const confirmed = await showConfirm({
+          title: 'Missing Functional Units',
+          message: `The architecture lacks support for: ${missingOps.join(', ')}. Continue anyway?`,
+          confirmText: 'Start Mapping',
+          cancelText: 'Go Back'
+        });
+        if (!confirmed) return;
+      }
     }
 
     // Get current user
@@ -636,7 +784,7 @@ function Workspace() {
       setLatestMappingJob(newJob);
       showSuccess('Mapping job queued successfully');
     }
-  }, [projectId, isLocked, appState, selectedBenchmarks, showError, showSuccess]);
+  }, [projectId, isLocked, appState, getSelectedBenchmarkNames, showError, showSuccess]);
 
   const factory = useCallback(
     (node) => {
@@ -681,7 +829,19 @@ function Workspace() {
           const getJobStatusDisplay = () => {
             if (!latestMappingJob) return null;
             const status = latestMappingJob.status;
-            const benchmarks = latestMappingJob.info?.benchmarks?.join(', ') || 'N/A';
+            const benchmarks = Array.isArray(latestMappingJob.info?.benchmarks)
+              ? latestMappingJob.info.benchmarks.join(', ')
+              : 'N/A';
+            const jobPackage = latestMappingJob.info?.job_package;
+            const packageUrl = (() => {
+              if (!jobPackage) return null;
+              if (jobPackage.publicUrl) return jobPackage.publicUrl;
+              if (jobPackage.path && jobPackage.bucket) {
+                const { data } = supabase.storage.from(jobPackage.bucket).getPublicUrl(jobPackage.path);
+                return data?.publicUrl || null;
+              }
+              return null;
+            })();
 
             const statusConfig = {
               queued: { icon: <HourglassEmptyIcon fontSize="small" />, color: 'info', label: 'Queued' },
@@ -715,6 +875,19 @@ function Workspace() {
                     Error: {latestMappingJob.error_message}
                   </Typography>
                 )}
+                {packageUrl && (
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<DownloadIcon fontSize="small" />}
+                    href={packageUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    sx={{ mt: 1 }}
+                  >
+                    Download job package
+                  </Button>
+                )}
               </Box>
             );
           };
@@ -738,7 +911,32 @@ function Workspace() {
                     disabled={isLocked}
                     control={
                       <Checkbox
-                        checked={selectedBenchmarks.fir}
+                        checked={Boolean(selectedBenchmarks.bicg)}
+                        onChange={(e) =>
+                          setSelectedBenchmarks((prev) => ({
+                            ...prev,
+                            bicg: e.target.checked
+                          }))
+                        }
+                        disabled={isLocked}
+                      />
+                    }
+                    label={
+                      <Box>
+                        <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                          BiCG
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                          Biconjugate Gradient - An iterative method for solving linear systems with sparse matrices.
+                        </Typography>
+                      </Box>
+                    }
+                  />
+                  <FormControlLabel
+                    disabled={isLocked}
+                    control={
+                      <Checkbox
+                        checked={Boolean(selectedBenchmarks.fir)}
                         onChange={(e) =>
                           setSelectedBenchmarks((prev) => ({
                             ...prev,
@@ -763,11 +961,11 @@ function Workspace() {
                     disabled={isLocked}
                     control={
                       <Checkbox
-                        checked={selectedBenchmarks.mm}
+                        checked={Boolean(selectedBenchmarks.histogram)}
                         onChange={(e) =>
                           setSelectedBenchmarks((prev) => ({
                             ...prev,
-                            mm: e.target.checked
+                            histogram: e.target.checked
                           }))
                         }
                         disabled={isLocked}
@@ -776,10 +974,35 @@ function Workspace() {
                     label={
                       <Box>
                         <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                          MM
+                          Histogram
                         </Typography>
                         <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                          Matrix Multiplication - A fundamental linear algebra operation used in graphics, ML, and scientific computing.
+                          Image processing operation that computes frequency distribution of pixel intensities.
+                        </Typography>
+                      </Box>
+                    }
+                  />
+                  <FormControlLabel
+                    disabled={isLocked}
+                    control={
+                      <Checkbox
+                        checked={Boolean(selectedBenchmarks.relu)}
+                        onChange={(e) =>
+                          setSelectedBenchmarks((prev) => ({
+                            ...prev,
+                            relu: e.target.checked
+                          }))
+                        }
+                        disabled={isLocked}
+                      />
+                    }
+                    label={
+                      <Box>
+                        <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                          ReLU
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                          Rectified Linear Unit activation function - A fundamental operation in neural networks.
                         </Typography>
                       </Box>
                     }
@@ -789,12 +1012,34 @@ function Workspace() {
               <Box sx={{ display: 'flex', alignItems: 'flex-start', ml: 2 }}>
                 <Button
                   variant="contained"
-                  disabled={isLocked || (!selectedBenchmarks.fir && !selectedBenchmarks.mm)}
+                  disabled={isLocked || getSelectedBenchmarkNames().length === 0}
                   onClick={handleStartMapping}
                 >
                   Start Mapping
                 </Button>
               </Box>
+              {Object.keys(graphData).length > 0 && (
+                <Box sx={{ mt: 3, width: '100%' }}>
+                  <Typography variant="subtitle2" sx={{ mb: 1, color: 'text.secondary' }}>
+                    Mapping Graphs
+                  </Typography>
+                  {Object.entries(graphData).map(([bench, graphs]) => (
+                    <Box key={bench} sx={{ mb: 2, p: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                      <Typography variant="body2" sx={{ mb: 1, fontWeight: 600 }}>
+                        {bench}
+                      </Typography>
+                      {graphs.map((g) => (
+                        <Box key={g.file} sx={{ mb: 1.5 }}>
+                          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                            {g.file}
+                          </Typography>
+                          <DotGraph graph={g.json} />
+                        </Box>
+                      ))}
+                    </Box>
+                  ))}
+                </Box>
+              )}
             </Box>
           );
         }
@@ -836,7 +1081,7 @@ function Workspace() {
           return null;
       }
     },
-    [architecture, handlePropertyChange, selection, selectedBenchmarks, setSelectedBenchmarks, isLocked, handleStartMapping, latestMappingJob]
+    [architecture, handlePropertyChange, selection, selectedBenchmarks, setSelectedBenchmarks, isLocked, handleStartMapping, latestMappingJob, graphData]
   );
 
   // Show loading state
@@ -1043,4 +1288,3 @@ function Workspace() {
 }
 
 export default Workspace;
-

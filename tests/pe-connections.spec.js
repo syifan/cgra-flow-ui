@@ -5,7 +5,7 @@ test.describe('PE Connections', () => {
 
     const peConnections = page.locator('svg .layer-pe-connections line.pe-connection');
     const initialConnectionCount = await peConnections.count();
-    expect(initialConnectionCount).toBe(960);
+    expect(initialConnectionCount).toBe(48);
 
     const rowsInput = page.getByTestId('property-multiCgraRows');
     await rowsInput.clear();
@@ -13,13 +13,13 @@ test.describe('PE Connections', () => {
     await page.keyboard.press('Enter');
 
     const cgraNodes = page.locator('svg .layer-cgra-nodes g.cgra-node');
-    await expect(cgraNodes).toHaveCount(20);
+    await expect(cgraNodes).toHaveCount(5);
 
     const peNodes = page.locator('svg .layer-pe-nodes g.pe-node');
-    await expect(peNodes).toHaveCount(320);
+    await expect(peNodes).toHaveCount(80);
 
     const updatedConnectionCount = await peConnections.count();
-    // 604 architectural links render as 1,208 SVG lines because each bidirectional edge is drawn twice.
-    expect(updatedConnectionCount).toBe(1208);
+    // 136 architectural links render as 272 SVG lines because each bidirectional edge is drawn twice.
+    expect(updatedConnectionCount).toBe(272);
   });
 });

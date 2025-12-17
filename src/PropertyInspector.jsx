@@ -212,13 +212,19 @@ function PropertyInspector({ architecture, selection, onPropertyChange, disabled
         {(() => {
           const rows = [];
           let currentSection = null;
-          const processedToggleGroups = new Set();
-          const toggleGroupMap = schema.reduce((accumulator, property) => {
+          const processedSectionToggleGroups = new Set();
+
+          // Group properties by section and toggleGroup
+          const getSectionToggleKey = (section, toggleGroup) => `${section || ''}::${toggleGroup}`;
+
+          // Build a map of section+toggleGroup -> properties
+          const sectionToggleGroupMap = schema.reduce((accumulator, property) => {
             if (property.toggleGroup) {
-              if (!accumulator.has(property.toggleGroup)) {
-                accumulator.set(property.toggleGroup, []);
+              const key = getSectionToggleKey(property.section, property.toggleGroup);
+              if (!accumulator.has(key)) {
+                accumulator.set(key, []);
               }
-              accumulator.get(property.toggleGroup).push(property);
+              accumulator.get(key).push(property);
             }
             return accumulator;
           }, new Map());
@@ -245,16 +251,17 @@ function PropertyInspector({ architecture, selection, onPropertyChange, disabled
             }
 
             if (property.toggleGroup) {
-              if (processedToggleGroups.has(property.toggleGroup)) {
+              const sectionToggleKey = getSectionToggleKey(property.section, property.toggleGroup);
+              if (processedSectionToggleGroups.has(sectionToggleKey)) {
                 return;
               }
 
-              processedToggleGroups.add(property.toggleGroup);
-              const groupProperties = toggleGroupMap.get(property.toggleGroup) ?? [];
+              processedSectionToggleGroups.add(sectionToggleKey);
+              const groupProperties = sectionToggleGroupMap.get(sectionToggleKey) ?? [];
 
               rows.push(
                 <Box
-                  key={`group-${property.toggleGroup}`}
+                  key={`group-${sectionToggleKey}`}
                   sx={{
                     gridColumn: '1 / -1',
                     display: 'flex',

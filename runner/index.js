@@ -7,7 +7,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { config } from 'dotenv'
-import { claimNextJob, completeJob, failJob, executeJobFake } from './jobProcessor.js'
+import { claimNextJob, completeJob, failJob, executeJobFake, executeJob } from './jobProcessor.js'
 
 // Load environment variables
 config()
@@ -17,6 +17,7 @@ const SUPABASE_URL = process.env.SUPABASE_URL
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
 const RUNNER_ID = process.env.RUNNER_ID || `runner-${Date.now()}`
 const POLL_INTERVAL_MS = parseInt(process.env.POLL_INTERVAL_MS || '5000', 10)
+const RUNNER_MODE = process.env.RUNNER_MODE || 'fake' // 'fake' or 'real'
 
 // Validate required environment variables
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -42,6 +43,7 @@ let currentJob = null
  */
 async function runLoop() {
   console.log(`Runner ${RUNNER_ID} started`)
+  console.log(`Mode: ${RUNNER_MODE}`)
   console.log(`Polling interval: ${POLL_INTERVAL_MS}ms`)
   console.log('Waiting for jobs...\n')
 
@@ -59,8 +61,10 @@ async function runLoop() {
         console.log(`  User: ${job.user_id}`)
 
         try {
-          // Execute the job (fake implementation)
-          const resultInfo = await executeJobFake(job)
+          // Execute the job (fake or real based on mode)
+          const resultInfo = RUNNER_MODE === 'real'
+            ? await executeJob(job)
+            : await executeJobFake(job)
 
           // Mark as completed
           await completeJob(supabase, job.id, resultInfo)
@@ -68,7 +72,10 @@ async function runLoop() {
         } catch (execError) {
           // Mark as failed
           console.error(`  ✗ Job execution failed: ${execError.message}`)
-          await failJob(supabase, job.id, execError.message)
+          if (execError.stack) {
+            console.error(`  Stack trace: ${execError.stack}`)
+          }
+          await failJob(supabase, job.id, execError.message, job)
           console.log('')
         }
 
