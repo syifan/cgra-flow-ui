@@ -1,7 +1,6 @@
 import { useState, useCallback } from 'react';
 import PropTypes from 'prop-types';
 import {
-  Box,
   Button,
   Checkbox,
   Dialog,
@@ -17,8 +16,6 @@ import {
   Typography
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import StarIcon from '@mui/icons-material/Star';
-import StarBorderIcon from '@mui/icons-material/StarBorder';
 import CloseIcon from '@mui/icons-material/Close';
 
 // Benchmark descriptions for display
@@ -92,14 +89,15 @@ function BenchmarkSelector({
     <>
       <Button
         variant="outlined"
-        size="small"
         onClick={handleOpen}
         disabled={disabled}
         endIcon={<ExpandMoreIcon />}
         sx={{
           textTransform: 'none',
+          height: 40,
           borderColor: 'rgba(148, 163, 184, 0.35)',
           color: 'text.primary',
+          borderRadius: 2,
           '&:hover': {
             borderColor: 'rgba(148, 163, 184, 0.5)',
             bgcolor: 'rgba(148, 163, 184, 0.1)'
@@ -134,7 +132,7 @@ function BenchmarkSelector({
         </DialogTitle>
         <DialogContent dividers>
           <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
-            Select benchmarks to map on your CGRA design. Click the star to set a benchmark as the current one for detailed analysis.
+            Select benchmarks to map on your CGRA design. Use &quot;Set as Current&quot; to choose the primary benchmark for detailed analysis.
           </Typography>
           <List dense>
             {benchmarkList.map((name) => {
@@ -147,16 +145,19 @@ function BenchmarkSelector({
                   key={name}
                   disablePadding
                   secondaryAction={
-                    <IconButton
-                      edge="end"
+                    <Button
+                      size="small"
+                      variant={isCurrent ? 'contained' : 'outlined'}
                       onClick={() => handleMakeCurrent(name)}
                       disabled={disabled}
                       sx={{
-                        color: isCurrent ? 'warning.main' : 'text.secondary'
+                        minWidth: 100,
+                        fontSize: '0.75rem',
+                        textTransform: 'none'
                       }}
                     >
-                      {isCurrent ? <StarIcon /> : <StarBorderIcon />}
-                    </IconButton>
+                      {isCurrent ? 'Current' : 'Set as Current'}
+                    </Button>
                   }
                 >
                   <ListItemButton
@@ -175,26 +176,9 @@ function BenchmarkSelector({
                     </ListItemIcon>
                     <ListItemText
                       primary={
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Typography variant="body1" sx={{ fontWeight: 500 }}>
-                            {name.toUpperCase()}
-                          </Typography>
-                          {isCurrent && (
-                            <Typography
-                              variant="caption"
-                              sx={{
-                                px: 1,
-                                py: 0.25,
-                                borderRadius: 1,
-                                bgcolor: 'warning.main',
-                                color: 'warning.contrastText',
-                                fontSize: '0.65rem'
-                              }}
-                            >
-                              CURRENT
-                            </Typography>
-                          )}
-                        </Box>
+                        <Typography variant="body1" sx={{ fontWeight: 500 }}>
+                          {name.toUpperCase()}
+                        </Typography>
                       }
                       secondary={description}
                     />

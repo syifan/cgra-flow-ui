@@ -13,11 +13,10 @@ import {
   ListItemText,
   Menu,
   MenuItem,
-  Tab,
-  Tabs,
   Toolbar,
   Typography
 } from '@mui/material';
+import { Layout, Model } from 'flexlayout-react';
 import MenuIcon from '@mui/icons-material/Menu';
 import SaveIcon from '@mui/icons-material/Save';
 import HomeIcon from '@mui/icons-material/Home';
@@ -47,6 +46,31 @@ const NAVBAR_HEIGHT = 56;
 
 const DEFAULT_BENCHMARKS = {};
 
+const mainLayout = {
+  global: {
+    tabSetMinHeight: 200,
+    tabEnableClose: false
+  },
+  borders: [],
+  layout: {
+    type: 'row',
+    weight: 100,
+    children: [
+      {
+        type: 'tabset',
+        weight: 100,
+        selected: 0,
+        children: [
+          { type: 'tab', name: '1. Design', component: 'design' },
+          { type: 'tab', name: '2. Mapping', component: 'mapping' },
+          { type: 'tab', name: '3. Verification', component: 'verification' },
+          { type: 'tab', name: '4. Layout', component: 'layout' }
+        ]
+      }
+    ]
+  }
+};
+
 const cloneAppData = (data) => {
   const cloned = JSON.parse(JSON.stringify(data));
   if (cloned?.architecture) {
@@ -69,7 +93,7 @@ function Workspace() {
   const [pendingJob, setPendingJob] = useState(null);
   const [latestMappingJob, setLatestMappingJob] = useState(null);
   const [graphData, setGraphData] = useState({});
-  const [activeTab, setActiveTab] = useState(0);
+  const [model] = useState(() => Model.fromJson(mainLayout));
   const [currentBenchmark, setCurrentBenchmark] = useState(null);
   // Benchmark index loaded from public/benchmark_ops_index.json
   const [benchmarkIndex, setBenchmarkIndex] = useState(null);
@@ -723,9 +747,42 @@ function Workspace() {
     }
   }, [projectId, isLocked, appState, getSelectedBenchmarkNames, showError, showSuccess, benchmarkIndex, showConfirm]);
 
-  const handleTabChange = useCallback((event, newValue) => {
-    setActiveTab(newValue);
-  }, []);
+  const factory = useCallback(
+    (node) => {
+      const component = node.getComponent();
+      const selectedBenchmarkNames = getSelectedBenchmarkNames();
+
+      switch (component) {
+        case 'design':
+          return (
+            <DesignTab
+              architecture={architecture}
+              selection={selection}
+              onSelectionChange={setSelection}
+              onPropertyChange={handlePropertyChange}
+              disabled={isLocked}
+            />
+          );
+        case 'mapping':
+          return (
+            <MappingTab
+              latestMappingJob={latestMappingJob}
+              graphData={graphData}
+              isLocked={isLocked}
+              onStartMapping={handleStartMapping}
+              selectedBenchmarkNames={selectedBenchmarkNames}
+            />
+          );
+        case 'verification':
+          return <VerificationTab />;
+        case 'layout':
+          return <LayoutTab />;
+        default:
+          return null;
+      }
+    },
+    [architecture, selection, handlePropertyChange, isLocked, latestMappingJob, graphData, handleStartMapping, getSelectedBenchmarkNames]
+  );
 
   const handleCurrentBenchmarkChange = useCallback((benchmarkName) => {
     setCurrentBenchmark(benchmarkName);
@@ -757,8 +814,6 @@ function Workspace() {
       </Box>
     );
   }
-
-  const selectedBenchmarkNames = getSelectedBenchmarkNames();
 
   return (
     <Box
@@ -924,64 +979,28 @@ function Workspace() {
         </MenuItem>
       </Menu>
 
-      {/* Main Tab Navigation */}
-      <Box
-        sx={{
-          borderBottom: 1,
-          borderColor: 'divider',
-          bgcolor: 'rgba(15,23,42,0.5)'
-        }}
-      >
-        <Tabs
-          value={activeTab}
-          onChange={handleTabChange}
-          sx={{
-            px: 3,
-            '& .MuiTab-root': {
-              textTransform: 'none',
-              minHeight: 48,
-              fontWeight: 500
-            }
-          }}
-        >
-          <Tab label="1. Design" />
-          <Tab label="2. Mapping" />
-          <Tab label="3. Verification" />
-          <Tab label="4. Layout" />
-        </Tabs>
-      </Box>
-
-      {/* Tab Content */}
+      {/* Main Tab Content */}
       <Box
         component="main"
         sx={{
           flexGrow: 1,
           minHeight: 0,
-          height: `calc(100vh - ${NAVBAR_HEIGHT}px - 48px)`,
+          height: `calc(100vh - ${NAVBAR_HEIGHT}px)`,
           position: 'relative',
-          overflow: 'hidden'
+          overflow: 'hidden',
+          '& .flexlayout__layout': {
+            height: '100%',
+            width: '100%'
+          },
+          '& .flexlayout__layout, & .flexlayout__tabset, & .flexlayout__tabset_header': {
+            bgcolor: 'transparent'
+          },
+          '& .flexlayout__tab': {
+            color: 'text.secondary'
+          }
         }}
       >
-        {activeTab === 0 && (
-          <DesignTab
-            architecture={architecture}
-            selection={selection}
-            onSelectionChange={setSelection}
-            onPropertyChange={handlePropertyChange}
-            disabled={isLocked}
-          />
-        )}
-        {activeTab === 1 && (
-          <MappingTab
-            latestMappingJob={latestMappingJob}
-            graphData={graphData}
-            isLocked={isLocked}
-            onStartMapping={handleStartMapping}
-            selectedBenchmarkNames={selectedBenchmarkNames}
-          />
-        )}
-        {activeTab === 2 && <VerificationTab />}
-        {activeTab === 3 && <LayoutTab />}
+        <Layout model={model} factory={factory} />
       </Box>
     </Box>
   );
