@@ -771,6 +771,7 @@ function Workspace() {
               isLocked={isLocked}
               onStartMapping={handleStartMapping}
               selectedBenchmarkNames={selectedBenchmarkNames}
+              currentBenchmark={currentBenchmark}
             />
           );
         case 'verification':
@@ -781,7 +782,7 @@ function Workspace() {
           return null;
       }
     },
-    [architecture, selection, handlePropertyChange, isLocked, latestMappingJob, graphData, handleStartMapping, getSelectedBenchmarkNames]
+    [architecture, selection, handlePropertyChange, isLocked, latestMappingJob, graphData, handleStartMapping, getSelectedBenchmarkNames, currentBenchmark]
   );
 
   const handleCurrentBenchmarkChange = useCallback((benchmarkName) => {

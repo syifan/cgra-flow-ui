@@ -18,7 +18,8 @@ function MappingTab({
   graphData,
   isLocked,
   onStartMapping,
-  selectedBenchmarkNames
+  selectedBenchmarkNames,
+  currentBenchmark
 }) {
   const getJobStatusDisplay = () => {
     if (!latestMappingJob) return null;
@@ -123,35 +124,35 @@ function MappingTab({
         </Button>
       </Box>
 
-      {Object.keys(graphData).length > 0 && (
+      {Object.keys(graphData).length > 0 && currentBenchmark && graphData[currentBenchmark] && (
         <Box sx={{ flex: 1, minHeight: 0 }}>
           <Typography variant="subtitle2" sx={{ mb: 2, color: 'text.secondary' }}>
-            Mapping Results
+            Mapping Results for {currentBenchmark.toUpperCase()}
           </Typography>
-          {Object.entries(graphData).map(([bench, graphs]) => (
-            <Box
-              key={bench}
-              sx={{
-                mb: 3,
-                p: 2,
-                border: '1px solid',
-                borderColor: 'divider',
-                borderRadius: 1
-              }}
-            >
-              <Typography variant="body1" sx={{ mb: 2, fontWeight: 600 }}>
-                {bench}
-              </Typography>
-              {graphs.map((g) => (
-                <Box key={g.file} sx={{ mb: 2 }}>
-                  <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 1 }}>
-                    {g.file}
-                  </Typography>
-                  <DotGraph graph={g.json} />
-                </Box>
-              ))}
-            </Box>
-          ))}
+          <Box
+            sx={{
+              p: 2,
+              border: '1px solid',
+              borderColor: 'divider',
+              borderRadius: 1
+            }}
+          >
+            {graphData[currentBenchmark].map((g) => (
+              <Box key={g.file} sx={{ mb: 2 }}>
+                <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 1 }}>
+                  {g.file}
+                </Typography>
+                <DotGraph graph={g.json} />
+              </Box>
+            ))}
+          </Box>
+        </Box>
+      )}
+      {Object.keys(graphData).length > 0 && (!currentBenchmark || !graphData[currentBenchmark]) && (
+        <Box sx={{ flex: 1, minHeight: 0 }}>
+          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+            Select a current benchmark to view its mapping results.
+          </Typography>
         </Box>
       )}
     </Box>
@@ -174,7 +175,8 @@ MappingTab.propTypes = {
   graphData: PropTypes.object.isRequired,
   isLocked: PropTypes.bool.isRequired,
   onStartMapping: PropTypes.func.isRequired,
-  selectedBenchmarkNames: PropTypes.arrayOf(PropTypes.string).isRequired
+  selectedBenchmarkNames: PropTypes.arrayOf(PropTypes.string).isRequired,
+  currentBenchmark: PropTypes.string
 };
 
 export default MappingTab;

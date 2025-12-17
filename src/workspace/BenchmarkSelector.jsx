@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import PropTypes from 'prop-types';
 import {
+  Box,
   Button,
   Checkbox,
   Dialog,
@@ -50,7 +51,8 @@ function BenchmarkSelector({
     setOpen(false);
   }, []);
 
-  const handleToggle = useCallback((benchmarkName) => {
+  const handleToggleSelection = useCallback((e, benchmarkName) => {
+    e.stopPropagation();
     if (disabled) return;
     onSelectionChange((prev) => ({
       ...prev,
@@ -58,7 +60,7 @@ function BenchmarkSelector({
     }));
   }, [disabled, onSelectionChange]);
 
-  const handleMakeCurrent = useCallback((benchmarkName) => {
+  const handleSetCurrent = useCallback((benchmarkName) => {
     if (disabled) return;
     // First ensure the benchmark is selected
     onSelectionChange((prev) => ({
@@ -132,7 +134,7 @@ function BenchmarkSelector({
         </DialogTitle>
         <DialogContent dividers>
           <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
-            Select benchmarks to map on your CGRA design. Use &quot;Set as Current&quot; to choose the primary benchmark for detailed analysis.
+            Click on a benchmark to set it as current. Use the checkbox to include/exclude from mapping.
           </Typography>
           <List dense>
             {benchmarkList.map((name) => {
@@ -144,41 +146,54 @@ function BenchmarkSelector({
                 <ListItem
                   key={name}
                   disablePadding
-                  secondaryAction={
-                    <Button
-                      size="small"
-                      variant={isCurrent ? 'contained' : 'outlined'}
-                      onClick={() => handleMakeCurrent(name)}
-                      disabled={disabled}
-                      sx={{
-                        minWidth: 100,
-                        fontSize: '0.75rem',
-                        textTransform: 'none'
-                      }}
-                    >
-                      {isCurrent ? 'Current' : 'Set as Current'}
-                    </Button>
-                  }
+                  sx={{
+                    mb: 0.5,
+                    borderRadius: 1,
+                    border: isCurrent ? '2px solid' : '2px solid transparent',
+                    borderColor: isCurrent ? 'warning.main' : 'transparent',
+                    bgcolor: isCurrent ? 'rgba(255, 167, 38, 0.08)' : 'transparent'
+                  }}
                 >
                   <ListItemButton
-                    onClick={() => handleToggle(name)}
+                    onClick={() => handleSetCurrent(name)}
                     disabled={disabled}
                     dense
+                    sx={{
+                      borderRadius: 1
+                    }}
                   >
                     <ListItemIcon>
                       <Checkbox
                         edge="start"
                         checked={isSelected}
+                        onClick={(e) => handleToggleSelection(e, name)}
                         tabIndex={-1}
-                        disableRipple
                         disabled={disabled}
                       />
                     </ListItemIcon>
                     <ListItemText
                       primary={
-                        <Typography variant="body1" sx={{ fontWeight: 500 }}>
-                          {name.toUpperCase()}
-                        </Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Typography variant="body1" sx={{ fontWeight: 500 }}>
+                            {name.toUpperCase()}
+                          </Typography>
+                          {isCurrent && (
+                            <Typography
+                              variant="caption"
+                              sx={{
+                                px: 1,
+                                py: 0.25,
+                                borderRadius: 1,
+                                bgcolor: 'warning.main',
+                                color: 'warning.contrastText',
+                                fontSize: '0.65rem',
+                                fontWeight: 600
+                              }}
+                            >
+                              CURRENT
+                            </Typography>
+                          )}
+                        </Box>
                       }
                       secondary={description}
                     />
