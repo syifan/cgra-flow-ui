@@ -37,13 +37,13 @@ jobs:
             cd repo/runner
 
             # Write production environment file
-            cat > .env << 'ENVEOF'
-            SUPABASE_URL=${{ secrets.SUPABASE_URL }}
-            SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-            RUNNER_MODE=fake
-            RUNNER_ID=runner-production
-            POLL_INTERVAL_MS=5000
-            ENVEOF
+            printf '%s\n' \
+              'SUPABASE_URL=${{ secrets.SUPABASE_URL }}' \
+              'SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}' \
+              'RUNNER_MODE=fake' \
+              'RUNNER_ID=runner-production' \
+              'POLL_INTERVAL_MS=5000' \
+              > .env
 
             # Install dependencies
             npm ci --omit=dev
