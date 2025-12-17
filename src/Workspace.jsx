@@ -5,18 +5,16 @@ import { supabase } from './lib/supabase';
 import {
   AppBar,
   Box,
-  Button,
   ButtonBase,
-  Checkbox,
   Chip,
   CircularProgress,
-  FormControlLabel,
-  FormGroup,
   IconButton,
   ListItemIcon,
   ListItemText,
   Menu,
   MenuItem,
+  Tab,
+  Tabs,
   Toolbar,
   Typography
 } from '@mui/material';
@@ -25,15 +23,7 @@ import SaveIcon from '@mui/icons-material/Save';
 import HomeIcon from '@mui/icons-material/Home';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import LockIcon from '@mui/icons-material/Lock';
-import ErrorIcon from '@mui/icons-material/Error';
-import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
-import PlayArrowIcon from '@mui/icons-material/PlayArrow';
-import DownloadIcon from '@mui/icons-material/Download';
-import { Layout, Model } from 'flexlayout-react';
 import 'flexlayout-react/style/dark.css';
-import MainCanvas from './main_cancas';
-import PropertyInspector from './PropertyInspector';
-import DotGraph from './components/DotGraph';
 import { defaultAppData } from './app_data';
 import {
   normalizeArchitecture,
@@ -45,76 +35,17 @@ import {
   updatePeConnectionsForDirection
 } from './peConnections.js';
 import { collectArchitectureOps } from './opMapping';
+import {
+  DesignTab,
+  MappingTab,
+  VerificationTab,
+  LayoutTab,
+  BenchmarkSelector
+} from './workspace';
 
 const NAVBAR_HEIGHT = 56;
 
 const DEFAULT_BENCHMARKS = {};
-
-const initialLayout = {
-  global: {
-    tabSetMinHeight: 200,
-    tabEnableClose: false
-  },
-  borders: [],
-  layout: {
-    type: 'row',
-    weight: 100,
-    children: [
-      {
-        type: 'column',
-        weight: 70,
-        children: [
-          {
-            type: 'tabset',
-            weight: 70,
-            selected: 0,
-            children: [
-              {
-                type: 'tab',
-                name: 'Canvas',
-                component: 'canvas'
-              }
-            ]
-          },
-          {
-            type: 'tabset',
-            weight: 30,
-            selected: 0,
-            children: [
-              {
-                type: 'tab',
-                name: 'Mapping',
-                component: 'mapping'
-              },
-              {
-                type: 'tab',
-                name: 'Verification',
-                component: 'verification'
-              },
-              {
-                type: 'tab',
-                name: 'Layout',
-                component: 'layout'
-              }
-            ]
-          }
-        ]
-      },
-      {
-        type: 'tabset',
-        weight: 30,
-        selected: 0,
-        children: [
-          {
-            type: 'tab',
-            name: 'Properties',
-            component: 'properties'
-          }
-        ]
-      }
-    ]
-  }
-};
 
 const cloneAppData = (data) => {
   const cloned = JSON.parse(JSON.stringify(data));
@@ -127,7 +58,6 @@ const cloneAppData = (data) => {
 function Workspace() {
   const { projectId } = useParams();
   const navigate = useNavigate();
-  const [model] = useState(() => Model.fromJson(initialLayout));
   const [appState, setAppState] = useState(null);
   const [projectName, setProjectName] = useState('');
   const [selection, setSelection] = useState(null);
@@ -139,6 +69,8 @@ function Workspace() {
   const [pendingJob, setPendingJob] = useState(null);
   const [latestMappingJob, setLatestMappingJob] = useState(null);
   const [graphData, setGraphData] = useState({});
+  const [activeTab, setActiveTab] = useState(0);
+  const [currentBenchmark, setCurrentBenchmark] = useState(null);
   // Benchmark index loaded from public/benchmark_ops_index.json
   const [benchmarkIndex, setBenchmarkIndex] = useState(null);
   const [availableBenchmarks, setAvailableBenchmarks] = useState(DEFAULT_BENCHMARKS);
@@ -354,6 +286,11 @@ function Workspace() {
         ...availableBenchmarks,
         ...initialState.selectedBenchmarks
       };
+
+      // Restore current benchmark if saved
+      if (initialState.currentBenchmark) {
+        setCurrentBenchmark(initialState.currentBenchmark);
+      }
 
       setAppState(initialState);
       savedStateRef.current = JSON.stringify(initialState);
@@ -784,305 +721,20 @@ function Workspace() {
       setLatestMappingJob(newJob);
       showSuccess('Mapping job queued successfully');
     }
-  }, [projectId, isLocked, appState, getSelectedBenchmarkNames, showError, showSuccess]);
+  }, [projectId, isLocked, appState, getSelectedBenchmarkNames, showError, showSuccess, benchmarkIndex, showConfirm]);
 
-  const factory = useCallback(
-    (node) => {
-      const component = node.getComponent();
+  const handleTabChange = useCallback((event, newValue) => {
+    setActiveTab(newValue);
+  }, []);
 
-      switch (component) {
-        case 'canvas':
-          return (
-            <MainCanvas
-              architecture={architecture}
-              selection={selection}
-              onSelectionChange={setSelection}
-            />
-          );
-        case 'properties':
-          return (
-            <PropertyInspector
-              architecture={architecture}
-              selection={selection}
-              onPropertyChange={handlePropertyChange}
-              disabled={isLocked}
-            />
-          );
-        case 'genai':
-          return (
-            <Box
-              sx={{
-                height: '100%',
-                p: 3,
-                borderRadius: 1,
-                border: '1px dashed rgba(148, 163, 184, 0.3)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'text.secondary'
-              }}
-            >
-              GenAI workspace coming soon.
-            </Box>
-          );
-        case 'mapping': {
-          const getJobStatusDisplay = () => {
-            if (!latestMappingJob) return null;
-            const status = latestMappingJob.status;
-            const benchmarks = Array.isArray(latestMappingJob.info?.benchmarks)
-              ? latestMappingJob.info.benchmarks.join(', ')
-              : 'N/A';
-            const jobPackage = latestMappingJob.info?.job_package;
-            const packageUrl = (() => {
-              if (!jobPackage) return null;
-              if (jobPackage.publicUrl) return jobPackage.publicUrl;
-              if (jobPackage.path && jobPackage.bucket) {
-                const { data } = supabase.storage.from(jobPackage.bucket).getPublicUrl(jobPackage.path);
-                return data?.publicUrl || null;
-              }
-              return null;
-            })();
-
-            const statusConfig = {
-              queued: { icon: <HourglassEmptyIcon fontSize="small" />, color: 'info', label: 'Queued' },
-              running: { icon: <PlayArrowIcon fontSize="small" />, color: 'warning', label: 'Running' },
-              success: { icon: <CheckCircleIcon fontSize="small" />, color: 'success', label: 'Success' },
-              failed: { icon: <ErrorIcon fontSize="small" />, color: 'error', label: 'Failed' },
-              cancelled: { icon: <ErrorIcon fontSize="small" />, color: 'default', label: 'Cancelled' }
-            };
-
-            const config = statusConfig[status] || statusConfig.cancelled;
-
-            return (
-              <Box sx={{ mb: 2, p: 1.5, bgcolor: 'rgba(148,163,184,0.1)', borderRadius: 1 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                  <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                    Latest Mapping Job:
-                  </Typography>
-                  <Chip
-                    size="small"
-                    icon={config.icon}
-                    label={config.label}
-                    color={config.color}
-                    variant="outlined"
-                  />
-                </Box>
-                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                  Benchmarks: {benchmarks}
-                </Typography>
-                {latestMappingJob.error_message && (
-                  <Typography variant="caption" sx={{ color: 'error.main', display: 'block', mt: 0.5 }}>
-                    Error: {latestMappingJob.error_message}
-                  </Typography>
-                )}
-                {packageUrl && (
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    startIcon={<DownloadIcon fontSize="small" />}
-                    href={packageUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    sx={{ mt: 1 }}
-                  >
-                    Download job package
-                  </Button>
-                )}
-              </Box>
-            );
-          };
-
-          return (
-            <Box
-              sx={{
-                height: '100%',
-                p: 2,
-                display: 'flex',
-                overflow: 'auto'
-              }}
-            >
-              <Box sx={{ flex: 1 }}>
-                {getJobStatusDisplay()}
-                <Typography variant="subtitle2" sx={{ mb: 2, color: 'text.secondary' }}>
-                  Select benchmarks to map on your CGRA design:
-                </Typography>
-                <FormGroup>
-                  <FormControlLabel
-                    disabled={isLocked}
-                    control={
-                      <Checkbox
-                        checked={Boolean(selectedBenchmarks.bicg)}
-                        onChange={(e) =>
-                          setSelectedBenchmarks((prev) => ({
-                            ...prev,
-                            bicg: e.target.checked
-                          }))
-                        }
-                        disabled={isLocked}
-                      />
-                    }
-                    label={
-                      <Box>
-                        <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                          BiCG
-                        </Typography>
-                        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                          Biconjugate Gradient - An iterative method for solving linear systems with sparse matrices.
-                        </Typography>
-                      </Box>
-                    }
-                  />
-                  <FormControlLabel
-                    disabled={isLocked}
-                    control={
-                      <Checkbox
-                        checked={Boolean(selectedBenchmarks.fir)}
-                        onChange={(e) =>
-                          setSelectedBenchmarks((prev) => ({
-                            ...prev,
-                            fir: e.target.checked
-                          }))
-                        }
-                        disabled={isLocked}
-                      />
-                    }
-                    label={
-                      <Box>
-                        <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                          FIR
-                        </Typography>
-                        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                          Finite Impulse Response filter - A common DSP operation that computes weighted sums of input samples.
-                        </Typography>
-                      </Box>
-                    }
-                  />
-                  <FormControlLabel
-                    disabled={isLocked}
-                    control={
-                      <Checkbox
-                        checked={Boolean(selectedBenchmarks.histogram)}
-                        onChange={(e) =>
-                          setSelectedBenchmarks((prev) => ({
-                            ...prev,
-                            histogram: e.target.checked
-                          }))
-                        }
-                        disabled={isLocked}
-                      />
-                    }
-                    label={
-                      <Box>
-                        <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                          Histogram
-                        </Typography>
-                        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                          Image processing operation that computes frequency distribution of pixel intensities.
-                        </Typography>
-                      </Box>
-                    }
-                  />
-                  <FormControlLabel
-                    disabled={isLocked}
-                    control={
-                      <Checkbox
-                        checked={Boolean(selectedBenchmarks.relu)}
-                        onChange={(e) =>
-                          setSelectedBenchmarks((prev) => ({
-                            ...prev,
-                            relu: e.target.checked
-                          }))
-                        }
-                        disabled={isLocked}
-                      />
-                    }
-                    label={
-                      <Box>
-                        <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                          ReLU
-                        </Typography>
-                        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                          Rectified Linear Unit activation function - A fundamental operation in neural networks.
-                        </Typography>
-                      </Box>
-                    }
-                  />
-                </FormGroup>
-              </Box>
-              <Box sx={{ display: 'flex', alignItems: 'flex-start', ml: 2 }}>
-                <Button
-                  variant="contained"
-                  disabled={isLocked || getSelectedBenchmarkNames().length === 0}
-                  onClick={handleStartMapping}
-                >
-                  Start Mapping
-                </Button>
-              </Box>
-              {Object.keys(graphData).length > 0 && (
-                <Box sx={{ mt: 3, width: '100%' }}>
-                  <Typography variant="subtitle2" sx={{ mb: 1, color: 'text.secondary' }}>
-                    Mapping Graphs
-                  </Typography>
-                  {Object.entries(graphData).map(([bench, graphs]) => (
-                    <Box key={bench} sx={{ mb: 2, p: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
-                      <Typography variant="body2" sx={{ mb: 1, fontWeight: 600 }}>
-                        {bench}
-                      </Typography>
-                      {graphs.map((g) => (
-                        <Box key={g.file} sx={{ mb: 1.5 }}>
-                          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                            {g.file}
-                          </Typography>
-                          <DotGraph graph={g.json} />
-                        </Box>
-                      ))}
-                    </Box>
-                  ))}
-                </Box>
-              )}
-            </Box>
-          );
-        }
-        case 'verification':
-          return (
-            <Box
-              sx={{
-                height: '100%',
-                p: 3,
-                borderRadius: 1,
-                border: '1px dashed rgba(148, 163, 184, 0.3)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'text.secondary'
-              }}
-            >
-              Verification workspace coming soon.
-            </Box>
-          );
-        case 'layout':
-          return (
-            <Box
-              sx={{
-                height: '100%',
-                p: 3,
-                borderRadius: 1,
-                border: '1px dashed rgba(148, 163, 184, 0.3)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'text.secondary'
-              }}
-            >
-              Layout workspace coming soon.
-            </Box>
-          );
-        default:
-          return null;
-      }
-    },
-    [architecture, handlePropertyChange, selection, selectedBenchmarks, setSelectedBenchmarks, isLocked, handleStartMapping, latestMappingJob, graphData]
-  );
+  const handleCurrentBenchmarkChange = useCallback((benchmarkName) => {
+    setCurrentBenchmark(benchmarkName);
+    // Save current benchmark in app state
+    setAppState((prev) => {
+      if (!prev) return prev;
+      return { ...prev, currentBenchmark: benchmarkName };
+    });
+  }, []);
 
   // Show loading state
   if (loading) {
@@ -1105,6 +757,8 @@ function Workspace() {
       </Box>
     );
   }
+
+  const selectedBenchmarkNames = getSelectedBenchmarkNames();
 
   return (
     <Box
@@ -1225,7 +879,15 @@ function Workspace() {
               sx={{ ml: 1 }}
             />
           </Box>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <BenchmarkSelector
+              availableBenchmarks={availableBenchmarks}
+              selectedBenchmarks={selectedBenchmarks}
+              currentBenchmark={currentBenchmark}
+              onSelectionChange={setSelectedBenchmarks}
+              onCurrentChange={handleCurrentBenchmarkChange}
+              disabled={isLocked}
+            />
             <IconButton
               color="inherit"
               edge="end"
@@ -1261,27 +923,65 @@ function Workspace() {
           <ListItemText>Back to dashboard</ListItemText>
         </MenuItem>
       </Menu>
+
+      {/* Main Tab Navigation */}
+      <Box
+        sx={{
+          borderBottom: 1,
+          borderColor: 'divider',
+          bgcolor: 'rgba(15,23,42,0.5)'
+        }}
+      >
+        <Tabs
+          value={activeTab}
+          onChange={handleTabChange}
+          sx={{
+            px: 3,
+            '& .MuiTab-root': {
+              textTransform: 'none',
+              minHeight: 48,
+              fontWeight: 500
+            }
+          }}
+        >
+          <Tab label="1. Design" />
+          <Tab label="2. Mapping" />
+          <Tab label="3. Verification" />
+          <Tab label="4. Layout" />
+        </Tabs>
+      </Box>
+
+      {/* Tab Content */}
       <Box
         component="main"
         sx={{
           flexGrow: 1,
           minHeight: 0,
-          height: `calc(100vh - ${NAVBAR_HEIGHT}px)`,
+          height: `calc(100vh - ${NAVBAR_HEIGHT}px - 48px)`,
           position: 'relative',
-          overflow: 'hidden',
-          '& .flexlayout__layout': {
-            height: '100%',
-            width: '100%'
-          },
-          '& .flexlayout__layout, & .flexlayout__tabset, & .flexlayout__tabset_header': {
-            bgcolor: 'transparent'
-          },
-          '& .flexlayout__tab': {
-            color: 'text.secondary'
-          }
+          overflow: 'hidden'
         }}
       >
-        <Layout model={model} factory={factory} />
+        {activeTab === 0 && (
+          <DesignTab
+            architecture={architecture}
+            selection={selection}
+            onSelectionChange={setSelection}
+            onPropertyChange={handlePropertyChange}
+            disabled={isLocked}
+          />
+        )}
+        {activeTab === 1 && (
+          <MappingTab
+            latestMappingJob={latestMappingJob}
+            graphData={graphData}
+            isLocked={isLocked}
+            onStartMapping={handleStartMapping}
+            selectedBenchmarkNames={selectedBenchmarkNames}
+          />
+        )}
+        {activeTab === 2 && <VerificationTab />}
+        {activeTab === 3 && <LayoutTab />}
       </Box>
     </Box>
   );
