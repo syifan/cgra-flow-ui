@@ -40,7 +40,10 @@ test.describe('Canvas rendering', () => {
   test('allows toggling individual layers on and off', async ({ workspacePage: page }) => {
     // workspacePage fixture already navigates to the workspace
 
-    await page.getByTestId('ExpandMoreIcon').click();
+    // Click the expand icon in the Layer View control (not the benchmark selector)
+    // Find the container that has "Layer View" text and then find the button inside it
+    const layerControlButton = page.getByRole('main').getByRole('button').first();
+    await layerControlButton.click();
     await page.getByRole('button', { name: 'Auto' }).click();
 
     const layers = [

@@ -12,12 +12,12 @@ test.describe("Mapping job lifecycle", () => {
     let runnerProcess;
 
     try {
-      // Navigate to the Mapping tab
-      await page.getByText("Mapping", { exact: true }).first().click();
+      // Navigate to the Mapping tab (tabs are now numbered)
+      await page.getByText("2. Mapping").first().click();
 
       // Wait for the mapping panel to be visible
       await expect(
-        page.getByText("Select benchmarks to map on your CGRA design:")
+        page.getByText("Map selected benchmarks onto your CGRA design.")
       ).toBeVisible();
 
       // Verify initial state - no pending jobs
@@ -25,9 +25,9 @@ test.describe("Mapping job lifecycle", () => {
         page.locator('.MuiChip-label:has-text("No pending jobs")')
       ).toBeVisible();
 
-      // Select the FIR benchmark
-      const firCheckbox = page.getByRole("checkbox").first();
-      await firCheckbox.check();
+      // FIR benchmark is selected by default, verify it shows in the benchmark selector
+      const benchmarkSelector = page.getByRole("button", { name: /Current: FIR/ });
+      await expect(benchmarkSelector).toBeVisible();
 
       // Click Start Mapping button
       await page.getByRole("button", { name: "Start Mapping" }).click();
@@ -54,8 +54,8 @@ test.describe("Mapping job lifecycle", () => {
         page.getByRole("button", { name: "Start Mapping" })
       ).toBeDisabled();
 
-      // Verify checkboxes are disabled when locked
-      await expect(firCheckbox).toBeDisabled();
+      // Verify benchmark selector is disabled when locked
+      await expect(benchmarkSelector).toBeDisabled();
 
       // ===== PHASE 2: Start runner and verify RUNNING state =====
 
@@ -96,7 +96,7 @@ test.describe("Mapping job lifecycle", () => {
       await expect(
         page.getByRole("button", { name: "Start Mapping" })
       ).toBeDisabled();
-      await expect(firCheckbox).toBeDisabled();
+      await expect(benchmarkSelector).toBeDisabled();
 
       // ===== PHASE 3: Wait for SUCCESS state =====
 
@@ -116,8 +116,8 @@ test.describe("Mapping job lifecycle", () => {
         page.getByRole("button", { name: "Start Mapping" })
       ).toBeEnabled();
 
-      // Verify checkboxes are enabled again
-      await expect(firCheckbox).toBeEnabled();
+      // Verify benchmark selector is enabled again
+      await expect(benchmarkSelector).toBeEnabled();
     } finally {
       // Always clean up the runner process
       if (runnerProcess) {
