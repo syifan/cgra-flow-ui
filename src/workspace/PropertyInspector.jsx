@@ -272,9 +272,27 @@ function PropertyInspector({ architecture, selection, onPropertyChange, disabled
                     '&:hover': isCollapsible ? {
                       bgcolor: 'rgba(148,163,184,0.1)',
                       borderRadius: 1
+                    } : {},
+                    '&:focus-visible': isCollapsible ? {
+                      outline: '2px solid',
+                      outlineColor: 'primary.main',
+                      outlineOffset: 2,
+                      borderRadius: 1
                     } : {}
                   }}
+                  role={isCollapsible ? 'button' : undefined}
+                  tabIndex={isCollapsible ? 0 : undefined}
                   onClick={isCollapsible ? () => toggleSection(property.section) : undefined}
+                  onKeyDown={
+                    isCollapsible
+                      ? (event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            toggleSection(property.section);
+                          }
+                        }
+                      : undefined
+                  }
                 >
                   {isCollapsible && (
                     <IconButton
@@ -354,48 +372,50 @@ function PropertyInspector({ architecture, selection, onPropertyChange, disabled
                           placement="top"
                           arrow
                         >
-                          <FormControlLabel
-                            control={
-                              <Switch
-                                checked={Boolean(groupValue)}
-                                onChange={handleBooleanChange(groupProperty)}
-                                color="primary"
-                                disabled={groupDisabled}
-                                size="small"
-                              />
-                            }
-                            label={
-                              <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-                                <Typography
-                                  variant="body2"
-                                  sx={{
-                                    color: groupDisabled ? 'text.disabled' : 'text.secondary',
-                                    fontWeight: 500
-                                  }}
-                                >
-                                  {groupProperty.label}
-                                </Typography>
-                                {groupProperty.sublabel && (
+                          <Box sx={{ width: 'fit-content' }}>
+                            <FormControlLabel
+                              control={
+                                <Switch
+                                  checked={Boolean(groupValue)}
+                                  onChange={handleBooleanChange(groupProperty)}
+                                  color="primary"
+                                  disabled={groupDisabled}
+                                  size="small"
+                                />
+                              }
+                              label={
+                                <Box sx={{ display: 'flex', flexDirection: 'column' }}>
                                   <Typography
-                                    variant="caption"
+                                    variant="body2"
                                     sx={{
                                       color: groupDisabled ? 'text.disabled' : 'text.secondary',
-                                      opacity: 0.7,
-                                      fontSize: '0.7rem',
-                                      lineHeight: 1.2
+                                      fontWeight: 500
                                     }}
                                   >
-                                    {groupProperty.sublabel}
+                                    {groupProperty.label}
                                   </Typography>
-                                )}
-                              </Box>
-                            }
-                            sx={{
-                              m: 0,
-                              alignItems: 'flex-start',
-                              '& .MuiSwitch-root': { mt: 0.5 }
-                            }}
-                          />
+                                  {groupProperty.sublabel && (
+                                    <Typography
+                                      variant="caption"
+                                      sx={{
+                                        color: groupDisabled ? 'text.disabled' : 'text.secondary',
+                                        opacity: 0.7,
+                                        fontSize: '0.7rem',
+                                        lineHeight: 1.2
+                                      }}
+                                    >
+                                      {groupProperty.sublabel}
+                                    </Typography>
+                                  )}
+                                </Box>
+                              }
+                              sx={{
+                                m: 0,
+                                alignItems: 'flex-start',
+                                '& .MuiSwitch-root': { mt: 0.5 }
+                              }}
+                            />
+                          </Box>
                         </Tooltip>
                       );
                     })}
