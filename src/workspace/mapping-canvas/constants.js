@@ -67,22 +67,26 @@ export function getOpcodeColor(opcode) {
   return OPCODE_COLORS[opcode] || OPCODE_COLORS.default;
 }
 
-// Data flow arrow colors based on the color field in operands
+// Data flow arrow colors - separate colors for input vs output
 export const FLOW_COLORS = {
-  RED: '#ef4444',
-  BLUE: '#3b82f6',
-  GREEN: '#22c55e',
-  YELLOW: '#eab308',
-  default: '#94a3b8'
+  // Input arrows (data coming INTO a PE) - blue/cyan family
+  input: '#06b6d4',    // cyan
+  // Output arrows (data going OUT of a PE) - orange/amber family
+  output: '#f59e0b',   // amber
+  // Fallback
+  default: '#94a3b8',
+  // Dependency graph edge colors (bright for dark backgrounds)
+  BLUE: '#60a5fa',     // bright blue for register edges
+  RED: '#f87171'       // bright red for directional edges
 };
 
 /**
- * Get color for a data flow
- * @param {string} colorName - The color name from operand
+ * Get color for a data flow based on direction type
+ * @param {string} flowType - 'input' or 'output'
  * @returns {string} - The hex color
  */
-export function getFlowColor(colorName) {
-  return FLOW_COLORS[colorName] || FLOW_COLORS.default;
+export function getFlowColor(flowType) {
+  return FLOW_COLORS[flowType] || FLOW_COLORS.default;
 }
 
 // Arrow styling

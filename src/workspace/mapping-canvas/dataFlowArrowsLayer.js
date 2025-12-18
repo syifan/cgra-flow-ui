@@ -23,13 +23,13 @@ export function createDataFlowArrowsLayer(root) {
   // Create arrow marker definitions
   const defs = root.append('defs');
 
-  // Create markers for different colors
-  const colors = ['RED', 'BLUE', 'GREEN', 'YELLOW', 'default'];
-  colors.forEach((colorName) => {
-    const color = getFlowColor(colorName);
+  // Create markers for input and output flow types
+  const flowTypes = ['input', 'output', 'default'];
+  flowTypes.forEach((flowType) => {
+    const color = getFlowColor(flowType);
     defs
       .append('marker')
-      .attr('id', `arrow-${colorName}`)
+      .attr('id', `arrow-${flowType}`)
       .attr('viewBox', '0 -5 10 10')
       .attr('refX', 8)
       .attr('refY', 0)
@@ -141,15 +141,16 @@ export function createDataFlowArrowsLayer(root) {
           rows
         );
 
+        const flowType = datum.type || 'default';
         select(this)
           .attr('x1', endpoints.x1)
           .attr('y1', endpoints.y1)
           .attr('x2', endpoints.x2)
           .attr('y2', endpoints.y2)
-          .attr('stroke', getFlowColor(datum.color))
+          .attr('stroke', getFlowColor(flowType))
           .attr('stroke-width', ARROW_STROKE_WIDTH)
           .attr('opacity', ARROW_OPACITY)
-          .attr('marker-end', `url(#arrow-${datum.color || 'default'})`);
+          .attr('marker-end', `url(#arrow-${flowType})`);
       });
   };
 

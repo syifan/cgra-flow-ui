@@ -13,7 +13,7 @@ import { getOpcodeColor, FLOW_COLORS } from './mapping-canvas/constants';
 // Layout constants
 const NODE_WIDTH = 70;
 const NODE_HEIGHT = 36;
-const NODE_PADDING_X = 30;
+const NODE_PADDING_X = 50;
 const NODE_PADDING_Y = 20;
 const MARGIN = { top: 40, right: 40, bottom: 40, left: 60 };
 
@@ -147,6 +147,40 @@ export default function DependencyGraph({
       });
     svg.call(zoom);
 
+    // Define arrow markers for each edge type (must be before edges)
+    const defs = svg.append('defs');
+
+    // Blue arrow for register edges
+    defs
+      .append('marker')
+      .attr('id', 'arrow-blue')
+      .attr('viewBox', '0 -5 10 10')
+      .attr('refX', 0)
+      .attr('refY', 0)
+      .attr('markerWidth', 8)
+      .attr('markerHeight', 8)
+      .attr('orient', 'auto')
+      .append('path')
+      .attr('d', 'M0,-5L10,0L0,5')
+      .attr('fill', FLOW_COLORS.BLUE);
+
+    // Red arrow for directional edges
+    defs
+      .append('marker')
+      .attr('id', 'arrow-red')
+      .attr('viewBox', '0 -5 10 10')
+      .attr('refX', 0)
+      .attr('refY', 0)
+      .attr('markerWidth', 8)
+      .attr('markerHeight', 8)
+      .attr('orient', 'auto')
+      .append('path')
+      .attr('d', 'M0,-5L10,0L0,5')
+      .attr('fill', FLOW_COLORS.RED);
+
+    // Column highlight layer (behind everything else)
+    g.append('g').attr('class', 'column-highlights');
+
     // Draw slide (index_per_ii) markers
     const slideLabels = g.append('g').attr('class', 'slide-labels');
     layoutData.slides?.forEach((slide, i) => {
@@ -165,10 +199,13 @@ export default function DependencyGraph({
     // Draw edges first (behind nodes)
     const edgesGroup = g.append('g').attr('class', 'edges');
 
+    const ARROW_SIZE = 8; // Must match markerWidth
+
     layoutData.edges.forEach((edge) => {
       const sourceX = edge.sourceNode.x + NODE_WIDTH;
       const sourceY = edge.sourceNode.y + NODE_HEIGHT / 2;
-      const targetX = edge.targetNode.x;
+      // Line ends at back of arrowhead, arrow tip extends to target node edge
+      const targetX = edge.targetNode.x - ARROW_SIZE;
       const targetY = edge.targetNode.y + NODE_HEIGHT / 2;
 
       // Determine if edge goes forward or backward in the slide order
@@ -187,33 +224,20 @@ export default function DependencyGraph({
         path = `M ${sourceX} ${sourceY} C ${sourceX + 20} ${sourceY - arcHeight}, ${targetX - 20} ${targetY - arcHeight}, ${targetX} ${targetY}`;
       }
 
-      const strokeColor = edge.type === 'register' ? FLOW_COLORS.BLUE : FLOW_COLORS.RED;
+      const isRegister = edge.type === 'register';
+      const strokeColor = isRegister ? FLOW_COLORS.BLUE : FLOW_COLORS.RED;
+      const arrowId = isRegister ? 'arrow-blue' : 'arrow-red';
 
       edgesGroup
         .append('path')
         .attr('d', path)
         .attr('fill', 'none')
         .attr('stroke', strokeColor)
-        .attr('stroke-width', 1.5)
-        .attr('stroke-dasharray', edge.type === 'register' ? 'none' : '4,2')
-        .attr('opacity', 0.6)
-        .attr('marker-end', 'url(#arrow)');
+        .attr('stroke-width', 2)
+        .attr('stroke-dasharray', isRegister ? 'none' : '4,2')
+        .attr('opacity', 0.85)
+        .attr('marker-end', `url(#${arrowId})`);
     });
-
-    // Define arrow marker
-    svg
-      .append('defs')
-      .append('marker')
-      .attr('id', 'arrow')
-      .attr('viewBox', '0 -5 10 10')
-      .attr('refX', 8)
-      .attr('refY', 0)
-      .attr('markerWidth', 6)
-      .attr('markerHeight', 6)
-      .attr('orient', 'auto')
-      .append('path')
-      .attr('d', 'M0,-5L10,0L0,5')
-      .attr('fill', '#94a3b8');
 
     // Draw nodes
     const nodesGroup = g.append('g').attr('class', 'nodes');
@@ -324,6 +348,7 @@ export default function DependencyGraph({
     const svg = d3.select(svgRef.current);
     const nodesGroup = svg.select('g.nodes');
     const edgesGroup = svg.select('g.edges');
+    const columnHighlights = svg.select('g.column-highlights');
 
     if (nodesGroup.empty()) return;
 
@@ -335,7 +360,29 @@ export default function DependencyGraph({
       ? new Set(layoutData.nodes.filter((n) => n.indexPerII === currentSlide).map((n) => n.id))
       : new Set();
 
-    // Apply node highlighting
+    // Find the slide index for the current slide value
+    const currentSlideIndex = layoutData.slides?.indexOf(currentSlide) ?? -1;
+
+    // Update column highlight background
+    columnHighlights.selectAll('rect').remove();
+    if (hasSlideHighlight && currentSlideIndex >= 0) {
+      const columnX = MARGIN.left + currentSlideIndex * (NODE_WIDTH + NODE_PADDING_X) - NODE_PADDING_X / 2;
+      const columnWidth = NODE_WIDTH + NODE_PADDING_X;
+      const columnHeight = layoutData.height - 10;
+
+      columnHighlights
+        .append('rect')
+        .attr('x', columnX)
+        .attr('y', 5)
+        .attr('width', columnWidth)
+        .attr('height', columnHeight)
+        .attr('rx', 6)
+        .attr('fill', 'rgba(34, 211, 238, 0.12)')
+        .attr('stroke', 'rgba(34, 211, 238, 0.3)')
+        .attr('stroke-width', 1);
+    }
+
+    // Apply node highlighting - keep all nodes visible, just add glow effects
     nodesGroup.selectAll('.node').each(function () {
       const nodeG = d3.select(this);
       const nodeId = nodeG.attr('data-id');
@@ -344,70 +391,32 @@ export default function DependencyGraph({
       const isHoverHighlighted = hasHoverHighlight && nodeId === highlightedNodeId;
       const isSlideHighlighted = hasSlideHighlight && nodesAtCurrentSlide.has(nodeId);
 
-      if (hasHoverHighlight) {
+      // Always keep nodes at full opacity
+      nodeG.style('opacity', 1);
+
+      if (isHoverHighlighted) {
         // Hover takes priority - golden glow for hovered node
-        if (isHoverHighlighted) {
-          nodeG.style('opacity', 1);
-          nodeG
-            .select('rect')
-            .attr('stroke', '#f59e0b')
-            .attr('stroke-width', 3)
-            .style('filter', 'drop-shadow(0 0 8px rgba(245, 158, 11, 0.8))');
-        } else {
-          nodeG.style('opacity', 0.3);
-          nodeG.select('rect').attr('stroke', '#1e293b').attr('stroke-width', 1).style('filter', null);
-        }
-      } else if (hasSlideHighlight) {
+        nodeG
+          .select('rect')
+          .attr('stroke', '#f59e0b')
+          .attr('stroke-width', 3)
+          .style('filter', 'drop-shadow(0 0 8px rgba(245, 158, 11, 0.8))');
+      } else if (isSlideHighlighted) {
         // Slide highlighting - cyan glow for nodes at current slide
-        if (isSlideHighlighted) {
-          nodeG.style('opacity', 1);
-          nodeG
-            .select('rect')
-            .attr('stroke', '#22d3ee')
-            .attr('stroke-width', 2)
-            .style('filter', 'drop-shadow(0 0 6px rgba(34, 211, 238, 0.7))');
-        } else {
-          nodeG.style('opacity', 0.4);
-          nodeG.select('rect').attr('stroke', '#1e293b').attr('stroke-width', 1).style('filter', null);
-        }
+        nodeG
+          .select('rect')
+          .attr('stroke', '#22d3ee')
+          .attr('stroke-width', 2)
+          .style('filter', 'drop-shadow(0 0 6px rgba(34, 211, 238, 0.7))');
       } else {
-        // No highlighting - reset to default
-        nodeG.style('opacity', 1);
+        // Reset to default
         nodeG.select('rect').attr('stroke', '#1e293b').attr('stroke-width', 1).style('filter', null);
       }
     });
 
-    // Highlight edges based on context
-    if (hasHoverHighlight) {
-      // Dim all edges, then highlight connected ones
-      edgesGroup.selectAll('path').style('opacity', 0.2);
-      layoutData.edges.forEach((edge, i) => {
-        if (edge.sourceNode.id === highlightedNodeId || edge.targetNode.id === highlightedNodeId) {
-          edgesGroup.selectAll('path').filter((_, idx) => idx === i).style('opacity', 1);
-        }
-      });
-    } else if (hasSlideHighlight) {
-      // Highlight edges where both source and target are at/before current slide
-      edgesGroup.selectAll('path').each(function (_, i) {
-        const edge = layoutData.edges[i];
-        if (!edge) return;
-        const sourceInScope = edge.sourceNode.indexPerII <= currentSlide;
-        const targetInScope = edge.targetNode.indexPerII <= currentSlide;
-        const bothAtCurrent =
-          nodesAtCurrentSlide.has(edge.sourceNode.id) ||
-          nodesAtCurrentSlide.has(edge.targetNode.id);
-
-        if (bothAtCurrent && sourceInScope && targetInScope) {
-          d3.select(this).style('opacity', 0.8);
-        } else {
-          d3.select(this).style('opacity', 0.15);
-        }
-      });
-    } else {
-      // No highlighting - reset edges
-      edgesGroup.selectAll('path').style('opacity', 0.6);
-    }
-  }, [highlightedNodeId, currentSlide, layoutData.nodes, layoutData.edges]);
+    // Keep all edges visible
+    edgesGroup.selectAll('path').style('opacity', 0.75);
+  }, [highlightedNodeId, currentSlide, layoutData.nodes, layoutData.edges, layoutData.slides, layoutData.height]);
 
   // Update URL for maximize state
   useEffect(() => {
@@ -453,7 +462,10 @@ export default function DependencyGraph({
         border: '2px solid #38bdf8'
       }
     : {
-        position: 'relative'
+        position: 'relative',
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column'
       };
 
   return (
@@ -544,8 +556,8 @@ export default function DependencyGraph({
       <svg
         ref={svgRef}
         width="100%"
-        height={maximized ? 'calc(100vh - 64px)' : height}
-        style={{ display: 'block', background: 'rgba(15, 23, 42, 0.5)' }}
+        height={maximized ? 'calc(100vh - 64px)' : '100%'}
+        style={{ display: 'block', background: 'rgba(15, 23, 42, 0.5)', flex: 1, minHeight: 0 }}
       />
     </div>
   );
