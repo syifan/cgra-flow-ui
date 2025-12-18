@@ -1,32 +1,13 @@
 import yaml from 'js-yaml';
+import { functionUnitsToInstructions, getAllInstructions } from './functionalUnitMapping.js';
 
 // Default values used when not specified in the input JSON
 const DEFAULT_PER_CGRA_ROWS = 4;
 const DEFAULT_PER_CGRA_COLUMNS = 4;
 const DEFAULT_CTRL_MEM_ITEMS = 20;
 
-// All supported MLIR operations that can be configured as functional units.
-// Uses MLIR operation names directly - no mapping needed.
-const SUPPORTED_OPERATIONS = new Set([
-  // Arithmetic
-  'add', 'mul', 'div', 'rem', 'shl',
-  // Floating point
-  'fadd', 'fmul', 'fdiv', 'fmul_fadd',
-  // Memory
-  'load', 'store', 'gep', 'memset',
-  // Control
-  'phi', 'sel', 'not', 'icmp', 'return', 'br', 'cond_br',
-  // Data movement
-  'data_mov', 'ctrl_mov', 'reserve', 'data',
-  // Grants
-  'grant_once', 'grant_predicate',
-  // Type conversion
-  'cast', 'zext', 'sext',
-  // Other
-  'constant', 'mac',
-  // Vector
-  'vadd', 'vmul', 'vector'
-]);
+// All supported instructions (derived from function unit mapping)
+const SUPPORTED_OPERATIONS = getAllInstructions();
 
 function normalizeOperations(operations = []) {
   const opSet = new Set(operations);
@@ -34,24 +15,17 @@ function normalizeOperations(operations = []) {
 }
 
 /**
- * Maps functional unit booleans to operation string list
- * @param {Object} tileFunctionalUnits - Object with operation names as keys, booleans as values
- * @returns {Array<string>} - Array of enabled operation names
+ * Maps functional unit booleans to operation string list.
+ * Uses the function unit to instruction mapping.
+ * @param {Object} tileFunctionalUnits - Object with function unit names as keys, booleans as values
+ * @returns {Array<string>} - Array of enabled instruction names
  */
 function functionalUnitsToOperations(tileFunctionalUnits) {
   if (!tileFunctionalUnits || typeof tileFunctionalUnits !== 'object') {
     return [];
   }
 
-  const operations = [];
-
-  for (const [key, value] of Object.entries(tileFunctionalUnits)) {
-    if (value === true && SUPPORTED_OPERATIONS.has(key)) {
-      operations.push(key);
-    }
-  }
-
-  return operations;
+  return functionUnitsToInstructions(tileFunctionalUnits);
 }
 
 /**
