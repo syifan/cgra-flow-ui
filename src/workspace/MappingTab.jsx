@@ -52,6 +52,9 @@ function MappingTab({
   // Track current animation timestep from instruction grid
   const [currentAnimationTimestep, setCurrentAnimationTimestep] = useState(null);
 
+  // Jump target from clicking on dependency graph nodes
+  const [jumpTarget, setJumpTarget] = useState(null);
+
   // Build dependency graph nodes for linking (memoized)
   const dependencyNodes = useMemo(() => {
     if (!instructionData || !currentBenchmark || !instructionData[currentBenchmark]) {
@@ -89,6 +92,15 @@ function MappingTab({
   // Handle timestep changes from the instruction grid animation
   const handleTimestepChange = useCallback((timestep) => {
     setCurrentAnimationTimestep(timestep);
+  }, []);
+
+  // Handle clicks on dependency graph nodes - jump to that timestep and highlight PE
+  const handleNodeClick = useCallback((nodeInfo) => {
+    setJumpTarget({
+      timestep: nodeInfo.timestep,
+      pe: nodeInfo.pe,
+      id: Date.now() // Unique ID to trigger effect even if same node clicked twice
+    });
   }, []);
 
   const getJobStatusDisplay = () => {
@@ -266,6 +278,7 @@ function MappingTab({
                   instructionData={instructionData[currentBenchmark]}
                   highlightedNodeId={highlightedNodeId}
                   currentTimestep={currentAnimationTimestep}
+                  onNodeClick={handleNodeClick}
                 />
               ) : (
                 <Box
@@ -308,6 +321,7 @@ function MappingTab({
                   instructionData={instructionData[currentBenchmark]}
                   onInstructionHover={handleInstructionHover}
                   onTimestepChange={handleTimestepChange}
+                  jumpTarget={jumpTarget}
                 />
               ) : (
                 <Box

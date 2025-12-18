@@ -34,6 +34,7 @@ export default function DependencyGraph({
   instructionData,
   highlightedNodeId = null,
   currentTimestep = null,
+  onNodeClick = null,
   width = 800,
   height = 500
 }) {
@@ -297,10 +298,24 @@ export default function DependencyGraph({
       tooltip.style('opacity', 0);
     });
 
+    // Add click handler to nodes
+    nodesGroup.selectAll('.node').on('click', function () {
+      const nodeId = d3.select(this).attr('data-id');
+      const node = layoutData.nodes.find((n) => n.id === nodeId);
+      if (node && onNodeClick) {
+        onNodeClick({
+          timestep: node.timestep,
+          pe: { col: node.pe.col, row: node.pe.row },
+          opcode: node.opcode,
+          nodeId: node.id
+        });
+      }
+    });
+
     return () => {
       tooltip.remove();
     };
-  }, [layoutData, width, height]);
+  }, [layoutData, width, height, onNodeClick]);
 
   // Apply highlighting when highlightedNodeId or currentTimestep changes
   useEffect(() => {
@@ -540,6 +555,7 @@ DependencyGraph.propTypes = {
   instructionData: PropTypes.object,
   highlightedNodeId: PropTypes.string,
   currentTimestep: PropTypes.number,
+  onNodeClick: PropTypes.func,
   width: PropTypes.number,
   height: PropTypes.number
 };

@@ -77,7 +77,7 @@ function buildPeNodes(instructionData) {
 /**
  * SingleGridView - Render a single PE grid for a specific timestep
  */
-function SingleGridView({ instructionData, timestep, onInstructionHover }) {
+function SingleGridView({ instructionData, timestep, onInstructionHover, highlightedPE }) {
   const svgRef = useRef(null);
   const layersRef = useRef({ peLayer: null, arrowsLayer: null });
 
@@ -137,9 +137,9 @@ function SingleGridView({ instructionData, timestep, onInstructionHover }) {
     const flows = getDataFlowsAtTimestep(instructionData, timestep);
 
     // Render layers
-    layersRef.current.peLayer.render(peNodes, activeInstructions, onInstructionHover);
+    layersRef.current.peLayer.render(peNodes, activeInstructions, onInstructionHover, highlightedPE);
     layersRef.current.arrowsLayer.render(flows, GRID_PADDING, columns, rows);
-  }, [instructionData, timestep, peNodes, columns, rows, onInstructionHover]);
+  }, [instructionData, timestep, peNodes, columns, rows, onInstructionHover, highlightedPE]);
 
   return (
     <svg
@@ -155,7 +155,11 @@ function SingleGridView({ instructionData, timestep, onInstructionHover }) {
 SingleGridView.propTypes = {
   instructionData: PropTypes.object,
   timestep: PropTypes.number.isRequired,
-  onInstructionHover: PropTypes.func
+  onInstructionHover: PropTypes.func,
+  highlightedPE: PropTypes.shape({
+    col: PropTypes.number,
+    row: PropTypes.number
+  })
 };
 
 /**
@@ -398,12 +402,13 @@ PlaybackControls.propTypes = {
 /**
  * Main MappingInstructionGrid component
  */
-function MappingInstructionGrid({ instructionData, onInstructionHover, onTimestepChange }) {
+function MappingInstructionGrid({ instructionData, onInstructionHover, onTimestepChange, jumpTarget }) {
   const [viewMode, setViewMode] = useState('animation');
   const [currentTimestep, setCurrentTimestep] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(DEFAULT_ANIMATION_SPEED);
   const [isLooping, setIsLooping] = useState(true);
+  const [highlightedPE, setHighlightedPE] = useState(null);
 
   const maxTimestep = useMemo(() => getMaxTimestep(instructionData), [instructionData]);
   const { compiledIi } = useMemo(() => getArrayDimensions(instructionData), [instructionData]);
@@ -443,6 +448,28 @@ function MappingInstructionGrid({ instructionData, onInstructionHover, onTimeste
     setCurrentTimestep(0);
     setIsPlaying(false);
   }, [instructionData]);
+
+  // Handle jump target from clicking dependency graph nodes
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => {
+    if (!jumpTarget) return;
+
+    // Switch to animation mode if not already
+    setViewMode('animation');
+    // Jump to the target timestep
+    setCurrentTimestep(jumpTarget.timestep);
+    // Stop any playing animation
+    setIsPlaying(false);
+    // Highlight the target PE
+    setHighlightedPE({ col: jumpTarget.pe.col, row: jumpTarget.pe.row });
+
+    // Clear highlight after a brief period
+    const timer = setTimeout(() => {
+      setHighlightedPE(null);
+    }, 1500);
+
+    return () => clearTimeout(timer);
+  }, [jumpTarget]);
 
   const handleViewModeChange = useCallback((_, newMode) => {
     if (newMode !== null) {
@@ -524,6 +551,7 @@ function MappingInstructionGrid({ instructionData, onInstructionHover, onTimeste
             instructionData={instructionData}
             timestep={currentTimestep}
             onInstructionHover={onInstructionHover}
+            highlightedPE={highlightedPE}
           />
         )}
       </Box>
@@ -534,7 +562,15 @@ function MappingInstructionGrid({ instructionData, onInstructionHover, onTimeste
 MappingInstructionGrid.propTypes = {
   instructionData: PropTypes.object,
   onInstructionHover: PropTypes.func,
-  onTimestepChange: PropTypes.func
+  onTimestepChange: PropTypes.func,
+  jumpTarget: PropTypes.shape({
+    timestep: PropTypes.number,
+    pe: PropTypes.shape({
+      col: PropTypes.number,
+      row: PropTypes.number
+    }),
+    id: PropTypes.number
+  })
 };
 
 export default MappingInstructionGrid;

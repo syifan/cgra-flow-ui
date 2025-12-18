@@ -28,8 +28,9 @@ export function createInstructionPeLayer(root) {
    * @param {Array} peNodes - Array of PE node data with positions
    * @param {Map} activeInstructions - Map of coreId -> instruction data for current timestep
    * @param {Function} onHover - Callback when a PE node is hovered (instruction) or unhovered (null)
+   * @param {Object} highlightedPE - Optional PE to highlight { col, row }
    */
-  const render = (peNodes, activeInstructions = new Map(), onHover) => {
+  const render = (peNodes, activeInstructions = new Map(), onHover, highlightedPE = null) => {
     const nodeSelection = group.selectAll('g.pe-node').data(peNodes, (d) => d.id);
 
     // Remove old nodes
@@ -73,15 +74,26 @@ export function createInstructionPeLayer(root) {
         const isActive = Boolean(instruction);
         const opcode = instruction?.operations?.[0]?.opcode || '';
 
-        // Update rectangle
-        node
-          .select('rect')
+        // Check if this PE should be highlighted
+        const isHighlighted =
+          highlightedPE && datum.column === highlightedPE.col && datum.row === highlightedPE.row;
+
+        // Update rectangle with highlight effects
+        const rect = node.select('rect');
+        rect
           .attr('width', PE_SIZE)
           .attr('height', PE_SIZE)
           .attr('fill', isActive ? getOpcodeColor(opcode) : PE_INACTIVE_FILL)
-          .attr('stroke', isActive ? PE_STROKE : PE_INACTIVE_STROKE)
-          .attr('stroke-width', isActive ? 2 : 1)
+          .attr('stroke', isHighlighted ? '#f59e0b' : isActive ? PE_STROKE : PE_INACTIVE_STROKE)
+          .attr('stroke-width', isHighlighted ? 4 : isActive ? 2 : 1)
           .attr('opacity', isActive ? 1 : 0.6);
+
+        // Apply glow effect for highlighted PE
+        if (isHighlighted) {
+          rect.style('filter', 'drop-shadow(0 0 12px rgba(245, 158, 11, 0.9))');
+        } else {
+          rect.style('filter', null);
+        }
 
         // Update position label
         node
