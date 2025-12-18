@@ -17,7 +17,7 @@ test.describe("Mapping job lifecycle", () => {
 
       // Wait for the mapping panel to be visible
       await expect(
-        page.getByText("Map selected benchmarks onto your CGRA design.")
+        page.getByText("Dependency Graph")
       ).toBeVisible();
 
       // Verify initial state - no pending jobs
@@ -31,6 +31,12 @@ test.describe("Mapping job lifecycle", () => {
 
       // Click Start Mapping button
       await page.getByRole("button", { name: "Start Mapping" }).click();
+
+      // Handle the "Missing Functional Units" confirmation dialog
+      // The test architecture doesn't have all ops required by FIR benchmark
+      const confirmDialog = page.getByRole("dialog", { name: "Missing Functional Units" });
+      await expect(confirmDialog).toBeVisible({ timeout: 5000 });
+      await confirmDialog.getByRole("button", { name: "Start Mapping" }).click();
 
       // Wait for success notification
       await expect(
