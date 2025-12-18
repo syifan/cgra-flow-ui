@@ -4,9 +4,11 @@ import * as d3 from 'd3';
 /**
  * D3 renderer for Graphviz JSON (dot -Tjson output).
  * Directly renders Graphviz drawing instructions from _draw_ and _ldraw_ attributes.
+ * Supports highlighting nodes that match patterns in highlightedPatterns.
  */
-export default function DotGraph({ graph, width = 800, height = 600 }) {
+export default function DotGraph({ graph, width = 800, height = 600, highlightedPatterns = [] }) {
   const svgRef = useRef(null);
+  const nodeInfoRef = useRef(new Map());
   const graphId = graph?.name || graph?.label || 'dot-graph';
   const [maximized, setMaximized] = useState(() => {
     const params = new URLSearchParams(window.location.search);
@@ -203,13 +205,16 @@ export default function DotGraph({ graph, width = 800, height = 600 }) {
     // Render nodes
     const nodesGroup = g.append('g').attr('class', 'nodes');
     const nodeInfo = new Map();
+    nodeInfoRef.current.clear();
 
     nodes.forEach((node) => {
       const nodeGroup = nodesGroup.append('g')
         .attr('class', 'node')
+        .attr('data-label', node.label || '')
         .style('cursor', 'pointer');
 
       nodeInfo.set(nodeGroup.node(), node);
+      nodeInfoRef.current.set(nodeGroup.node(), node);
 
       // Render node shape
       renderDrawOps(nodeGroup, node._draw_, null);
@@ -258,6 +263,52 @@ export default function DotGraph({ graph, width = 800, height = 600 }) {
       tooltip.remove();
     };
   }, [graph, width, height]);
+
+  // Apply highlighting effect when highlightedPatterns changes
+  useEffect(() => {
+    if (!svgRef.current) return;
+
+    const svg = d3.select(svgRef.current);
+    const nodesGroup = svg.select('g.nodes');
+
+    if (nodesGroup.empty()) return;
+
+    const hasHighlight = highlightedPatterns.length > 0;
+
+    nodesGroup.selectAll('.node').each(function () {
+      const nodeElement = d3.select(this);
+      const nodeData = nodeInfoRef.current.get(this);
+      const label = nodeData?.label || '';
+
+      // Check if this node matches any highlighted pattern
+      const isHighlighted = hasHighlight && highlightedPatterns.some(
+        (pattern) => label.toLowerCase().includes(pattern.toLowerCase())
+      );
+
+      if (hasHighlight) {
+        if (isHighlighted) {
+          // Highlight matching nodes
+          nodeElement
+            .style('opacity', 1)
+            .select('ellipse, polygon, rect')
+            .style('stroke', '#f59e0b')
+            .style('stroke-width', 3)
+            .style('filter', 'drop-shadow(0 0 6px rgba(245, 158, 11, 0.8))');
+        } else {
+          // Dim non-matching nodes
+          nodeElement.style('opacity', 0.3);
+        }
+      } else {
+        // Reset all nodes when no highlight
+        nodeElement
+          .style('opacity', 1)
+          .select('ellipse, polygon, rect')
+          .style('stroke', null)
+          .style('stroke-width', null)
+          .style('filter', null);
+      }
+    });
+  }, [highlightedPatterns]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);

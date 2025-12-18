@@ -27,8 +27,9 @@ export function createInstructionPeLayer(root) {
    * Render PE nodes with instruction state
    * @param {Array} peNodes - Array of PE node data with positions
    * @param {Map} activeInstructions - Map of coreId -> instruction data for current timestep
+   * @param {Function} onHover - Callback when a PE node is hovered (instruction) or unhovered (null)
    */
-  const render = (peNodes, activeInstructions = new Map()) => {
+  const render = (peNodes, activeInstructions = new Map(), onHover) => {
     const nodeSelection = group.selectAll('g.pe-node').data(peNodes, (d) => d.id);
 
     // Remove old nodes
@@ -38,7 +39,8 @@ export function createInstructionPeLayer(root) {
     const nodeEnter = nodeSelection
       .enter()
       .append('g')
-      .attr('class', 'pe-node');
+      .attr('class', 'pe-node')
+      .style('cursor', 'pointer');
 
     // Add rectangle for each PE
     nodeEnter.append('rect').attr('rx', 6).attr('ry', 6);
@@ -96,6 +98,19 @@ export function createInstructionPeLayer(root) {
           .attr('y', PE_SIZE / 2 + 10)
           .attr('fill', isActive ? PE_LABEL_FILL : 'transparent')
           .text(truncateOpcode(opcode));
+
+        // Setup hover events
+        node
+          .on('mouseenter', () => {
+            if (onHover && instruction) {
+              onHover(instruction);
+            }
+          })
+          .on('mouseleave', () => {
+            if (onHover) {
+              onHover(null);
+            }
+          });
       });
   };
 

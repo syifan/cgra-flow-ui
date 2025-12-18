@@ -1,7 +1,11 @@
+import { useCallback, useMemo, useState } from 'react';
 import {
   Box,
   Button,
   Chip,
+  ToggleButton,
+  ToggleButtonGroup,
+  Tooltip,
   Typography
 } from '@mui/material';
 import PropTypes from 'prop-types';
@@ -10,20 +14,75 @@ import ErrorIcon from '@mui/icons-material/Error';
 import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import DownloadIcon from '@mui/icons-material/Download';
+import AccountTreeIcon from '@mui/icons-material/AccountTree';
+import TimelineIcon from '@mui/icons-material/Timeline';
 import DotGraph from './DotGraph';
+import DependencyGraph from './DependencyGraph';
 import MappingInstructionGrid from './MappingInstructionGrid';
+import { buildDependencyGraph, findNodeIdForInstruction } from './dependencyGraphUtils';
 import { supabase } from '../lib/supabase';
+
+/**
+ * Convert instruction opcode to graph node label pattern
+ * Instruction opcodes like "GRANT_ONCE" map to "neura.grant_once" in the graph
+ */
+function opcodeToGraphPattern(opcode) {
+  if (!opcode) return null;
+  // Convert UPPER_CASE to lower_case and prefix with "neura."
+  const lowerOpcode = opcode.toLowerCase();
+  return `neura.${lowerOpcode}`;
+}
 
 function MappingTab({
   latestMappingJob,
   graphData,
   instructionData,
-  architecture,
   isLocked,
   onStartMapping,
   selectedBenchmarkNames,
   currentBenchmark
 }) {
+  // Graph view mode: 'dataflow' (DotGraph) or 'dependency' (DependencyGraph)
+  const [graphViewMode, setGraphViewMode] = useState('dataflow');
+
+  // Track hovered instruction to highlight corresponding graph nodes
+  const [hoveredOpcodes, setHoveredOpcodes] = useState([]);
+  const [highlightedNodeId, setHighlightedNodeId] = useState(null);
+
+  // Build dependency graph nodes for linking (memoized)
+  const dependencyNodes = useMemo(() => {
+    if (!instructionData || !currentBenchmark || !instructionData[currentBenchmark]) {
+      return [];
+    }
+    const { nodes } = buildDependencyGraph(instructionData[currentBenchmark]);
+    return nodes;
+  }, [instructionData, currentBenchmark]);
+
+  // Handle hover events from the instruction grid
+  const handleInstructionHover = useCallback((instruction) => {
+    if (!instruction) {
+      setHoveredOpcodes([]);
+      setHighlightedNodeId(null);
+      return;
+    }
+    // For DotGraph (existing) - extract opcodes for pattern matching
+    const opcodes = instruction.operations
+      ?.map((op) => opcodeToGraphPattern(op.opcode))
+      .filter(Boolean) || [];
+    setHoveredOpcodes(opcodes);
+
+    // For DependencyGraph (new) - find exact node ID for 1-to-1 linking
+    const nodeId = findNodeIdForInstruction(dependencyNodes, instruction);
+    setHighlightedNodeId(nodeId);
+  }, [dependencyNodes]);
+
+  // Handle graph view mode toggle
+  const handleGraphViewModeChange = useCallback((_, newMode) => {
+    if (newMode !== null) {
+      setGraphViewMode(newMode);
+    }
+  }, []);
+
   const getJobStatusDisplay = () => {
     if (!latestMappingJob) return null;
     const status = latestMappingJob.status;
@@ -113,7 +172,7 @@ function MappingTab({
           overflow: 'hidden'
         }}
       >
-        {/* Left panel: Dataflow Graph */}
+        {/* Left panel: Graph View (Dataflow or Dependency) */}
         <Box
           sx={{
             display: 'flex',
@@ -125,41 +184,93 @@ function MappingTab({
             bgcolor: 'rgba(15, 23, 42, 0.3)'
           }}
         >
-          <Box sx={{ p: 1.5, borderBottom: '1px solid', borderColor: 'divider' }}>
+          <Box
+            sx={{
+              p: 1.5,
+              borderBottom: '1px solid',
+              borderColor: 'divider',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}
+          >
             <Typography variant="subtitle2" sx={{ color: 'text.secondary' }}>
-              Dataflow Graph
+              {graphViewMode === 'dataflow' ? 'Dataflow Graph' : 'Dependency Graph'}
             </Typography>
+            {hasInstructionData && (
+              <ToggleButtonGroup
+                value={graphViewMode}
+                exclusive
+                onChange={handleGraphViewModeChange}
+                size="small"
+                sx={{ '& .MuiToggleButton-root': { py: 0.5, px: 1 } }}
+              >
+                <ToggleButton value="dataflow">
+                  <Tooltip title="Algorithm dataflow (graphviz)">
+                    <AccountTreeIcon fontSize="small" />
+                  </Tooltip>
+                </ToggleButton>
+                <ToggleButton value="dependency">
+                  <Tooltip title="Compute dependencies (1-to-1 PE linking)">
+                    <TimelineIcon fontSize="small" />
+                  </Tooltip>
+                </ToggleButton>
+              </ToggleButtonGroup>
+            )}
           </Box>
           <Box sx={{ flex: 1, overflow: 'auto', p: 1.5 }}>
-            {hasGraphData ? (
-              graphData[currentBenchmark].map((g) => (
-                <Box key={g.file} sx={{ mb: 2 }}>
-                  <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 1 }}>
-                    {g.file}
+            {graphViewMode === 'dataflow' ? (
+              // Dataflow Graph (existing DotGraph)
+              hasGraphData ? (
+                graphData[currentBenchmark].map((g) => (
+                  <Box key={g.file} sx={{ mb: 2 }}>
+                    <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 1 }}>
+                      {g.file}
+                    </Typography>
+                    <DotGraph graph={g.json} highlightedPatterns={hoveredOpcodes} />
+                  </Box>
+                ))
+              ) : (
+                <Box
+                  sx={{
+                    height: '100%',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'text.secondary',
+                    textAlign: 'center',
+                    p: 3
+                  }}
+                >
+                  <Typography variant="body2" sx={{ mb: 2 }}>
+                    No mapping results available
                   </Typography>
-                  <DotGraph graph={g.json} />
+                  <Typography variant="caption">
+                    Select benchmarks and click &quot;Start Mapping&quot; to generate results
+                  </Typography>
                 </Box>
-              ))
+              )
             ) : (
-              <Box
-                sx={{
-                  height: '100%',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: 'text.secondary',
-                  textAlign: 'center',
-                  p: 3
-                }}
-              >
-                <Typography variant="body2" sx={{ mb: 2 }}>
-                  No mapping results available
-                </Typography>
-                <Typography variant="caption">
-                  Select benchmarks and click &quot;Start Mapping&quot; to generate results
-                </Typography>
-              </Box>
+              // Dependency Graph (new)
+              hasInstructionData ? (
+                <DependencyGraph
+                  instructionData={instructionData[currentBenchmark]}
+                  highlightedNodeId={highlightedNodeId}
+                />
+              ) : (
+                <Box
+                  sx={{
+                    height: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'text.secondary'
+                  }}
+                >
+                  <Typography variant="body2">No instruction data available</Typography>
+                </Box>
+              )
             )}
           </Box>
         </Box>
@@ -186,7 +297,7 @@ function MappingTab({
               {hasInstructionData ? (
                 <MappingInstructionGrid
                   instructionData={instructionData[currentBenchmark]}
-                  architecture={architecture}
+                  onInstructionHover={handleInstructionHover}
                 />
               ) : (
                 <Box
@@ -263,7 +374,6 @@ MappingTab.propTypes = {
   }),
   graphData: PropTypes.object.isRequired,
   instructionData: PropTypes.object,
-  architecture: PropTypes.object,
   isLocked: PropTypes.bool.isRequired,
   onStartMapping: PropTypes.func.isRequired,
   selectedBenchmarkNames: PropTypes.arrayOf(PropTypes.string).isRequired,

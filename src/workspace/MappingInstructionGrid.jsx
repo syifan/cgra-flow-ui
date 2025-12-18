@@ -1,6 +1,6 @@
 /**
  * MappingInstructionGrid - Visualize mapped instructions on a PE grid
- * Supports Animation, Step-through, and Multi-chart viewing modes
+ * Supports Animation and Multi-chart viewing modes
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -75,7 +75,7 @@ function buildPeNodes(instructionData) {
 /**
  * SingleGridView - Render a single PE grid for a specific timestep
  */
-function SingleGridView({ instructionData, timestep }) {
+function SingleGridView({ instructionData, timestep, onInstructionHover }) {
   const svgRef = useRef(null);
   const layersRef = useRef({ peLayer: null, arrowsLayer: null });
 
@@ -135,9 +135,9 @@ function SingleGridView({ instructionData, timestep }) {
     const flows = getDataFlowsAtTimestep(instructionData, timestep);
 
     // Render layers
-    layersRef.current.peLayer.render(peNodes, activeInstructions);
+    layersRef.current.peLayer.render(peNodes, activeInstructions, onInstructionHover);
     layersRef.current.arrowsLayer.render(flows, GRID_PADDING, columns, rows);
-  }, [instructionData, timestep, peNodes, columns, rows]);
+  }, [instructionData, timestep, peNodes, columns, rows, onInstructionHover]);
 
   return (
     <svg
@@ -152,7 +152,8 @@ function SingleGridView({ instructionData, timestep }) {
 
 SingleGridView.propTypes = {
   instructionData: PropTypes.object,
-  timestep: PropTypes.number.isRequired
+  timestep: PropTypes.number.isRequired,
+  onInstructionHover: PropTypes.func
 };
 
 /**
@@ -297,7 +298,7 @@ MultiChartView.propTypes = {
 };
 
 /**
- * PlaybackControls - Controls for animation and step-through modes
+ * PlaybackControls - Controls for animation mode
  */
 function PlaybackControls({
   isPlaying,
@@ -381,7 +382,7 @@ PlaybackControls.propTypes = {
 /**
  * Main MappingInstructionGrid component
  */
-function MappingInstructionGrid({ instructionData }) {
+function MappingInstructionGrid({ instructionData, onInstructionHover }) {
   const [viewMode, setViewMode] = useState('animation');
   const [currentTimestep, setCurrentTimestep] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -458,12 +459,11 @@ function MappingInstructionGrid({ instructionData }) {
       {/* Mode selector tabs */}
       <Tabs value={viewMode} onChange={handleViewModeChange} sx={{ minHeight: 36, mb: 1 }}>
         <Tab value="animation" label="Animation" sx={{ minHeight: 36, py: 0 }} />
-        <Tab value="step" label="Step" sx={{ minHeight: 36, py: 0 }} />
         <Tab value="multi" label="Multi" sx={{ minHeight: 36, py: 0 }} />
       </Tabs>
 
-      {/* Playback controls (for animation/step modes) */}
-      {viewMode !== 'multi' && (
+      {/* Playback controls (for animation mode) */}
+      {viewMode === 'animation' && (
         <PlaybackControls
           isPlaying={isPlaying}
           onPlayPause={handlePlayPause}
@@ -480,7 +480,11 @@ function MappingInstructionGrid({ instructionData }) {
         {viewMode === 'multi' ? (
           <MultiChartView instructionData={instructionData} maxTimestep={maxTimestep} />
         ) : (
-          <SingleGridView instructionData={instructionData} timestep={currentTimestep} />
+          <SingleGridView
+            instructionData={instructionData}
+            timestep={currentTimestep}
+            onInstructionHover={onInstructionHover}
+          />
         )}
       </Box>
     </Box>
@@ -488,7 +492,8 @@ function MappingInstructionGrid({ instructionData }) {
 }
 
 MappingInstructionGrid.propTypes = {
-  instructionData: PropTypes.object
+  instructionData: PropTypes.object,
+  onInstructionHover: PropTypes.func
 };
 
 export default MappingInstructionGrid;

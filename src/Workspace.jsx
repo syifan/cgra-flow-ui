@@ -813,7 +813,6 @@ function Workspace() {
               latestMappingJob={latestMappingJob}
               graphData={graphData}
               instructionData={instructionData}
-              architecture={architecture}
               isLocked={isLocked}
               onStartMapping={handleStartMapping}
               selectedBenchmarkNames={selectedBenchmarkNames}
