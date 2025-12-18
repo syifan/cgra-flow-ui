@@ -1,5 +1,5 @@
 import yaml from 'js-yaml';
-import { functionUnitsToInstructions, getAllInstructions } from './functionalUnitMapping.js';
+import { functionUnitsToInstructions, getAllInstructions } from '../../src/shared/functionalUnitMapping.js';
 
 // Default values used when not specified in the input JSON
 const DEFAULT_PER_CGRA_ROWS = 4;
