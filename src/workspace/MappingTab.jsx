@@ -11,11 +11,14 @@ import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import DownloadIcon from '@mui/icons-material/Download';
 import DotGraph from './DotGraph';
+import MappingInstructionGrid from './MappingInstructionGrid';
 import { supabase } from '../lib/supabase';
 
 function MappingTab({
   latestMappingJob,
   graphData,
+  instructionData,
+  architecture,
   isLocked,
   onStartMapping,
   selectedBenchmarkNames,
@@ -49,10 +52,10 @@ function MappingTab({
     const config = statusConfig[status] || statusConfig.cancelled;
 
     return (
-      <Box sx={{ mb: 3, p: 2, bgcolor: 'rgba(148,163,184,0.1)', borderRadius: 1 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-          <Typography variant="subtitle2" sx={{ color: 'text.secondary' }}>
-            Latest Mapping Job:
+      <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2, flexWrap: 'wrap' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+            Latest Job:
           </Typography>
           <Chip
             size="small"
@@ -66,7 +69,7 @@ function MappingTab({
           Benchmarks: {benchmarks}
         </Typography>
         {latestMappingJob.error_message && (
-          <Typography variant="body2" sx={{ color: 'error.main', mt: 1 }}>
+          <Typography variant="body2" sx={{ color: 'error.main' }}>
             Error: {latestMappingJob.error_message}
           </Typography>
         )}
@@ -78,83 +81,169 @@ function MappingTab({
             href={packageUrl}
             target="_blank"
             rel="noopener noreferrer"
-            sx={{ mt: 1.5 }}
           >
-            Download job package
+            Download
           </Button>
         )}
       </Box>
     );
   };
 
+  const hasGraphData = Object.keys(graphData).length > 0 && currentBenchmark && graphData[currentBenchmark];
+  const hasInstructionData = instructionData && currentBenchmark && instructionData[currentBenchmark];
+
   return (
     <Box
       sx={{
         height: '100%',
-        p: 3,
-        display: 'flex',
-        flexDirection: 'column',
-        overflow: 'auto'
+        display: 'grid',
+        gridTemplateRows: '1fr auto',
+        gap: 2,
+        p: 2,
+        overflow: 'hidden'
       }}
     >
-      <Box sx={{ mb: 3 }}>
-        <Typography variant="h6" sx={{ mb: 2 }}>
-          Mapping
-        </Typography>
-        <Typography variant="body2" sx={{ color: 'text.secondary', mb: 3 }}>
-          Map selected benchmarks onto your CGRA design. Select benchmarks using the benchmark
-          selector in the navigation bar, then click Start Mapping to begin the process.
-        </Typography>
-      </Box>
-
-      {getJobStatusDisplay()}
-
-      <Box sx={{ mb: 3 }}>
-        <Typography variant="subtitle2" sx={{ mb: 1, color: 'text.secondary' }}>
-          Selected Benchmarks: {selectedBenchmarkNames.length > 0 ? selectedBenchmarkNames.join(', ') : 'None'}
-        </Typography>
-        <Button
-          variant="contained"
-          disabled={isLocked || selectedBenchmarkNames.length === 0}
-          onClick={onStartMapping}
-          startIcon={<PlayArrowIcon />}
-          sx={{ mt: 1 }}
+      {/* Top section: split left/right */}
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: hasGraphData || hasInstructionData ? '1fr 1fr' : '1fr',
+          gap: 2,
+          minHeight: 0,
+          overflow: 'hidden'
+        }}
+      >
+        {/* Left panel: Dataflow Graph */}
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: 'column',
+            border: '1px solid',
+            borderColor: 'divider',
+            borderRadius: 1,
+            overflow: 'hidden',
+            bgcolor: 'rgba(15, 23, 42, 0.3)'
+          }}
         >
-          Start Mapping
-        </Button>
-      </Box>
-
-      {Object.keys(graphData).length > 0 && currentBenchmark && graphData[currentBenchmark] && (
-        <Box sx={{ flex: 1, minHeight: 0 }}>
-          <Typography variant="subtitle2" sx={{ mb: 2, color: 'text.secondary' }}>
-            Mapping Results for {currentBenchmark.toUpperCase()}
-          </Typography>
-          <Box
-            sx={{
-              p: 2,
-              border: '1px solid',
-              borderColor: 'divider',
-              borderRadius: 1
-            }}
-          >
-            {graphData[currentBenchmark].map((g) => (
-              <Box key={g.file} sx={{ mb: 2 }}>
-                <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 1 }}>
-                  {g.file}
+          <Box sx={{ p: 1.5, borderBottom: '1px solid', borderColor: 'divider' }}>
+            <Typography variant="subtitle2" sx={{ color: 'text.secondary' }}>
+              Dataflow Graph
+            </Typography>
+          </Box>
+          <Box sx={{ flex: 1, overflow: 'auto', p: 1.5 }}>
+            {hasGraphData ? (
+              graphData[currentBenchmark].map((g) => (
+                <Box key={g.file} sx={{ mb: 2 }}>
+                  <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 1 }}>
+                    {g.file}
+                  </Typography>
+                  <DotGraph graph={g.json} />
+                </Box>
+              ))
+            ) : (
+              <Box
+                sx={{
+                  height: '100%',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: 'text.secondary',
+                  textAlign: 'center',
+                  p: 3
+                }}
+              >
+                <Typography variant="body2" sx={{ mb: 2 }}>
+                  No mapping results available
                 </Typography>
-                <DotGraph graph={g.json} />
+                <Typography variant="caption">
+                  Select benchmarks and click &quot;Start Mapping&quot; to generate results
+                </Typography>
               </Box>
-            ))}
+            )}
           </Box>
         </Box>
-      )}
-      {Object.keys(graphData).length > 0 && (!currentBenchmark || !graphData[currentBenchmark]) && (
-        <Box sx={{ flex: 1, minHeight: 0 }}>
+
+        {/* Right panel: Instruction Mapping Grid (only show if we have data) */}
+        {(hasGraphData || hasInstructionData) && (
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: 'column',
+              border: '1px solid',
+              borderColor: 'divider',
+              borderRadius: 1,
+              overflow: 'hidden',
+              bgcolor: 'rgba(15, 23, 42, 0.3)'
+            }}
+          >
+            <Box sx={{ p: 1.5, borderBottom: '1px solid', borderColor: 'divider' }}>
+              <Typography variant="subtitle2" sx={{ color: 'text.secondary' }}>
+                PE Instruction Mapping
+              </Typography>
+            </Box>
+            <Box sx={{ flex: 1, overflow: 'hidden', p: 1.5 }}>
+              {hasInstructionData ? (
+                <MappingInstructionGrid
+                  instructionData={instructionData[currentBenchmark]}
+                  architecture={architecture}
+                />
+              ) : (
+                <Box
+                  sx={{
+                    height: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'text.secondary'
+                  }}
+                >
+                  <Typography variant="body2">No instruction data available</Typography>
+                </Box>
+              )}
+            </Box>
+          </Box>
+        )}
+      </Box>
+
+      {/* Bottom section: Job Status and Controls */}
+      <Box
+        sx={{
+          p: 2,
+          bgcolor: 'rgba(148, 163, 184, 0.1)',
+          borderRadius: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 2
+        }}
+      >
+        {/* Job status */}
+        {getJobStatusDisplay()}
+
+        {/* Benchmark selection and Start button */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
           <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-            Select a current benchmark to view its mapping results.
+            Selected: {selectedBenchmarkNames.length > 0 ? selectedBenchmarkNames.join(', ') : 'None'}
           </Typography>
+          {currentBenchmark && (
+            <Chip
+              size="small"
+              label={`Viewing: ${currentBenchmark}`}
+              color="primary"
+              variant="outlined"
+            />
+          )}
+          <Box sx={{ flex: 1 }} />
+          <Button
+            variant="contained"
+            disabled={isLocked || selectedBenchmarkNames.length === 0}
+            onClick={onStartMapping}
+            startIcon={<PlayArrowIcon />}
+          >
+            Start Mapping
+          </Button>
         </Box>
-      )}
+      </Box>
     </Box>
   );
 }
@@ -173,6 +262,8 @@ MappingTab.propTypes = {
     })
   }),
   graphData: PropTypes.object.isRequired,
+  instructionData: PropTypes.object,
+  architecture: PropTypes.object,
   isLocked: PropTypes.bool.isRequired,
   onStartMapping: PropTypes.func.isRequired,
   selectedBenchmarkNames: PropTypes.arrayOf(PropTypes.string).isRequired,
