@@ -1,3 +1,38 @@
+import {
+  FUNCTIONAL_UNIT_CATEGORIES,
+  FUNCTION_UNIT_TO_INSTRUCTIONS,
+  FUNCTION_UNIT_METADATA
+} from '../shared/functionalUnitMapping.js';
+
+/**
+ * Generate PE functional unit schema entries from the shared mapping.
+ * Creates collapsible sections for each category with function unit toggles.
+ */
+function generateFunctionalUnitSchema() {
+  const schema = [];
+
+  for (const [category, units] of Object.entries(FUNCTIONAL_UNIT_CATEGORIES)) {
+    for (const unitName of units) {
+      const metadata = FUNCTION_UNIT_METADATA[unitName] || {};
+      const instructions = FUNCTION_UNIT_TO_INSTRUCTIONS[unitName] || [];
+
+      schema.push({
+        key: `tileFunctionalUnits.${unitName}`,
+        label: metadata.displayName || unitName,
+        sublabel: instructions.join(', '),
+        type: 'boolean',
+        mutable: true,
+        section: category,
+        collapsible: true,
+        disabledWhen: { key: 'disabled', equals: true },
+        toggleGroup: 'tileFunctionalUnits'
+      });
+    }
+  }
+
+  return schema;
+}
+
 export const PROPERTY_SCHEMAS = {
   device: [
     {
@@ -96,321 +131,9 @@ export const PROPERTY_SCHEMAS = {
       type: 'boolean',
       mutable: true
     },
-    // Arithmetic operations
-    {
-      key: 'tileFunctionalUnits.add',
-      label: 'add',
-      type: 'boolean',
-      mutable: true,
-      section: 'Arithmetic',
-      disabledWhen: { key: 'disabled', equals: true },
-      toggleGroup: 'tileFunctionalUnits'
-    },
-    {
-      key: 'tileFunctionalUnits.mul',
-      label: 'mul',
-      type: 'boolean',
-      mutable: true,
-      section: 'Arithmetic',
-      disabledWhen: { key: 'disabled', equals: true },
-      toggleGroup: 'tileFunctionalUnits'
-    },
-    {
-      key: 'tileFunctionalUnits.div',
-      label: 'div',
-      type: 'boolean',
-      mutable: true,
-      section: 'Arithmetic',
-      disabledWhen: { key: 'disabled', equals: true },
-      toggleGroup: 'tileFunctionalUnits'
-    },
-    {
-      key: 'tileFunctionalUnits.rem',
-      label: 'rem',
-      type: 'boolean',
-      mutable: true,
-      section: 'Arithmetic',
-      disabledWhen: { key: 'disabled', equals: true },
-      toggleGroup: 'tileFunctionalUnits'
-    },
-    {
-      key: 'tileFunctionalUnits.shl',
-      label: 'shl',
-      type: 'boolean',
-      mutable: true,
-      section: 'Arithmetic',
-      disabledWhen: { key: 'disabled', equals: true },
-      toggleGroup: 'tileFunctionalUnits'
-    },
-    {
-      key: 'tileFunctionalUnits.mac',
-      label: 'mac',
-      type: 'boolean',
-      mutable: true,
-      section: 'Arithmetic',
-      disabledWhen: { key: 'disabled', equals: true },
-      toggleGroup: 'tileFunctionalUnits'
-    },
-    // Floating point operations
-    {
-      key: 'tileFunctionalUnits.fadd',
-      label: 'fadd',
-      type: 'boolean',
-      mutable: true,
-      section: 'Floating Point',
-      disabledWhen: { key: 'disabled', equals: true },
-      toggleGroup: 'tileFunctionalUnits'
-    },
-    {
-      key: 'tileFunctionalUnits.fmul',
-      label: 'fmul',
-      type: 'boolean',
-      mutable: true,
-      section: 'Floating Point',
-      disabledWhen: { key: 'disabled', equals: true },
-      toggleGroup: 'tileFunctionalUnits'
-    },
-    {
-      key: 'tileFunctionalUnits.fdiv',
-      label: 'fdiv',
-      type: 'boolean',
-      mutable: true,
-      section: 'Floating Point',
-      disabledWhen: { key: 'disabled', equals: true },
-      toggleGroup: 'tileFunctionalUnits'
-    },
-    {
-      key: 'tileFunctionalUnits.fmul_fadd',
-      label: 'fmul_fadd',
-      type: 'boolean',
-      mutable: true,
-      section: 'Floating Point',
-      disabledWhen: { key: 'disabled', equals: true },
-      toggleGroup: 'tileFunctionalUnits'
-    },
-    // Memory operations
-    {
-      key: 'tileFunctionalUnits.load',
-      label: 'load',
-      type: 'boolean',
-      mutable: true,
-      section: 'Memory',
-      disabledWhen: { key: 'disabled', equals: true },
-      toggleGroup: 'tileFunctionalUnits'
-    },
-    {
-      key: 'tileFunctionalUnits.store',
-      label: 'store',
-      type: 'boolean',
-      mutable: true,
-      section: 'Memory',
-      disabledWhen: { key: 'disabled', equals: true },
-      toggleGroup: 'tileFunctionalUnits'
-    },
-    {
-      key: 'tileFunctionalUnits.gep',
-      label: 'gep',
-      type: 'boolean',
-      mutable: true,
-      section: 'Memory',
-      disabledWhen: { key: 'disabled', equals: true },
-      toggleGroup: 'tileFunctionalUnits'
-    },
-    {
-      key: 'tileFunctionalUnits.memset',
-      label: 'memset',
-      type: 'boolean',
-      mutable: true,
-      section: 'Memory',
-      disabledWhen: { key: 'disabled', equals: true },
-      toggleGroup: 'tileFunctionalUnits'
-    },
-    // Control operations
-    {
-      key: 'tileFunctionalUnits.phi',
-      label: 'phi',
-      type: 'boolean',
-      mutable: true,
-      section: 'Control',
-      disabledWhen: { key: 'disabled', equals: true },
-      toggleGroup: 'tileFunctionalUnits'
-    },
-    {
-      key: 'tileFunctionalUnits.sel',
-      label: 'sel',
-      type: 'boolean',
-      mutable: true,
-      section: 'Control',
-      disabledWhen: { key: 'disabled', equals: true },
-      toggleGroup: 'tileFunctionalUnits'
-    },
-    {
-      key: 'tileFunctionalUnits.not',
-      label: 'not',
-      type: 'boolean',
-      mutable: true,
-      section: 'Control',
-      disabledWhen: { key: 'disabled', equals: true },
-      toggleGroup: 'tileFunctionalUnits'
-    },
-    {
-      key: 'tileFunctionalUnits.icmp',
-      label: 'icmp',
-      type: 'boolean',
-      mutable: true,
-      section: 'Control',
-      disabledWhen: { key: 'disabled', equals: true },
-      toggleGroup: 'tileFunctionalUnits'
-    },
-    {
-      key: 'tileFunctionalUnits.return',
-      label: 'return',
-      type: 'boolean',
-      mutable: true,
-      section: 'Control',
-      disabledWhen: { key: 'disabled', equals: true },
-      toggleGroup: 'tileFunctionalUnits'
-    },
-    {
-      key: 'tileFunctionalUnits.br',
-      label: 'br',
-      type: 'boolean',
-      mutable: true,
-      section: 'Control',
-      disabledWhen: { key: 'disabled', equals: true },
-      toggleGroup: 'tileFunctionalUnits'
-    },
-    {
-      key: 'tileFunctionalUnits.cond_br',
-      label: 'cond_br',
-      type: 'boolean',
-      mutable: true,
-      section: 'Control',
-      disabledWhen: { key: 'disabled', equals: true },
-      toggleGroup: 'tileFunctionalUnits'
-    },
-    // Data movement operations
-    {
-      key: 'tileFunctionalUnits.data_mov',
-      label: 'data_mov',
-      type: 'boolean',
-      mutable: true,
-      section: 'Data Movement',
-      disabledWhen: { key: 'disabled', equals: true },
-      toggleGroup: 'tileFunctionalUnits'
-    },
-    {
-      key: 'tileFunctionalUnits.ctrl_mov',
-      label: 'ctrl_mov',
-      type: 'boolean',
-      mutable: true,
-      section: 'Data Movement',
-      disabledWhen: { key: 'disabled', equals: true },
-      toggleGroup: 'tileFunctionalUnits'
-    },
-    {
-      key: 'tileFunctionalUnits.reserve',
-      label: 'reserve',
-      type: 'boolean',
-      mutable: true,
-      section: 'Data Movement',
-      disabledWhen: { key: 'disabled', equals: true },
-      toggleGroup: 'tileFunctionalUnits'
-    },
-    {
-      key: 'tileFunctionalUnits.data',
-      label: 'data',
-      type: 'boolean',
-      mutable: true,
-      section: 'Data Movement',
-      disabledWhen: { key: 'disabled', equals: true },
-      toggleGroup: 'tileFunctionalUnits'
-    },
-    // Grant operations
-    {
-      key: 'tileFunctionalUnits.grant_once',
-      label: 'grant_once',
-      type: 'boolean',
-      mutable: true,
-      section: 'Grants',
-      disabledWhen: { key: 'disabled', equals: true },
-      toggleGroup: 'tileFunctionalUnits'
-    },
-    {
-      key: 'tileFunctionalUnits.grant_predicate',
-      label: 'grant_predicate',
-      type: 'boolean',
-      mutable: true,
-      section: 'Grants',
-      disabledWhen: { key: 'disabled', equals: true },
-      toggleGroup: 'tileFunctionalUnits'
-    },
-    // Type conversion operations
-    {
-      key: 'tileFunctionalUnits.cast',
-      label: 'cast',
-      type: 'boolean',
-      mutable: true,
-      section: 'Type Conversion',
-      disabledWhen: { key: 'disabled', equals: true },
-      toggleGroup: 'tileFunctionalUnits'
-    },
-    {
-      key: 'tileFunctionalUnits.zext',
-      label: 'zext',
-      type: 'boolean',
-      mutable: true,
-      section: 'Type Conversion',
-      disabledWhen: { key: 'disabled', equals: true },
-      toggleGroup: 'tileFunctionalUnits'
-    },
-    {
-      key: 'tileFunctionalUnits.sext',
-      label: 'sext',
-      type: 'boolean',
-      mutable: true,
-      section: 'Type Conversion',
-      disabledWhen: { key: 'disabled', equals: true },
-      toggleGroup: 'tileFunctionalUnits'
-    },
-    // Other operations
-    {
-      key: 'tileFunctionalUnits.constant',
-      label: 'constant',
-      type: 'boolean',
-      mutable: true,
-      section: 'Other',
-      disabledWhen: { key: 'disabled', equals: true },
-      toggleGroup: 'tileFunctionalUnits'
-    },
-    // Vector operations
-    {
-      key: 'tileFunctionalUnits.vadd',
-      label: 'vadd',
-      type: 'boolean',
-      mutable: true,
-      section: 'Vector',
-      disabledWhen: { key: 'disabled', equals: true },
-      toggleGroup: 'tileFunctionalUnits'
-    },
-    {
-      key: 'tileFunctionalUnits.vmul',
-      label: 'vmul',
-      type: 'boolean',
-      mutable: true,
-      section: 'Vector',
-      disabledWhen: { key: 'disabled', equals: true },
-      toggleGroup: 'tileFunctionalUnits'
-    },
-    {
-      key: 'tileFunctionalUnits.vector',
-      label: 'vector',
-      type: 'boolean',
-      mutable: true,
-      section: 'Vector',
-      disabledWhen: { key: 'disabled', equals: true },
-      toggleGroup: 'tileFunctionalUnits'
-    },
+    // Functional unit toggles (generated from shared mapping)
+    ...generateFunctionalUnitSchema(),
+    // Outgoing links
     {
       key: 'outgoingLinks.nw',
       label: 'NW',
@@ -491,4 +214,3 @@ export const PROPERTY_TITLES = {
   cgra: 'CGRA Properties',
   pe: 'PE Modeling'
 };
-

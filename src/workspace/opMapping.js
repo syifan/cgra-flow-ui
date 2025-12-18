@@ -1,38 +1,36 @@
 // Shared operation utilities between frontend checks and converter.
-// Uses MLIR operation names directly - no mapping needed.
+// Uses the shared functional unit to instruction mapping.
 
-// All supported MLIR operations that can be configured as functional units.
-export const SUPPORTED_OPERATIONS = new Set([
-  // Arithmetic
-  'add', 'mul', 'div', 'rem', 'shl',
-  // Floating point
-  'fadd', 'fmul', 'fdiv', 'fmul_fadd',
-  // Memory
-  'load', 'store', 'gep', 'memset',
-  // Control
-  'phi', 'sel', 'not', 'icmp', 'return', 'br', 'cond_br',
-  // Data movement
-  'data_mov', 'ctrl_mov', 'reserve', 'data',
-  // Grants
-  'grant_once', 'grant_predicate',
-  // Type conversion
-  'cast', 'zext', 'sext',
-  // Other
-  'constant', 'mac',
-  // Vector
-  'vadd', 'vmul', 'vector'
-]);
+import {
+  functionUnitsToInstructions,
+  getAllInstructions,
+  getAllFunctionUnits,
+  FUNCTION_UNIT_TO_INSTRUCTIONS
+} from '../shared/functionalUnitMapping.js';
 
+// All supported instructions (derived from function unit mapping)
+export const SUPPORTED_OPERATIONS = new Set(getAllInstructions());
+
+// All supported function units
+export const SUPPORTED_FUNCTION_UNITS = new Set(getAllFunctionUnits());
+
+// Re-export for convenience
+export { FUNCTION_UNIT_TO_INSTRUCTIONS };
+
+/**
+ * Converts function units configuration to a list of instruction names.
+ * @param {Object} tileFunctionalUnits - Object with function unit names as keys, booleans as values
+ * @returns {Array<string>} - Array of instruction names
+ */
 export const functionalUnitsToOps = (tileFunctionalUnits = {}) => {
-  const ops = [];
-  Object.entries(tileFunctionalUnits || {}).forEach(([key, enabled]) => {
-    if (enabled && SUPPORTED_OPERATIONS.has(key)) {
-      ops.push(key);
-    }
-  });
-  return ops;
+  return functionUnitsToInstructions(tileFunctionalUnits || {});
 };
 
+/**
+ * Collects all enabled instructions from an architecture.
+ * @param {Object} architecture - The architecture object
+ * @returns {Set<string>} - Set of enabled instruction names
+ */
 export const collectArchitectureOps = (architecture) => {
   const ops = new Set();
   const cgras = architecture?.CGRAs || [];
@@ -43,4 +41,26 @@ export const collectArchitectureOps = (architecture) => {
     });
   });
   return ops;
+};
+
+/**
+ * Collects all enabled function units from an architecture.
+ * @param {Object} architecture - The architecture object
+ * @returns {Set<string>} - Set of enabled function unit names
+ */
+export const collectArchitectureFunctionUnits = (architecture) => {
+  const units = new Set();
+  const cgras = architecture?.CGRAs || [];
+  cgras.forEach((cgra) => {
+    (cgra?.PEs || []).forEach((pe) => {
+      if (pe?.disabled) return;
+      const tileFunctionalUnits = pe.tileFunctionalUnits || {};
+      Object.entries(tileFunctionalUnits).forEach(([unitName, enabled]) => {
+        if (enabled && SUPPORTED_FUNCTION_UNITS.has(unitName)) {
+          units.add(unitName);
+        }
+      });
+    });
+  });
+  return units;
 };
