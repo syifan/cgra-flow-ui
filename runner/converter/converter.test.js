@@ -35,10 +35,9 @@ describe('Architecture Converter - Basic Structure', () => {
                 disabled: false,
                 tileFunctionalUnits: {
                   phi: true,
-                  add: true,
-                  mul: true,
-                  load: true,
-                  store: true
+                  alu: true,  // maps to: add, sub
+                  mul: true,  // maps to: mul
+                  mem: true   // maps to: load, store
                 }
               },
               {
@@ -49,10 +48,9 @@ describe('Architecture Converter - Basic Structure', () => {
                 disabled: false,
                 tileFunctionalUnits: {
                   phi: true,
-                  add: true,
+                  alu: true,
                   mul: true,
-                  load: true,
-                  store: true
+                  mem: true
                 }
               },
               {
@@ -63,10 +61,9 @@ describe('Architecture Converter - Basic Structure', () => {
                 disabled: false,
                 tileFunctionalUnits: {
                   phi: true,
-                  add: true,
+                  alu: true,
                   mul: true,
-                  load: true,
-                  store: true
+                  mem: true
                 }
               },
               {
@@ -77,10 +74,9 @@ describe('Architecture Converter - Basic Structure', () => {
                 disabled: false,
                 tileFunctionalUnits: {
                   phi: true,
-                  add: true,
+                  alu: true,
                   mul: true,
-                  load: true,
-                  store: true
+                  mem: true
                 }
               }
             ]
@@ -111,14 +107,16 @@ describe('Architecture Converter - Basic Structure', () => {
     assert.equal(result.per_cgra_defaults.base_topology, 'mesh');
     assert.equal(result.per_cgra_defaults.memory.banks, 4);
 
-    // Check tile defaults - should only contain operations from tileFunctionalUnits
+    // Check tile defaults - should contain instructions from function units
+    // alu -> add, sub; mul -> mul; mem -> load, store; phi -> phi
     assert.ok(result.tile_defaults, 'Should have tile_defaults');
     assert.ok(Array.isArray(result.tile_defaults.operations));
-    assert.ok(result.tile_defaults.operations.includes('add'));
-    assert.ok(result.tile_defaults.operations.includes('mul'));
-    assert.ok(result.tile_defaults.operations.includes('phi'));
-    assert.ok(result.tile_defaults.operations.includes('load'));
-    assert.ok(result.tile_defaults.operations.includes('store'));
+    assert.ok(result.tile_defaults.operations.includes('add'), 'Should include add from alu unit');
+    assert.ok(result.tile_defaults.operations.includes('sub'), 'Should include sub from alu unit');
+    assert.ok(result.tile_defaults.operations.includes('mul'), 'Should include mul');
+    assert.ok(result.tile_defaults.operations.includes('phi'), 'Should include phi');
+    assert.ok(result.tile_defaults.operations.includes('load'), 'Should include load from mem unit');
+    assert.ok(result.tile_defaults.operations.includes('store'), 'Should include store from mem unit');
 
     // Check link defaults
     assert.ok(result.link_defaults, 'Should have link_defaults');
@@ -128,7 +126,7 @@ describe('Architecture Converter - Basic Structure', () => {
 });
 
 describe('Architecture Converter - Functional Units', () => {
-  it('should preserve operations as specified without forcing base operations', () => {
+  it('should convert function units to instructions correctly', () => {
     const input = {
       version: 1,
       architecture: {
@@ -148,9 +146,9 @@ describe('Architecture Converter - Functional Units', () => {
                 y: 0,
                 disabled: false,
                 tileFunctionalUnits: {
-                  phi: true,
-                  add: true,
-                  mul: true
+                  phi: true,    // maps to: phi
+                  alu: true,    // maps to: add, sub
+                  mul: true     // maps to: mul
                 }
               }
             ]
@@ -161,15 +159,15 @@ describe('Architecture Converter - Functional Units', () => {
 
     const result = convertJsonToYaml(input);
 
-    // Should only include the operations specified in tileFunctionalUnits
-    const expectedOps = ['phi', 'add', 'mul'];
-    expectedOps.forEach(op => {
-      assert.ok(result.tile_defaults.operations.includes(op), `Should include specified operation: ${op}`);
-    });
+    // Should include instructions from enabled function units
+    assert.ok(result.tile_defaults.operations.includes('phi'), 'Should include phi');
+    assert.ok(result.tile_defaults.operations.includes('add'), 'Should include add from alu');
+    assert.ok(result.tile_defaults.operations.includes('sub'), 'Should include sub from alu');
+    assert.ok(result.tile_defaults.operations.includes('mul'), 'Should include mul');
 
-    // Should NOT include operations that weren't specified
-    assert.ok(!result.tile_defaults.operations.includes('sub'), 'Should not include unspecified operation: sub');
-    assert.ok(!result.tile_defaults.operations.includes('load'), 'Should not include unspecified operation: load');
+    // Should NOT include instructions from disabled function units
+    assert.ok(!result.tile_defaults.operations.includes('load'), 'Should not include load (mem disabled)');
+    assert.ok(!result.tile_defaults.operations.includes('store'), 'Should not include store (mem disabled)');
   });
 
   it('should use all supported operations as fallback when none are specified', () => {
@@ -210,7 +208,7 @@ describe('Architecture Converter - Functional Units', () => {
     assert.ok(result.tile_defaults.operations.includes('load'));
   });
 
-  it('should use MLIR operation names directly (icmp, sel)', () => {
+  it('should map cmp and sel function units correctly', () => {
     const input = {
       version: 1,
       architecture: {
@@ -230,8 +228,8 @@ describe('Architecture Converter - Functional Units', () => {
                 y: 0,
                 disabled: false,
                 tileFunctionalUnits: {
-                  icmp: true,
-                  sel: true
+                  cmp: true,  // maps to: icmp, fcmp
+                  sel: true   // maps to: sel
                 }
               }
             ]
@@ -241,8 +239,9 @@ describe('Architecture Converter - Functional Units', () => {
     };
 
     const result = convertJsonToYaml(input);
-    assert.ok(result.tile_defaults.operations.includes('icmp'));
-    assert.ok(result.tile_defaults.operations.includes('sel'));
+    assert.ok(result.tile_defaults.operations.includes('icmp'), 'Should include icmp from cmp unit');
+    assert.ok(result.tile_defaults.operations.includes('fcmp'), 'Should include fcmp from cmp unit');
+    assert.ok(result.tile_defaults.operations.includes('sel'), 'Should include sel');
   });
 });
 
@@ -266,25 +265,25 @@ describe('Architecture Converter - Tile Overrides', () => {
                 x: 0,
                 y: 0,
                 disabled: false,
-                tileFunctionalUnits: { add: true, mul: true }
+                tileFunctionalUnits: { alu: true, mul: true }
               },
               {
                 x: 1,
                 y: 0,
                 disabled: true, // This tile is disabled
-                tileFunctionalUnits: { add: true, mul: true }
+                tileFunctionalUnits: { alu: true, mul: true }
               },
               {
                 x: 0,
                 y: 1,
                 disabled: false,
-                tileFunctionalUnits: { add: true, mul: true }
+                tileFunctionalUnits: { alu: true, mul: true }
               },
               {
                 x: 1,
                 y: 1,
                 disabled: false,
-                tileFunctionalUnits: { add: true, mul: true }
+                tileFunctionalUnits: { alu: true, mul: true }
               }
             ]
           }
@@ -305,8 +304,8 @@ describe('Architecture Converter - Tile Overrides', () => {
     assert.equal(override.existence, false);
   });
 
-  it('should create override when tile has different operations than default', () => {
-    // Tiles with different operations should generate overrides
+  it('should create override when tile has different function units than default', () => {
+    // Tiles with different function units should generate overrides
     const input = {
       version: 1,
       architecture: {
@@ -325,13 +324,13 @@ describe('Architecture Converter - Tile Overrides', () => {
                 x: 0,
                 y: 0,
                 disabled: false,
-                tileFunctionalUnits: { add: true, mul: true, load: true, store: true }
+                tileFunctionalUnits: { alu: true, mul: true, mem: true }
               },
               {
                 x: 0,
                 y: 1,
                 disabled: false,
-                tileFunctionalUnits: { load: true } // Different operations - should create override
+                tileFunctionalUnits: { mem: true } // Different - only mem enabled
               }
             ]
           }
@@ -349,11 +348,12 @@ describe('Architecture Converter - Tile Overrides', () => {
     assert.equal(override.tile_x, 0);
     assert.equal(override.tile_y, 1);
 
-    // Override should only contain operations from tileFunctionalUnits
+    // Override should only contain instructions from its function units (mem -> load, store)
     const opsSet = new Set(override.operations);
-    assert.ok(opsSet.has('load'), 'Override should include specified operation: load');
-    assert.ok(!opsSet.has('store'), 'Override should not include unspecified operation: store');
-    assert.ok(!opsSet.has('add'), 'Override should not include unspecified operation: add');
+    assert.ok(opsSet.has('load'), 'Override should include load from mem unit');
+    assert.ok(opsSet.has('store'), 'Override should include store from mem unit');
+    assert.ok(!opsSet.has('add'), 'Override should not include add (alu disabled)');
+    assert.ok(!opsSet.has('mul'), 'Override should not include mul (mul disabled)');
   });
 });
 
@@ -379,7 +379,7 @@ describe('Architecture Converter - Topology Conversion', () => {
                 x: 0,
                 y: 0,
                 disabled: false,
-                tileFunctionalUnits: { add: true }
+                tileFunctionalUnits: { alu: true }
               }
             ]
           }

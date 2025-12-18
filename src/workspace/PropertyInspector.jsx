@@ -1,13 +1,17 @@
-import { Fragment, useMemo } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import {
   Box,
   Divider,
   FormControlLabel,
+  IconButton,
   MenuItem,
   Switch,
   TextField,
+  Tooltip,
   Typography
 } from '@mui/material';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import { PROPERTY_SCHEMAS, PROPERTY_TITLES } from './propertySchemas';
 import { deriveOutgoingLinksForPe } from './peConnections.js';
 
@@ -20,6 +24,21 @@ const getValueAtPath = (object, keyPath) => {
 };
 
 function PropertyInspector({ architecture, selection, onPropertyChange, disabled = false }) {
+  // Track collapsed sections - start with all expanded
+  const [collapsedSections, setCollapsedSections] = useState(new Set());
+
+  const toggleSection = (section) => {
+    setCollapsedSections((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(section)) {
+        newSet.delete(section);
+      } else {
+        newSet.add(section);
+      }
+      return newSet;
+    });
+  };
+
   const { entity, schema, target, title, description, emptyMessage } = useMemo(() => {
     if (!architecture) {
       return {
@@ -229,25 +248,86 @@ function PropertyInspector({ architecture, selection, onPropertyChange, disabled
             return accumulator;
           }, new Map());
 
+          // Track which sections have collapsible content
+          const collapsibleSections = new Set(
+            schema.filter((p) => p.collapsible && p.section).map((p) => p.section)
+          );
+
           schema.forEach((property) => {
             if (property.section && property.section !== currentSection) {
               currentSection = property.section;
+              const isCollapsible = collapsibleSections.has(property.section);
+              const isCollapsed = collapsedSections.has(property.section);
+
               rows.push(
-                <Typography
+                <Box
                   key={`section-${property.section}`}
-                  variant="caption"
                   sx={{
                     gridColumn: '1 / -1',
-                    textTransform: 'uppercase',
-                    letterSpacing: 1,
-                    fontWeight: 600,
-                    color: 'text.secondary',
-                    mt: rows.length > 0 ? 1 : 0
+                    display: 'flex',
+                    alignItems: 'center',
+                    mt: rows.length > 0 ? 1 : 0,
+                    cursor: isCollapsible ? 'pointer' : 'default',
+                    userSelect: 'none',
+                    '&:hover': isCollapsible ? {
+                      bgcolor: 'rgba(148,163,184,0.1)',
+                      borderRadius: 1
+                    } : {},
+                    '&:focus-visible': isCollapsible ? {
+                      outline: '2px solid',
+                      outlineColor: 'primary.main',
+                      outlineOffset: 2,
+                      borderRadius: 1
+                    } : {}
                   }}
+                  role={isCollapsible ? 'button' : undefined}
+                  tabIndex={isCollapsible ? 0 : undefined}
+                  onClick={isCollapsible ? () => toggleSection(property.section) : undefined}
+                  onKeyDown={
+                    isCollapsible
+                      ? (event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            toggleSection(property.section);
+                          }
+                        }
+                      : undefined
+                  }
                 >
-                  {property.section}
-                </Typography>
+                  {isCollapsible && (
+                    <IconButton
+                      size="small"
+                      sx={{ p: 0, mr: 0.5 }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleSection(property.section);
+                      }}
+                    >
+                      {isCollapsed ? (
+                        <ChevronRightIcon fontSize="small" />
+                      ) : (
+                        <ExpandMoreIcon fontSize="small" />
+                      )}
+                    </IconButton>
+                  )}
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      textTransform: 'uppercase',
+                      letterSpacing: 1,
+                      fontWeight: 600,
+                      color: 'text.secondary'
+                    }}
+                  >
+                    {property.section}
+                  </Typography>
+                </Box>
               );
+            }
+
+            // Skip rendering content if section is collapsed
+            if (property.collapsible && collapsedSections.has(property.section)) {
+              return;
             }
 
             if (property.toggleGroup) {
@@ -258,6 +338,11 @@ function PropertyInspector({ architecture, selection, onPropertyChange, disabled
 
               processedSectionToggleGroups.add(sectionToggleKey);
               const groupProperties = sectionToggleGroupMap.get(sectionToggleKey) ?? [];
+
+              // Skip if all properties in this group are in a collapsed section
+              if (groupProperties.every((p) => p.collapsible && collapsedSections.has(p.section))) {
+                return;
+              }
 
               rows.push(
                 <Box
@@ -272,7 +357,7 @@ function PropertyInspector({ architecture, selection, onPropertyChange, disabled
                   <Box
                     sx={{
                       display: 'grid',
-                      gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
                       gap: 1
                     }}
                   >
@@ -281,23 +366,57 @@ function PropertyInspector({ architecture, selection, onPropertyChange, disabled
                         evaluateProperty(groupProperty);
 
                       return (
-                        <FormControlLabel
+                        <Tooltip
                           key={groupProperty.key}
-                          control={
-                            <Switch
-                              checked={Boolean(groupValue)}
-                              onChange={handleBooleanChange(groupProperty)}
-                              color="primary"
-                              disabled={groupDisabled}
-                              size="small"
+                          title={groupProperty.sublabel ? `Instructions: ${groupProperty.sublabel}` : ''}
+                          placement="top"
+                          arrow
+                        >
+                          <Box sx={{ width: 'fit-content' }}>
+                            <FormControlLabel
+                              control={
+                                <Switch
+                                  checked={Boolean(groupValue)}
+                                  onChange={handleBooleanChange(groupProperty)}
+                                  color="primary"
+                                  disabled={groupDisabled}
+                                  size="small"
+                                />
+                              }
+                              label={
+                                <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                                  <Typography
+                                    variant="body2"
+                                    sx={{
+                                      color: groupDisabled ? 'text.disabled' : 'text.secondary',
+                                      fontWeight: 500
+                                    }}
+                                  >
+                                    {groupProperty.label}
+                                  </Typography>
+                                  {groupProperty.sublabel && (
+                                    <Typography
+                                      variant="caption"
+                                      sx={{
+                                        color: groupDisabled ? 'text.disabled' : 'text.secondary',
+                                        opacity: 0.7,
+                                        fontSize: '0.7rem',
+                                        lineHeight: 1.2
+                                      }}
+                                    >
+                                      {groupProperty.sublabel}
+                                    </Typography>
+                                  )}
+                                </Box>
+                              }
+                              sx={{
+                                m: 0,
+                                alignItems: 'flex-start',
+                                '& .MuiSwitch-root': { mt: 0.5 }
+                              }}
                             />
-                          }
-                          label={groupProperty.label}
-                          sx={{
-                            m: 0,
-                            color: groupDisabled ? 'text.disabled' : 'text.secondary'
-                          }}
-                        />
+                          </Box>
+                        </Tooltip>
                       );
                     })}
                   </Box>
