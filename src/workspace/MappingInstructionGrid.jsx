@@ -24,6 +24,8 @@ import SkipPreviousIcon from '@mui/icons-material/SkipPrevious';
 import SkipNextIcon from '@mui/icons-material/SkipNext';
 import FirstPageIcon from '@mui/icons-material/FirstPage';
 import LastPageIcon from '@mui/icons-material/LastPage';
+import RepeatIcon from '@mui/icons-material/Repeat';
+import RepeatOneIcon from '@mui/icons-material/RepeatOne';
 
 import {
   getMaxTimestep,
@@ -307,7 +309,9 @@ function PlaybackControls({
   maxTimestep,
   onTimestepChange,
   playbackSpeed,
-  onSpeedChange
+  onSpeedChange,
+  isLooping,
+  onLoopToggle
 }) {
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, p: 1, flexWrap: 'wrap' }}>
@@ -334,6 +338,16 @@ function PlaybackControls({
       </IconButton>
       <IconButton size="small" onClick={() => onTimestepChange(maxTimestep)} title="Last">
         <LastPageIcon fontSize="small" />
+      </IconButton>
+
+      {/* Loop toggle */}
+      <IconButton
+        size="small"
+        onClick={onLoopToggle}
+        title={isLooping ? 'Loop enabled' : 'Loop disabled'}
+        sx={{ color: isLooping ? 'primary.main' : 'text.secondary' }}
+      >
+        {isLooping ? <RepeatIcon fontSize="small" /> : <RepeatOneIcon fontSize="small" />}
       </IconButton>
 
       {/* Progress slider */}
@@ -376,31 +390,51 @@ PlaybackControls.propTypes = {
   maxTimestep: PropTypes.number.isRequired,
   onTimestepChange: PropTypes.func.isRequired,
   playbackSpeed: PropTypes.number.isRequired,
-  onSpeedChange: PropTypes.func.isRequired
+  onSpeedChange: PropTypes.func.isRequired,
+  isLooping: PropTypes.bool.isRequired,
+  onLoopToggle: PropTypes.func.isRequired
 };
 
 /**
  * Main MappingInstructionGrid component
  */
-function MappingInstructionGrid({ instructionData, onInstructionHover }) {
+function MappingInstructionGrid({ instructionData, onInstructionHover, onTimestepChange }) {
   const [viewMode, setViewMode] = useState('animation');
   const [currentTimestep, setCurrentTimestep] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(DEFAULT_ANIMATION_SPEED);
+  const [isLooping, setIsLooping] = useState(true);
 
   const maxTimestep = useMemo(() => getMaxTimestep(instructionData), [instructionData]);
   const { compiledIi } = useMemo(() => getArrayDimensions(instructionData), [instructionData]);
+
+  // Report timestep changes to parent
+  useEffect(() => {
+    if (onTimestepChange) {
+      onTimestepChange(viewMode === 'animation' ? currentTimestep : null);
+    }
+  }, [currentTimestep, viewMode, onTimestepChange]);
 
   // Animation timer
   useEffect(() => {
     if (!isPlaying) return undefined;
 
     const timer = setInterval(() => {
-      setCurrentTimestep((t) => (t >= maxTimestep ? 0 : t + 1));
+      setCurrentTimestep((t) => {
+        if (t >= maxTimestep) {
+          if (isLooping) {
+            return 0; // Loop back to start
+          } else {
+            setIsPlaying(false); // Stop at end
+            return t;
+          }
+        }
+        return t + 1;
+      });
     }, playbackSpeed);
 
     return () => clearInterval(timer);
-  }, [isPlaying, playbackSpeed, maxTimestep]);
+  }, [isPlaying, playbackSpeed, maxTimestep, isLooping]);
 
   // Reset timestep when instruction data changes
   // This is an intentional setState in effect - when data changes, we need to reset UI state
@@ -424,6 +458,10 @@ function MappingInstructionGrid({ instructionData, onInstructionHover }) {
   const handleTimestepChange = useCallback((value) => {
     setCurrentTimestep(value);
     setIsPlaying(false);
+  }, []);
+
+  const handleLoopToggle = useCallback(() => {
+    setIsLooping((prev) => !prev);
   }, []);
 
   if (!instructionData?.array_config) {
@@ -472,6 +510,8 @@ function MappingInstructionGrid({ instructionData, onInstructionHover }) {
           onTimestepChange={handleTimestepChange}
           playbackSpeed={playbackSpeed}
           onSpeedChange={setPlaybackSpeed}
+          isLooping={isLooping}
+          onLoopToggle={handleLoopToggle}
         />
       )}
 
@@ -493,7 +533,8 @@ function MappingInstructionGrid({ instructionData, onInstructionHover }) {
 
 MappingInstructionGrid.propTypes = {
   instructionData: PropTypes.object,
-  onInstructionHover: PropTypes.func
+  onInstructionHover: PropTypes.func,
+  onTimestepChange: PropTypes.func
 };
 
 export default MappingInstructionGrid;

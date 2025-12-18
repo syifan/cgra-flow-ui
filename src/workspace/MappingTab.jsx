@@ -43,11 +43,14 @@ function MappingTab({
   currentBenchmark
 }) {
   // Graph view mode: 'dataflow' (DotGraph) or 'dependency' (DependencyGraph)
-  const [graphViewMode, setGraphViewMode] = useState('dataflow');
+  const [graphViewMode, setGraphViewMode] = useState('dependency');
 
   // Track hovered instruction to highlight corresponding graph nodes
   const [hoveredOpcodes, setHoveredOpcodes] = useState([]);
   const [highlightedNodeId, setHighlightedNodeId] = useState(null);
+
+  // Track current animation timestep from instruction grid
+  const [currentAnimationTimestep, setCurrentAnimationTimestep] = useState(null);
 
   // Build dependency graph nodes for linking (memoized)
   const dependencyNodes = useMemo(() => {
@@ -81,6 +84,11 @@ function MappingTab({
     if (newMode !== null) {
       setGraphViewMode(newMode);
     }
+  }, []);
+
+  // Handle timestep changes from the instruction grid animation
+  const handleTimestepChange = useCallback((timestep) => {
+    setCurrentAnimationTimestep(timestep);
   }, []);
 
   const getJobStatusDisplay = () => {
@@ -257,6 +265,7 @@ function MappingTab({
                 <DependencyGraph
                   instructionData={instructionData[currentBenchmark]}
                   highlightedNodeId={highlightedNodeId}
+                  currentTimestep={currentAnimationTimestep}
                 />
               ) : (
                 <Box
@@ -298,6 +307,7 @@ function MappingTab({
                 <MappingInstructionGrid
                   instructionData={instructionData[currentBenchmark]}
                   onInstructionHover={handleInstructionHover}
+                  onTimestepChange={handleTimestepChange}
                 />
               ) : (
                 <Box

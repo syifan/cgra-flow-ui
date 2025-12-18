@@ -27,11 +27,15 @@ export default function DotGraph({ graph, width = 800, height = 600, highlighted
     // Helper to flip Y coordinate (Graphviz uses bottom-left origin)
     const flipY = (y) => graphHeight - y;
 
-    // Helper to convert Graphviz color to CSS
+    // Helper to convert Graphviz color to CSS (inverted for dark theme)
     const parseColor = (color) => {
       if (!color) return null;
-      if (color.startsWith('#')) return color;
       if (color === 'none') return 'transparent';
+      // Invert black to white for dark background
+      if (color === 'black' || color === '#000000' || color === '#000') return '#e2e8f0';
+      // Invert white to dark for fills that should remain visible
+      if (color === 'white' || color === '#ffffff' || color === '#fff') return '#1e293b';
+      if (color.startsWith('#')) return color;
       return color;
     };
 
@@ -78,7 +82,7 @@ export default function DotGraph({ graph, width = 800, height = 600, highlighted
     const renderDrawOps = (parent, drawOps, labelDrawOps) => {
       if (!drawOps && !labelDrawOps) return;
 
-      let currentStroke = '#000000';
+      let currentStroke = '#e2e8f0'; // Light color for dark theme
       let currentFill = 'none';
       let currentFontSize = 14;
 
@@ -392,7 +396,7 @@ export default function DotGraph({ graph, width = 800, height = 600, highlighted
         ref={svgRef}
         width="100%"
         height={maximized ? 'calc(100vh - 64px)' : height}
-        style={{ display: 'block', background: '#ffffff' }}
+        style={{ display: 'block', background: 'rgba(15, 23, 42, 0.5)' }}
       />
     </div>
   );

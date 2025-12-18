@@ -33,6 +33,7 @@ function truncateOpcode(opcode) {
 export default function DependencyGraph({
   instructionData,
   highlightedNodeId = null,
+  currentTimestep = null,
   width = 800,
   height = 500
 }) {
@@ -156,7 +157,7 @@ export default function DependencyGraph({
         .attr('text-anchor', 'middle')
         .attr('font-size', 10)
         .attr('font-family', '"Fira Code", monospace')
-        .attr('fill', '#64748b')
+        .attr('fill', '#94a3b8')
         .text(`t=${ts}`);
     });
 
@@ -301,7 +302,7 @@ export default function DependencyGraph({
     };
   }, [layoutData, width, height]);
 
-  // Apply highlighting when highlightedNodeId changes
+  // Apply highlighting when highlightedNodeId or currentTimestep changes
   useEffect(() => {
     if (!svgRef.current) return;
 
@@ -311,16 +312,26 @@ export default function DependencyGraph({
 
     if (nodesGroup.empty()) return;
 
-    const hasHighlight = highlightedNodeId !== null;
+    const hasHoverHighlight = highlightedNodeId !== null;
+    const hasTimestepHighlight = currentTimestep !== null;
 
-    // Reset all nodes and edges first
+    // Get nodes at current timestep for timestep highlighting
+    const nodesAtCurrentTimestep = hasTimestepHighlight
+      ? new Set(layoutData.nodes.filter((n) => n.timestep === currentTimestep).map((n) => n.id))
+      : new Set();
+
+    // Apply node highlighting
     nodesGroup.selectAll('.node').each(function () {
       const nodeG = d3.select(this);
       const nodeId = nodeG.attr('data-id');
-      const isHighlighted = hasHighlight && nodeId === highlightedNodeId;
 
-      if (hasHighlight) {
-        if (isHighlighted) {
+      // Determine if this node should be highlighted
+      const isHoverHighlighted = hasHoverHighlight && nodeId === highlightedNodeId;
+      const isTimestepHighlighted = hasTimestepHighlight && nodesAtCurrentTimestep.has(nodeId);
+
+      if (hasHoverHighlight) {
+        // Hover takes priority - golden glow for hovered node
+        if (isHoverHighlighted) {
           nodeG.style('opacity', 1);
           nodeG
             .select('rect')
@@ -331,31 +342,57 @@ export default function DependencyGraph({
           nodeG.style('opacity', 0.3);
           nodeG.select('rect').attr('stroke', '#1e293b').attr('stroke-width', 1).style('filter', null);
         }
+      } else if (hasTimestepHighlight) {
+        // Timestep highlighting - cyan glow for nodes at current timestep
+        if (isTimestepHighlighted) {
+          nodeG.style('opacity', 1);
+          nodeG
+            .select('rect')
+            .attr('stroke', '#22d3ee')
+            .attr('stroke-width', 2)
+            .style('filter', 'drop-shadow(0 0 6px rgba(34, 211, 238, 0.7))');
+        } else {
+          nodeG.style('opacity', 0.4);
+          nodeG.select('rect').attr('stroke', '#1e293b').attr('stroke-width', 1).style('filter', null);
+        }
       } else {
+        // No highlighting - reset to default
         nodeG.style('opacity', 1);
         nodeG.select('rect').attr('stroke', '#1e293b').attr('stroke-width', 1).style('filter', null);
       }
     });
 
-    // Highlight connected edges
-    if (hasHighlight) {
-      edgesGroup.selectAll('path').each(function () {
-        const edge = d3.select(this);
-        // Edges are not easily queryable for source/target from the path itself
-        // For now, dim all edges when highlighting
-        edge.style('opacity', 0.2);
-      });
-
-      // Find and highlight edges connected to the highlighted node
+    // Highlight edges based on context
+    if (hasHoverHighlight) {
+      // Dim all edges, then highlight connected ones
+      edgesGroup.selectAll('path').style('opacity', 0.2);
       layoutData.edges.forEach((edge, i) => {
         if (edge.sourceNode.id === highlightedNodeId || edge.targetNode.id === highlightedNodeId) {
           edgesGroup.selectAll('path').filter((_, idx) => idx === i).style('opacity', 1);
         }
       });
+    } else if (hasTimestepHighlight) {
+      // Highlight edges where both source and target are at/before current timestep
+      edgesGroup.selectAll('path').each(function (_, i) {
+        const edge = layoutData.edges[i];
+        if (!edge) return;
+        const sourceInScope = edge.sourceNode.timestep <= currentTimestep;
+        const targetInScope = edge.targetNode.timestep <= currentTimestep;
+        const bothAtCurrent =
+          nodesAtCurrentTimestep.has(edge.sourceNode.id) ||
+          nodesAtCurrentTimestep.has(edge.targetNode.id);
+
+        if (bothAtCurrent && sourceInScope && targetInScope) {
+          d3.select(this).style('opacity', 0.8);
+        } else {
+          d3.select(this).style('opacity', 0.15);
+        }
+      });
     } else {
+      // No highlighting - reset edges
       edgesGroup.selectAll('path').style('opacity', 0.6);
     }
-  }, [highlightedNodeId, layoutData.edges]);
+  }, [highlightedNodeId, currentTimestep, layoutData.nodes, layoutData.edges]);
 
   // Update URL for maximize state
   useEffect(() => {
@@ -493,7 +530,7 @@ export default function DependencyGraph({
         ref={svgRef}
         width="100%"
         height={maximized ? 'calc(100vh - 64px)' : height}
-        style={{ display: 'block', background: '#ffffff' }}
+        style={{ display: 'block', background: 'rgba(15, 23, 42, 0.5)' }}
       />
     </div>
   );
@@ -502,6 +539,7 @@ export default function DependencyGraph({
 DependencyGraph.propTypes = {
   instructionData: PropTypes.object,
   highlightedNodeId: PropTypes.string,
+  currentTimestep: PropTypes.number,
   width: PropTypes.number,
   height: PropTypes.number
 };
