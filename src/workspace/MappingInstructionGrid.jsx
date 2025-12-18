@@ -28,10 +28,10 @@ import RepeatIcon from '@mui/icons-material/Repeat';
 import RepeatOneIcon from '@mui/icons-material/RepeatOne';
 
 import {
-  getMaxTimestep,
+  getMaxIndexPerII,
   getArrayDimensions,
-  getInstructionsAtTimestep,
-  getDataFlowsAtTimestep
+  getInstructionsAtIndexPerII,
+  getDataFlowsAtIndexPerII
 } from './instructionUtils';
 import { createInstructionPeLayer } from './mapping-canvas/instructionPeLayer';
 import { createDataFlowArrowsLayer } from './mapping-canvas/dataFlowArrowsLayer';
@@ -66,7 +66,8 @@ function buildPeNodes(instructionData) {
         column: col,
         row: row,
         x: GRID_PADDING + col * (PE_SIZE + PE_GAP),
-        y: GRID_PADDING + row * (PE_SIZE + PE_GAP)
+        // Flip y so row 0 is at bottom, higher rows are at top (Cartesian coordinates)
+        y: GRID_PADDING + (rows - 1 - row) * (PE_SIZE + PE_GAP)
       });
     }
   }
@@ -75,9 +76,9 @@ function buildPeNodes(instructionData) {
 }
 
 /**
- * SingleGridView - Render a single PE grid for a specific timestep
+ * SingleGridView - Render a single PE grid for a specific index_per_ii (animation slide)
  */
-function SingleGridView({ instructionData, timestep, onInstructionHover, highlightedPE }) {
+function SingleGridView({ instructionData, indexPerII, onInstructionHover, highlightedPE }) {
   const svgRef = useRef(null);
   const layersRef = useRef({ peLayer: null, arrowsLayer: null });
 
@@ -120,12 +121,12 @@ function SingleGridView({ instructionData, timestep, onInstructionHover, highlig
     };
   }, []);
 
-  // Update visualization when timestep changes
+  // Update visualization when index_per_ii changes
   useEffect(() => {
     if (!layersRef.current.peLayer) return;
 
-    // Get instructions for this timestep
-    const instructions = getInstructionsAtTimestep(instructionData, timestep);
+    // Get instructions for this index_per_ii (animation slide)
+    const instructions = getInstructionsAtIndexPerII(instructionData, indexPerII);
 
     // Build map of coreId -> instruction
     const activeInstructions = new Map();
@@ -134,12 +135,12 @@ function SingleGridView({ instructionData, timestep, onInstructionHover, highlig
     });
 
     // Get data flows
-    const flows = getDataFlowsAtTimestep(instructionData, timestep);
+    const flows = getDataFlowsAtIndexPerII(instructionData, indexPerII);
 
     // Render layers
     layersRef.current.peLayer.render(peNodes, activeInstructions, onInstructionHover, highlightedPE);
     layersRef.current.arrowsLayer.render(flows, GRID_PADDING, columns, rows);
-  }, [instructionData, timestep, peNodes, columns, rows, onInstructionHover, highlightedPE]);
+  }, [instructionData, indexPerII, peNodes, columns, rows, onInstructionHover, highlightedPE]);
 
   return (
     <svg
@@ -154,7 +155,7 @@ function SingleGridView({ instructionData, timestep, onInstructionHover, highlig
 
 SingleGridView.propTypes = {
   instructionData: PropTypes.object,
-  timestep: PropTypes.number.isRequired,
+  indexPerII: PropTypes.number.isRequired,
   onInstructionHover: PropTypes.func,
   highlightedPE: PropTypes.shape({
     col: PropTypes.number,
@@ -165,7 +166,7 @@ SingleGridView.propTypes = {
 /**
  * MiniPeGrid - Smaller PE grid for multi-chart view
  */
-function MiniPeGrid({ instructionData, timestep }) {
+function MiniPeGrid({ instructionData, indexPerII }) {
   const { columns, rows } = useMemo(
     () => getArrayDimensions(instructionData),
     [instructionData]
@@ -173,8 +174,8 @@ function MiniPeGrid({ instructionData, timestep }) {
   const peNodes = useMemo(() => buildPeNodes(instructionData), [instructionData]);
 
   const instructions = useMemo(
-    () => getInstructionsAtTimestep(instructionData, timestep),
-    [instructionData, timestep]
+    () => getInstructionsAtIndexPerII(instructionData, indexPerII),
+    [instructionData, indexPerII]
   );
 
   const activeInstructions = useMemo(() => {
@@ -197,7 +198,8 @@ function MiniPeGrid({ instructionData, timestep }) {
         const inst = activeInstructions.get(node.coreId);
         const isActive = Boolean(inst);
         const x = miniPadding + node.column * (miniPeSize + miniGap);
-        const y = miniPadding + node.row * (miniPeSize + miniGap);
+        // Flip y so row 0 is at bottom (Cartesian coordinates)
+        const y = miniPadding + (rows - 1 - node.row) * (miniPeSize + miniGap);
 
         return (
           <rect
@@ -219,27 +221,27 @@ function MiniPeGrid({ instructionData, timestep }) {
 
 MiniPeGrid.propTypes = {
   instructionData: PropTypes.object,
-  timestep: PropTypes.number.isRequired
+  indexPerII: PropTypes.number.isRequired
 };
 
 /**
- * MultiChartView - Show all timesteps as a scrollable grid
+ * MultiChartView - Show all index_per_ii values as a scrollable grid
  */
-function MultiChartView({ instructionData, maxTimestep }) {
+function MultiChartView({ instructionData, maxIndexPerII }) {
   const [jumpValue, setJumpValue] = useState('');
   const containerRef = useRef(null);
 
   const handleJump = useCallback(() => {
-    const ts = parseInt(jumpValue, 10);
-    if (!Number.isNaN(ts) && ts >= 0 && ts <= maxTimestep) {
-      const element = document.getElementById(`timestep-card-${ts}`);
+    const idx = parseInt(jumpValue, 10);
+    if (!Number.isNaN(idx) && idx >= 0 && idx <= maxIndexPerII) {
+      const element = document.getElementById(`slide-card-${idx}`);
       element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
-  }, [jumpValue, maxTimestep]);
+  }, [jumpValue, maxIndexPerII]);
 
-  const timesteps = useMemo(
-    () => Array.from({ length: maxTimestep + 1 }, (_, i) => i),
-    [maxTimestep]
+  const slideIndices = useMemo(
+    () => Array.from({ length: maxIndexPerII + 1 }, (_, i) => i),
+    [maxIndexPerII]
   );
 
   return (
@@ -248,18 +250,18 @@ function MultiChartView({ instructionData, maxTimestep }) {
       <Box sx={{ display: 'flex', gap: 1, mb: 2, alignItems: 'center' }}>
         <TextField
           size="small"
-          label="Jump to timestep"
+          label="Jump to slide"
           value={jumpValue}
           onChange={(e) => setJumpValue(e.target.value)}
           type="number"
-          inputProps={{ min: 0, max: maxTimestep }}
+          inputProps={{ min: 0, max: maxIndexPerII }}
           sx={{ width: 150 }}
         />
         <Button variant="outlined" size="small" onClick={handleJump}>
           Go
         </Button>
         <Typography variant="caption" sx={{ color: 'text.secondary', ml: 2 }}>
-          {maxTimestep + 1} total timesteps
+          {maxIndexPerII + 1} total slides (II)
         </Typography>
       </Box>
 
@@ -275,10 +277,10 @@ function MultiChartView({ instructionData, maxTimestep }) {
           pb: 2
         }}
       >
-        {timesteps.map((ts) => (
+        {slideIndices.map((idx) => (
           <Box
-            key={ts}
-            id={`timestep-card-${ts}`}
+            key={idx}
+            id={`slide-card-${idx}`}
             sx={{
               border: '1px solid',
               borderColor: 'divider',
@@ -288,9 +290,9 @@ function MultiChartView({ instructionData, maxTimestep }) {
             }}
           >
             <Typography variant="caption" sx={{ color: 'text.secondary', mb: 1, display: 'block' }}>
-              t={ts}
+              II={idx}
             </Typography>
-            <MiniPeGrid instructionData={instructionData} timestep={ts} />
+            <MiniPeGrid instructionData={instructionData} indexPerII={idx} />
           </Box>
         ))}
       </Box>
@@ -300,7 +302,7 @@ function MultiChartView({ instructionData, maxTimestep }) {
 
 MultiChartView.propTypes = {
   instructionData: PropTypes.object,
-  maxTimestep: PropTypes.number.isRequired
+  maxIndexPerII: PropTypes.number.isRequired
 };
 
 /**
@@ -309,9 +311,9 @@ MultiChartView.propTypes = {
 function PlaybackControls({
   isPlaying,
   onPlayPause,
-  currentTimestep,
-  maxTimestep,
-  onTimestepChange,
+  currentSlide,
+  maxSlide,
+  onSlideChange,
   playbackSpeed,
   onSpeedChange,
   isLooping,
@@ -320,12 +322,12 @@ function PlaybackControls({
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, p: 1, flexWrap: 'wrap' }}>
       {/* Navigation buttons */}
-      <IconButton size="small" onClick={() => onTimestepChange(0)} title="First">
+      <IconButton size="small" onClick={() => onSlideChange(0)} title="First">
         <FirstPageIcon fontSize="small" />
       </IconButton>
       <IconButton
         size="small"
-        onClick={() => onTimestepChange(Math.max(0, currentTimestep - 1))}
+        onClick={() => onSlideChange(Math.max(0, currentSlide - 1))}
         title="Previous"
       >
         <SkipPreviousIcon fontSize="small" />
@@ -335,12 +337,12 @@ function PlaybackControls({
       </IconButton>
       <IconButton
         size="small"
-        onClick={() => onTimestepChange(Math.min(maxTimestep, currentTimestep + 1))}
+        onClick={() => onSlideChange(Math.min(maxSlide, currentSlide + 1))}
         title="Next"
       >
         <SkipNextIcon fontSize="small" />
       </IconButton>
-      <IconButton size="small" onClick={() => onTimestepChange(maxTimestep)} title="Last">
+      <IconButton size="small" onClick={() => onSlideChange(maxSlide)} title="Last">
         <LastPageIcon fontSize="small" />
       </IconButton>
 
@@ -358,17 +360,17 @@ function PlaybackControls({
       <Box sx={{ flex: 1, minWidth: 100, mx: 1 }}>
         <Slider
           size="small"
-          value={currentTimestep}
+          value={currentSlide}
           min={0}
-          max={maxTimestep}
-          onChange={(_, value) => onTimestepChange(value)}
+          max={maxSlide}
+          onChange={(_, value) => onSlideChange(value)}
           valueLabelDisplay="auto"
         />
       </Box>
 
-      {/* Timestep display */}
+      {/* Slide display */}
       <Typography variant="caption" sx={{ color: 'text.secondary', minWidth: 60 }}>
-        {currentTimestep} / {maxTimestep}
+        {currentSlide} / {maxSlide}
       </Typography>
 
       {/* Speed selector */}
@@ -390,9 +392,9 @@ function PlaybackControls({
 PlaybackControls.propTypes = {
   isPlaying: PropTypes.bool.isRequired,
   onPlayPause: PropTypes.func.isRequired,
-  currentTimestep: PropTypes.number.isRequired,
-  maxTimestep: PropTypes.number.isRequired,
-  onTimestepChange: PropTypes.func.isRequired,
+  currentSlide: PropTypes.number.isRequired,
+  maxSlide: PropTypes.number.isRequired,
+  onSlideChange: PropTypes.func.isRequired,
   playbackSpeed: PropTypes.number.isRequired,
   onSpeedChange: PropTypes.func.isRequired,
   isLooping: PropTypes.bool.isRequired,
@@ -402,50 +404,50 @@ PlaybackControls.propTypes = {
 /**
  * Main MappingInstructionGrid component
  */
-function MappingInstructionGrid({ instructionData, onInstructionHover, onTimestepChange, jumpTarget }) {
+function MappingInstructionGrid({ instructionData, onInstructionHover, onSlideChange, jumpTarget }) {
   const [viewMode, setViewMode] = useState('animation');
-  const [currentTimestep, setCurrentTimestep] = useState(0);
+  const [currentSlide, setCurrentSlide] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(DEFAULT_ANIMATION_SPEED);
   const [isLooping, setIsLooping] = useState(true);
   const [highlightedPE, setHighlightedPE] = useState(null);
 
-  const maxTimestep = useMemo(() => getMaxTimestep(instructionData), [instructionData]);
+  const maxSlide = useMemo(() => getMaxIndexPerII(instructionData), [instructionData]);
   const { compiledIi } = useMemo(() => getArrayDimensions(instructionData), [instructionData]);
 
-  // Report timestep changes to parent
+  // Report slide (index_per_ii) changes to parent
   useEffect(() => {
-    if (onTimestepChange) {
-      onTimestepChange(viewMode === 'animation' ? currentTimestep : null);
+    if (onSlideChange) {
+      onSlideChange(viewMode === 'animation' ? currentSlide : null);
     }
-  }, [currentTimestep, viewMode, onTimestepChange]);
+  }, [currentSlide, viewMode, onSlideChange]);
 
   // Animation timer
   useEffect(() => {
     if (!isPlaying) return undefined;
 
     const timer = setInterval(() => {
-      setCurrentTimestep((t) => {
-        if (t >= maxTimestep) {
+      setCurrentSlide((s) => {
+        if (s >= maxSlide) {
           if (isLooping) {
             return 0; // Loop back to start
           } else {
             setIsPlaying(false); // Stop at end
-            return t;
+            return s;
           }
         }
-        return t + 1;
+        return s + 1;
       });
     }, playbackSpeed);
 
     return () => clearInterval(timer);
-  }, [isPlaying, playbackSpeed, maxTimestep, isLooping]);
+  }, [isPlaying, playbackSpeed, maxSlide, isLooping]);
 
-  // Reset timestep when instruction data changes
+  // Reset slide when instruction data changes
   // This is an intentional setState in effect - when data changes, we need to reset UI state
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
-    setCurrentTimestep(0);
+    setCurrentSlide(0);
     setIsPlaying(false);
   }, [instructionData]);
 
@@ -456,8 +458,8 @@ function MappingInstructionGrid({ instructionData, onInstructionHover, onTimeste
 
     // Switch to animation mode if not already
     setViewMode('animation');
-    // Jump to the target timestep
-    setCurrentTimestep(jumpTarget.timestep);
+    // Jump to the target slide (index_per_ii)
+    setCurrentSlide(jumpTarget.indexPerII);
     // Stop any playing animation
     setIsPlaying(false);
     // Highlight the target PE
@@ -482,8 +484,8 @@ function MappingInstructionGrid({ instructionData, onInstructionHover, onTimeste
     setIsPlaying((prev) => !prev);
   }, []);
 
-  const handleTimestepChange = useCallback((value) => {
-    setCurrentTimestep(value);
+  const handleSlideChange = useCallback((value) => {
+    setCurrentSlide(value);
     setIsPlaying(false);
   }, []);
 
@@ -532,9 +534,9 @@ function MappingInstructionGrid({ instructionData, onInstructionHover, onTimeste
         <PlaybackControls
           isPlaying={isPlaying}
           onPlayPause={handlePlayPause}
-          currentTimestep={currentTimestep}
-          maxTimestep={maxTimestep}
-          onTimestepChange={handleTimestepChange}
+          currentSlide={currentSlide}
+          maxSlide={maxSlide}
+          onSlideChange={handleSlideChange}
           playbackSpeed={playbackSpeed}
           onSpeedChange={setPlaybackSpeed}
           isLooping={isLooping}
@@ -545,11 +547,11 @@ function MappingInstructionGrid({ instructionData, onInstructionHover, onTimeste
       {/* Render based on mode */}
       <Box sx={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
         {viewMode === 'multi' ? (
-          <MultiChartView instructionData={instructionData} maxTimestep={maxTimestep} />
+          <MultiChartView instructionData={instructionData} maxIndexPerII={maxSlide} />
         ) : (
           <SingleGridView
             instructionData={instructionData}
-            timestep={currentTimestep}
+            indexPerII={currentSlide}
             onInstructionHover={onInstructionHover}
             highlightedPE={highlightedPE}
           />
@@ -562,9 +564,9 @@ function MappingInstructionGrid({ instructionData, onInstructionHover, onTimeste
 MappingInstructionGrid.propTypes = {
   instructionData: PropTypes.object,
   onInstructionHover: PropTypes.func,
-  onTimestepChange: PropTypes.func,
+  onSlideChange: PropTypes.func,
   jumpTarget: PropTypes.shape({
-    timestep: PropTypes.number,
+    indexPerII: PropTypes.number,
     pe: PropTypes.shape({
       col: PropTypes.number,
       row: PropTypes.number

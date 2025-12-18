@@ -16,17 +16,17 @@ export function buildCorePositionMap(instructionData) {
 }
 
 /**
- * Get all instructions for a specific timestep
+ * Get all instructions for a specific index_per_ii (animation slide)
  * @param {object} instructionData - The instruction data from mapping
- * @param {number} timestep - The timestep to filter by
- * @returns {Array<{coreId: string, column: number, row: number, timestep: number, operations: Array}>}
+ * @param {number} indexPerII - The index_per_ii to filter by
+ * @returns {Array<{coreId: string, column: number, row: number, timestep: number, index_per_ii: number, operations: Array}>}
  */
-export function getInstructionsAtTimestep(instructionData, timestep) {
+export function getInstructionsAtIndexPerII(instructionData, indexPerII) {
   const results = [];
   instructionData?.array_config?.cores?.forEach((core) => {
     core.entries?.forEach((entry) => {
       entry.instructions?.forEach((inst) => {
-        if (inst.timestep === timestep) {
+        if (inst.index_per_ii === indexPerII) {
           results.push({
             coreId: core.core_id,
             column: core.column,
@@ -41,37 +41,32 @@ export function getInstructionsAtTimestep(instructionData, timestep) {
 }
 
 /**
- * Get all unique timesteps (sorted)
+ * Get all unique index_per_ii values (sorted)
  * @param {object} instructionData - The instruction data from mapping
  * @returns {number[]}
  */
-export function getAllTimesteps(instructionData) {
-  const timesteps = new Set();
+export function getAllIndexPerII(instructionData) {
+  const indices = new Set();
   instructionData?.array_config?.cores?.forEach((core) => {
     core.entries?.forEach((entry) => {
       entry.instructions?.forEach((inst) => {
-        timesteps.add(inst.timestep);
+        indices.add(inst.index_per_ii);
       });
     });
   });
-  return Array.from(timesteps).sort((a, b) => a - b);
+  return Array.from(indices).sort((a, b) => a - b);
 }
 
 /**
- * Get the maximum timestep in the instruction data
+ * Get the maximum index_per_ii in the instruction data
+ * This should equal compiled_ii - 1
  * @param {object} instructionData - The instruction data from mapping
  * @returns {number}
  */
-export function getMaxTimestep(instructionData) {
-  let max = 0;
-  instructionData?.array_config?.cores?.forEach((core) => {
-    core.entries?.forEach((entry) => {
-      entry.instructions?.forEach((inst) => {
-        if (inst.timestep > max) max = inst.timestep;
-      });
-    });
-  });
-  return max;
+export function getMaxIndexPerII(instructionData) {
+  // The max index_per_ii is compiled_ii - 1
+  const compiledIi = instructionData?.array_config?.compiled_ii || 0;
+  return compiledIi > 0 ? compiledIi - 1 : 0;
 }
 
 /**
@@ -130,15 +125,15 @@ export function isConstantOperand(operand) {
 }
 
 /**
- * Get all data flow connections for a specific timestep
+ * Get all data flow connections for a specific index_per_ii (animation slide)
  * Returns arrows that should be drawn between PEs
  * @param {object} instructionData - The instruction data from mapping
- * @param {number} timestep - The timestep to get flows for
+ * @param {number} indexPerII - The index_per_ii to get flows for
  * @returns {Array<{fromColumn: number, fromRow: number, toColumn: number, toRow: number, color: string}>}
  */
-export function getDataFlowsAtTimestep(instructionData, timestep) {
+export function getDataFlowsAtIndexPerII(instructionData, indexPerII) {
   const flows = [];
-  const instructions = getInstructionsAtTimestep(instructionData, timestep);
+  const instructions = getInstructionsAtIndexPerII(instructionData, indexPerII);
 
   instructions.forEach((inst) => {
     inst.operations?.forEach((op) => {

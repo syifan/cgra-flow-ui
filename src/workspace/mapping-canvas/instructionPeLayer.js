@@ -26,7 +26,7 @@ export function createInstructionPeLayer(root) {
   /**
    * Render PE nodes with instruction state
    * @param {Array} peNodes - Array of PE node data with positions
-   * @param {Map} activeInstructions - Map of coreId -> instruction data for current timestep
+   * @param {Map} activeInstructions - Map of coreId -> instruction data for current slide (index_per_ii)
    * @param {Function} onHover - Callback when a PE node is hovered (instruction) or unhovered (null)
    * @param {Object} highlightedPE - Optional PE to highlight { col, row }
    */

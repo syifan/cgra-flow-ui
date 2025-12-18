@@ -95,4 +95,4 @@ export const ZOOM_MIN = 0.5;
 export const ZOOM_MAX = 3;
 
 // Animation timing
-export const DEFAULT_ANIMATION_SPEED = 1000; // ms per timestep
+export const DEFAULT_ANIMATION_SPEED = 1000; // ms per slide (index_per_ii)

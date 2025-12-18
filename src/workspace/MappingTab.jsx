@@ -49,8 +49,8 @@ function MappingTab({
   const [hoveredOpcodes, setHoveredOpcodes] = useState([]);
   const [highlightedNodeId, setHighlightedNodeId] = useState(null);
 
-  // Track current animation timestep from instruction grid
-  const [currentAnimationTimestep, setCurrentAnimationTimestep] = useState(null);
+  // Track current animation slide (index_per_ii) from instruction grid
+  const [currentAnimationSlide, setCurrentAnimationSlide] = useState(null);
 
   // Jump target from clicking on dependency graph nodes
   const [jumpTarget, setJumpTarget] = useState(null);
@@ -89,15 +89,15 @@ function MappingTab({
     }
   }, []);
 
-  // Handle timestep changes from the instruction grid animation
-  const handleTimestepChange = useCallback((timestep) => {
-    setCurrentAnimationTimestep(timestep);
+  // Handle slide (index_per_ii) changes from the instruction grid animation
+  const handleSlideChange = useCallback((slide) => {
+    setCurrentAnimationSlide(slide);
   }, []);
 
-  // Handle clicks on dependency graph nodes - jump to that timestep and highlight PE
+  // Handle clicks on dependency graph nodes - jump to that slide (index_per_ii) and highlight PE
   const handleNodeClick = useCallback((nodeInfo) => {
     setJumpTarget({
-      timestep: nodeInfo.timestep,
+      indexPerII: nodeInfo.indexPerII,
       pe: nodeInfo.pe,
       id: Date.now() // Unique ID to trigger effect even if same node clicked twice
     });
@@ -277,7 +277,7 @@ function MappingTab({
                 <DependencyGraph
                   instructionData={instructionData[currentBenchmark]}
                   highlightedNodeId={highlightedNodeId}
-                  currentTimestep={currentAnimationTimestep}
+                  currentSlide={currentAnimationSlide}
                   onNodeClick={handleNodeClick}
                 />
               ) : (
@@ -320,7 +320,7 @@ function MappingTab({
                 <MappingInstructionGrid
                   instructionData={instructionData[currentBenchmark]}
                   onInstructionHover={handleInstructionHover}
-                  onTimestepChange={handleTimestepChange}
+                  onSlideChange={handleSlideChange}
                   jumpTarget={jumpTarget}
                 />
               ) : (

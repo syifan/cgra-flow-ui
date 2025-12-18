@@ -46,12 +46,14 @@ export function createDataFlowArrowsLayer(root) {
    * @param {number} column - PE column
    * @param {number} row - PE row
    * @param {number} gridPadding - Padding around the grid
+   * @param {number} totalRows - Total number of rows in the grid
    * @returns {{x: number, y: number}}
    */
-  const getPeCenter = (column, row, gridPadding) => {
+  const getPeCenter = (column, row, gridPadding, totalRows) => {
     return {
       x: gridPadding + column * (PE_SIZE + PE_GAP) + PE_SIZE / 2,
-      y: gridPadding + row * (PE_SIZE + PE_GAP) + PE_SIZE / 2
+      // Flip y so row 0 is at bottom (Cartesian coordinates)
+      y: gridPadding + (totalRows - 1 - row) * (PE_SIZE + PE_GAP) + PE_SIZE / 2
     };
   };
 
@@ -62,11 +64,12 @@ export function createDataFlowArrowsLayer(root) {
    * @param {number} toCol - Target column
    * @param {number} toRow - Target row
    * @param {number} gridPadding - Padding around the grid
+   * @param {number} totalRows - Total number of rows in the grid
    * @returns {{x1: number, y1: number, x2: number, y2: number}}
    */
-  const getArrowEndpoints = (fromCol, fromRow, toCol, toRow, gridPadding) => {
-    const fromCenter = getPeCenter(fromCol, fromRow, gridPadding);
-    const toCenter = getPeCenter(toCol, toRow, gridPadding);
+  const getArrowEndpoints = (fromCol, fromRow, toCol, toRow, gridPadding, totalRows) => {
+    const fromCenter = getPeCenter(fromCol, fromRow, gridPadding, totalRows);
+    const toCenter = getPeCenter(toCol, toRow, gridPadding, totalRows);
 
     const dx = toCenter.x - fromCenter.x;
     const dy = toCenter.y - fromCenter.y;
@@ -134,7 +137,8 @@ export function createDataFlowArrowsLayer(root) {
           datum.fromRow,
           datum.toColumn,
           datum.toRow,
-          gridPadding
+          gridPadding,
+          rows
         );
 
         select(this)

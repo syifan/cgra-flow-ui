@@ -7,9 +7,9 @@ import { directionToDelta, isRegisterOperand, isDirectionOperand } from './instr
 
 /**
  * Build graph nodes from instruction data
- * Each node represents an operation at a specific timestep and PE location
+ * Each node represents an operation at a specific index_per_ii (animation slide) and PE location
  * @param {object} instructionData - The instruction data from mapping
- * @returns {Array<{id: string, opcode: string, timestep: number, pe: {col: number, row: number, coreId: string}, srcOperands: string[], dstOperands: string[]}>}
+ * @returns {Array<{id: string, opcode: string, timestep: number, indexPerII: number, pe: {col: number, row: number, coreId: string}, srcOperands: string[], dstOperands: string[]}>}
  */
 export function buildDependencyNodes(instructionData) {
   const nodes = [];
@@ -20,9 +20,10 @@ export function buildDependencyNodes(instructionData) {
         inst.operations?.forEach((op, opIndex) => {
           const suffix = opIndex > 0 ? `[${opIndex}]` : '';
           nodes.push({
-            id: `${op.opcode}@t${inst.timestep}@PE(${core.column},${core.row})${suffix}`,
+            id: `${op.opcode}@ii${inst.index_per_ii}@PE(${core.column},${core.row})${suffix}`,
             opcode: op.opcode || '',
             timestep: inst.timestep,
+            indexPerII: inst.index_per_ii,
             pe: {
               col: core.column,
               row: core.row,
@@ -172,18 +173,18 @@ export function buildDependencyGraph(instructionData) {
 }
 
 /**
- * Get node ID for a specific PE location and timestep
+ * Get node ID for a specific PE location and index_per_ii
  * Used for linking PE tiles to graph nodes
  * @param {Array} nodes - Array of graph nodes
  * @param {number} col - PE column
  * @param {number} row - PE row
- * @param {number} timestep - Timestep
+ * @param {number} indexPerII - index_per_ii (animation slide)
  * @param {number} operationIndex - Operation index (default 0)
  * @returns {string | null} Node ID or null if not found
  */
-export function getNodeIdForPE(nodes, col, row, timestep, operationIndex = 0) {
+export function getNodeIdForPE(nodes, col, row, indexPerII, operationIndex = 0) {
   const matching = nodes.filter(
-    (n) => n.pe.col === col && n.pe.row === row && n.timestep === timestep
+    (n) => n.pe.col === col && n.pe.row === row && n.indexPerII === indexPerII
   );
 
   if (matching.length > operationIndex) {
@@ -196,7 +197,7 @@ export function getNodeIdForPE(nodes, col, row, timestep, operationIndex = 0) {
 /**
  * Find the node ID that matches a given instruction
  * @param {Array} nodes - Array of graph nodes
- * @param {object} instruction - Instruction object with column, row, timestep, operations
+ * @param {object} instruction - Instruction object with column, row, index_per_ii, operations
  * @returns {string | null} Node ID or null if not found
  */
 export function findNodeIdForInstruction(nodes, instruction) {
@@ -210,18 +211,18 @@ export function findNodeIdForInstruction(nodes, instruction) {
     (n) =>
       n.pe.col === instruction.column &&
       n.pe.row === instruction.row &&
-      n.timestep === instruction.timestep &&
+      n.indexPerII === instruction.index_per_ii &&
       n.opcode === opcode
   );
 
   if (exactMatch) return exactMatch.id;
 
-  // Fall back to PE + timestep match
+  // Fall back to PE + index_per_ii match
   const peMatch = nodes.find(
     (n) =>
       n.pe.col === instruction.column &&
       n.pe.row === instruction.row &&
-      n.timestep === instruction.timestep
+      n.indexPerII === instruction.index_per_ii
   );
 
   return peMatch?.id || null;

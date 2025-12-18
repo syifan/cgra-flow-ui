@@ -53,7 +53,8 @@ for (let row = 0; row < 4; row++) {
   for (let col = 0; col < 4; col++) {
     sampleArchitecture.architecture.CGRAs[0].PEs.push({
       id: `pe-0-0-${row}-${col}`,
-      label: `PE (${row}, ${col})`,
+      // Label format is (x, y) = (col, row) for Cartesian coordinates
+      label: `PE (${col}, ${row})`,
       x: col,
       y: row,
       disabled: false,

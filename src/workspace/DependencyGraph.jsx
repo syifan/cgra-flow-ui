@@ -33,7 +33,7 @@ function truncateOpcode(opcode) {
 export default function DependencyGraph({
   instructionData,
   highlightedNodeId = null,
-  currentTimestep = null,
+  currentSlide = null,
   onNodeClick = null,
   width = 800,
   height = 500
@@ -57,44 +57,44 @@ export default function DependencyGraph({
   const layoutData = useMemo(() => {
     if (nodes.length === 0) return { nodes: [], edges: [], width: 0, height: 0 };
 
-    // Group nodes by timestep
-    const nodesByTimestep = new Map();
+    // Group nodes by index_per_ii (animation slide)
+    const nodesBySlide = new Map();
     nodes.forEach((node) => {
-      if (!nodesByTimestep.has(node.timestep)) {
-        nodesByTimestep.set(node.timestep, []);
+      if (!nodesBySlide.has(node.indexPerII)) {
+        nodesBySlide.set(node.indexPerII, []);
       }
-      nodesByTimestep.get(node.timestep).push(node);
+      nodesBySlide.get(node.indexPerII).push(node);
     });
 
-    // Sort timesteps
-    const timesteps = Array.from(nodesByTimestep.keys()).sort((a, b) => a - b);
+    // Sort slides (index_per_ii values)
+    const slides = Array.from(nodesBySlide.keys()).sort((a, b) => a - b);
 
     // Calculate positions
     let maxNodesInColumn = 0;
-    timesteps.forEach((ts) => {
-      const count = nodesByTimestep.get(ts).length;
+    slides.forEach((slide) => {
+      const count = nodesBySlide.get(slide).length;
       if (count > maxNodesInColumn) maxNodesInColumn = count;
     });
 
     const graphWidth =
-      MARGIN.left + timesteps.length * (NODE_WIDTH + NODE_PADDING_X) + MARGIN.right;
+      MARGIN.left + slides.length * (NODE_WIDTH + NODE_PADDING_X) + MARGIN.right;
     const graphHeight =
       MARGIN.top + maxNodesInColumn * (NODE_HEIGHT + NODE_PADDING_Y) + MARGIN.bottom;
 
     // Assign positions to nodes
     const positionedNodes = [];
-    timesteps.forEach((ts, tsIndex) => {
-      const nodesAtTs = nodesByTimestep.get(ts);
+    slides.forEach((slide, slideIndex) => {
+      const nodesAtSlide = nodesBySlide.get(slide);
       // Sort by PE location for consistent ordering
-      nodesAtTs.sort((a, b) => {
+      nodesAtSlide.sort((a, b) => {
         if (a.pe.row !== b.pe.row) return a.pe.row - b.pe.row;
         return a.pe.col - b.pe.col;
       });
 
-      nodesAtTs.forEach((node, nodeIndex) => {
+      nodesAtSlide.forEach((node, nodeIndex) => {
         positionedNodes.push({
           ...node,
-          x: MARGIN.left + tsIndex * (NODE_WIDTH + NODE_PADDING_X),
+          x: MARGIN.left + slideIndex * (NODE_WIDTH + NODE_PADDING_X),
           y: MARGIN.top + nodeIndex * (NODE_HEIGHT + NODE_PADDING_Y)
         });
       });
@@ -120,7 +120,7 @@ export default function DependencyGraph({
       edges: positionedEdges,
       width: graphWidth,
       height: graphHeight,
-      timesteps
+      slides
     };
   }, [nodes, edges]);
 
@@ -147,11 +147,11 @@ export default function DependencyGraph({
       });
     svg.call(zoom);
 
-    // Draw timestep markers
-    const timestepLabels = g.append('g').attr('class', 'timestep-labels');
-    layoutData.timesteps?.forEach((ts, i) => {
+    // Draw slide (index_per_ii) markers
+    const slideLabels = g.append('g').attr('class', 'slide-labels');
+    layoutData.slides?.forEach((slide, i) => {
       const x = MARGIN.left + i * (NODE_WIDTH + NODE_PADDING_X) + NODE_WIDTH / 2;
-      timestepLabels
+      slideLabels
         .append('text')
         .attr('x', x)
         .attr('y', MARGIN.top - 15)
@@ -159,7 +159,7 @@ export default function DependencyGraph({
         .attr('font-size', 10)
         .attr('font-family', '"Fira Code", monospace')
         .attr('fill', '#94a3b8')
-        .text(`t=${ts}`);
+        .text(`II=${slide}`);
     });
 
     // Draw edges first (behind nodes)
@@ -171,8 +171,8 @@ export default function DependencyGraph({
       const targetX = edge.targetNode.x;
       const targetY = edge.targetNode.y + NODE_HEIGHT / 2;
 
-      // Determine if edge goes forward or backward in time
-      const isForward = edge.targetNode.timestep >= edge.sourceNode.timestep;
+      // Determine if edge goes forward or backward in the slide order
+      const isForward = edge.targetNode.indexPerII >= edge.sourceNode.indexPerII;
 
       // Create curved path
       const midX = (sourceX + targetX) / 2;
@@ -285,7 +285,7 @@ export default function DependencyGraph({
       const node = layoutData.nodes.find((n) => n.id === nodeId);
       if (!node) return;
 
-      const tooltipContent = `${node.opcode}\nt=${node.timestep} PE(${node.pe.col},${node.pe.row})\nsrc: ${node.srcOperands.join(', ') || 'none'}\ndst: ${node.dstOperands.join(', ') || 'none'}`;
+      const tooltipContent = `${node.opcode}\nII=${node.indexPerII} PE(${node.pe.col},${node.pe.row})\nsrc: ${node.srcOperands.join(', ') || 'none'}\ndst: ${node.dstOperands.join(', ') || 'none'}`;
 
       tooltip
         .style('opacity', 1)
@@ -304,7 +304,7 @@ export default function DependencyGraph({
       const node = layoutData.nodes.find((n) => n.id === nodeId);
       if (node && onNodeClick) {
         onNodeClick({
-          timestep: node.timestep,
+          indexPerII: node.indexPerII,
           pe: { col: node.pe.col, row: node.pe.row },
           opcode: node.opcode,
           nodeId: node.id
@@ -317,7 +317,7 @@ export default function DependencyGraph({
     };
   }, [layoutData, width, height, onNodeClick]);
 
-  // Apply highlighting when highlightedNodeId or currentTimestep changes
+  // Apply highlighting when highlightedNodeId or currentSlide changes
   useEffect(() => {
     if (!svgRef.current) return;
 
@@ -328,11 +328,11 @@ export default function DependencyGraph({
     if (nodesGroup.empty()) return;
 
     const hasHoverHighlight = highlightedNodeId !== null;
-    const hasTimestepHighlight = currentTimestep !== null;
+    const hasSlideHighlight = currentSlide !== null;
 
-    // Get nodes at current timestep for timestep highlighting
-    const nodesAtCurrentTimestep = hasTimestepHighlight
-      ? new Set(layoutData.nodes.filter((n) => n.timestep === currentTimestep).map((n) => n.id))
+    // Get nodes at current slide (index_per_ii) for slide highlighting
+    const nodesAtCurrentSlide = hasSlideHighlight
+      ? new Set(layoutData.nodes.filter((n) => n.indexPerII === currentSlide).map((n) => n.id))
       : new Set();
 
     // Apply node highlighting
@@ -342,7 +342,7 @@ export default function DependencyGraph({
 
       // Determine if this node should be highlighted
       const isHoverHighlighted = hasHoverHighlight && nodeId === highlightedNodeId;
-      const isTimestepHighlighted = hasTimestepHighlight && nodesAtCurrentTimestep.has(nodeId);
+      const isSlideHighlighted = hasSlideHighlight && nodesAtCurrentSlide.has(nodeId);
 
       if (hasHoverHighlight) {
         // Hover takes priority - golden glow for hovered node
@@ -357,9 +357,9 @@ export default function DependencyGraph({
           nodeG.style('opacity', 0.3);
           nodeG.select('rect').attr('stroke', '#1e293b').attr('stroke-width', 1).style('filter', null);
         }
-      } else if (hasTimestepHighlight) {
-        // Timestep highlighting - cyan glow for nodes at current timestep
-        if (isTimestepHighlighted) {
+      } else if (hasSlideHighlight) {
+        // Slide highlighting - cyan glow for nodes at current slide
+        if (isSlideHighlighted) {
           nodeG.style('opacity', 1);
           nodeG
             .select('rect')
@@ -386,16 +386,16 @@ export default function DependencyGraph({
           edgesGroup.selectAll('path').filter((_, idx) => idx === i).style('opacity', 1);
         }
       });
-    } else if (hasTimestepHighlight) {
-      // Highlight edges where both source and target are at/before current timestep
+    } else if (hasSlideHighlight) {
+      // Highlight edges where both source and target are at/before current slide
       edgesGroup.selectAll('path').each(function (_, i) {
         const edge = layoutData.edges[i];
         if (!edge) return;
-        const sourceInScope = edge.sourceNode.timestep <= currentTimestep;
-        const targetInScope = edge.targetNode.timestep <= currentTimestep;
+        const sourceInScope = edge.sourceNode.indexPerII <= currentSlide;
+        const targetInScope = edge.targetNode.indexPerII <= currentSlide;
         const bothAtCurrent =
-          nodesAtCurrentTimestep.has(edge.sourceNode.id) ||
-          nodesAtCurrentTimestep.has(edge.targetNode.id);
+          nodesAtCurrentSlide.has(edge.sourceNode.id) ||
+          nodesAtCurrentSlide.has(edge.targetNode.id);
 
         if (bothAtCurrent && sourceInScope && targetInScope) {
           d3.select(this).style('opacity', 0.8);
@@ -407,7 +407,7 @@ export default function DependencyGraph({
       // No highlighting - reset edges
       edgesGroup.selectAll('path').style('opacity', 0.6);
     }
-  }, [highlightedNodeId, currentTimestep, layoutData.nodes, layoutData.edges]);
+  }, [highlightedNodeId, currentSlide, layoutData.nodes, layoutData.edges]);
 
   // Update URL for maximize state
   useEffect(() => {
@@ -554,7 +554,7 @@ export default function DependencyGraph({
 DependencyGraph.propTypes = {
   instructionData: PropTypes.object,
   highlightedNodeId: PropTypes.string,
-  currentTimestep: PropTypes.number,
+  currentSlide: PropTypes.number,
   onNodeClick: PropTypes.func,
   width: PropTypes.number,
   height: PropTypes.number

@@ -1,13 +1,13 @@
 import yaml from 'js-yaml';
-import { functionUnitsToInstructions, getAllInstructions } from '../../src/shared/functionalUnitMapping.js';
+import { functionUnitsToOperationNames, getAllFunctionUnits } from '../../src/shared/functionalUnitMapping.js';
 
 // Default values used when not specified in the input JSON
 const DEFAULT_PER_CGRA_ROWS = 4;
 const DEFAULT_PER_CGRA_COLUMNS = 4;
 const DEFAULT_CTRL_MEM_ITEMS = 20;
 
-// All supported instructions (derived from function unit mapping)
-const SUPPORTED_OPERATIONS = getAllInstructions();
+// All supported operations (function unit names used by the backend)
+const SUPPORTED_OPERATIONS = getAllFunctionUnits();
 
 function normalizeOperations(operations = []) {
   const opSet = new Set(operations);
@@ -16,16 +16,16 @@ function normalizeOperations(operations = []) {
 
 /**
  * Maps functional unit booleans to operation string list.
- * Uses the function unit to instruction mapping.
+ * Returns function unit names (operation names expected by the backend).
  * @param {Object} tileFunctionalUnits - Object with function unit names as keys, booleans as values
- * @returns {Array<string>} - Array of enabled instruction names
+ * @returns {Array<string>} - Array of enabled operation names (function unit names)
  */
 function functionalUnitsToOperations(tileFunctionalUnits) {
   if (!tileFunctionalUnits || typeof tileFunctionalUnits !== 'object') {
     return [];
   }
 
-  return functionUnitsToInstructions(tileFunctionalUnits);
+  return functionUnitsToOperationNames(tileFunctionalUnits);
 }
 
 /**

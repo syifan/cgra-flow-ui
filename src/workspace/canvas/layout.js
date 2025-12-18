@@ -104,27 +104,33 @@ function derivePeLabel(pe, gridColumn, dataRow, rows) {
   const displayColumn = ensureNumber(pe.x);
   const displayRow = ensureNumber(pe.y);
   const bottomOriginRow = rows - 1 - dataRow;
-  const topOriginLabel = `PE (${displayRow}, ${displayColumn})`;
-  const topOriginLabelTight = `PE (${displayRow},${displayColumn})`;
+  // Label format is (x, y) = (column, row) for Cartesian coordinates
+  const cartesianLabel = `PE (${displayColumn}, ${displayRow})`;
+  const cartesianLabelTight = `PE (${displayColumn},${displayRow})`;
+  // Legacy formats for backwards compatibility detection
+  const legacyRowColLabel = `PE (${displayRow}, ${displayColumn})`;
+  const legacyRowColLabelTight = `PE (${displayRow},${displayColumn})`;
   const bottomOriginLabel = `PE (${displayColumn}, ${bottomOriginRow})`;
   const bottomOriginLabelTight = `PE (${displayColumn},${bottomOriginRow})`;
-  const gridAlignedLabel = `PE (${dataRow}, ${gridColumn})`;
-  const gridAlignedLabelTight = `PE (${dataRow},${gridColumn})`;
+  const gridAlignedLabel = `PE (${gridColumn}, ${dataRow})`;
+  const gridAlignedLabelTight = `PE (${gridColumn},${dataRow})`;
   const normalizedLabel = normalizeLabelText(pe.label);
   const isDefaultLabel =
     !normalizedLabel ||
-    normalizedLabel === normalizeLabelText(topOriginLabel) ||
-    normalizedLabel === normalizeLabelText(topOriginLabelTight) ||
+    normalizedLabel === normalizeLabelText(cartesianLabel) ||
+    normalizedLabel === normalizeLabelText(cartesianLabelTight) ||
+    normalizedLabel === normalizeLabelText(legacyRowColLabel) ||
+    normalizedLabel === normalizeLabelText(legacyRowColLabelTight) ||
     normalizedLabel === normalizeLabelText(bottomOriginLabel) ||
     normalizedLabel === normalizeLabelText(bottomOriginLabelTight) ||
     normalizedLabel === normalizeLabelText(gridAlignedLabel) ||
     normalizedLabel === normalizeLabelText(gridAlignedLabelTight);
 
-  const displayLabel = isDefaultLabel ? topOriginLabel : pe.label || topOriginLabel;
+  const displayLabel = isDefaultLabel ? cartesianLabel : pe.label || cartesianLabel;
 
   return {
     displayLabel,
-    displayLabelLines: isDefaultLabel ? ['PE', `(${displayRow}, ${displayColumn})`] : null,
+    displayLabelLines: isDefaultLabel ? ['PE', `(${displayColumn}, ${displayRow})`] : null,
     displayColumn,
     displayRow
   };

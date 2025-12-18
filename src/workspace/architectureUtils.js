@@ -68,7 +68,8 @@ const normalizeFunctionalUnits = (units = {}) => ({
 const createPeId = (cgraRow, cgraColumn, row, column) =>
   `pe-${cgraRow}-${cgraColumn}-${row}-${column}`;
 
-const createPeLabel = (row, column) => `PE (${row}, ${column})`;
+// Label format is (x, y) = (column, row) for Cartesian coordinates
+const createPeLabel = (row, column) => `PE (${column}, ${row})`;
 
 export const buildProcessingElements = ({
   rows,
