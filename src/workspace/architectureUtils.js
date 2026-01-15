@@ -3,59 +3,15 @@ import {
   reconcilePeConnectionsAfterCgraResize,
   sanitizePeConnections
 } from './peConnections.js';
+import { DEFAULT_FUNCTION_UNITS } from '../shared/functionalUnitMapping.js';
 
 const normalizeLabelText = (raw) => {
   if (raw == null) return '';
   return String(raw).replace(/\s+/g, ' ').trim();
 };
 
-// Functional units using MLIR operation names directly.
-// Operations are grouped by category for clarity.
-const FUNCTIONAL_UNIT_DEFAULTS = {
-  // Arithmetic
-  add: true,
-  mul: true,
-  div: true,
-  rem: true,
-  shl: true,
-  // Floating point
-  fadd: true,
-  fmul: true,
-  fdiv: true,
-  fmul_fadd: true,
-  // Memory
-  load: true,
-  store: true,
-  gep: true,
-  memset: true,
-  // Control
-  phi: true,
-  sel: true,
-  not: true,
-  icmp: true,
-  return: true,
-  br: true,
-  cond_br: true,
-  // Data movement
-  data_mov: true,
-  ctrl_mov: true,
-  reserve: true,
-  data: true,
-  // Grants
-  grant_once: true,
-  grant_predicate: true,
-  // Type conversion
-  cast: true,
-  zext: true,
-  sext: true,
-  // Other
-  constant: true,
-  mac: true,
-  // Vector
-  vadd: true,
-  vmul: true,
-  vector: true
-};
+// Use the shared functional unit defaults
+const FUNCTIONAL_UNIT_DEFAULTS = DEFAULT_FUNCTION_UNITS;
 
 const ensurePositiveInt = (value, fallback = 1) => {
   const numeric = typeof value === 'number' ? value : Number(value);
