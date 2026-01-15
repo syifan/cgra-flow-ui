@@ -8,73 +8,80 @@
  */
 
 // Function unit categories for UI organization
-// These names match the backend's expected operation names (kFunctionUnitsToOperations)
 export const FUNCTIONAL_UNIT_CATEGORIES = {
-  'Arithmetic': ['constant', 'add', 'mul', 'div'],
-  'Floating Point': ['fadd', 'fmul', 'fdiv'],
-  'Memory': ['mem', 'mem_indexed', 'alloca'],
+  'Integer Arithmetic': ['alu', 'mul', 'div', 'shift', 'mac'],
   'Logic': ['logic', 'cmp', 'sel'],
-  'Type Conversion': ['type_conv'],
-  'Vector': ['vfmul'],
-  'Fused': ['fadd_fadd', 'fmul_fadd'],
-  'Shift': ['shift'],
-  'Control Flow': ['return', 'phi', 'loop_control'],
-  'Predicate': ['grant']
+  'Floating Point': ['fadd', 'fmul', 'fdiv', 'fmul_fadd', 'fadd_fadd'],
+  'Memory': ['mem', 'mem_indexed', 'alloca', 'gep', 'memset'],
+  'Type': ['type_conv', 'constant'],
+  'Control': ['phi', 'return', 'branch', 'loop_control'],
+  'Data Movement': ['data_mov', 'ctrl_mov', 'reserve', 'data'],
+  'Grants': ['grant'],
+  'Vector': ['vadd', 'vmul', 'vfmul', 'vector']
 };
 
 // Complete mapping from function unit to backend instructions
-// Must match kFunctionUnitsToOperations in Architecture.cpp
 export const FUNCTION_UNIT_TO_INSTRUCTIONS = {
-  // Arithmetic operations
-  constant: ['constant'],
-  add: ['add', 'sub'],
+  // Integer Arithmetic
+  alu: ['add', 'sub'],
   mul: ['mul'],
   div: ['div', 'rem'],
+  shift: ['shl'],
+  mac: ['mac'],
 
-  // Floating-point operations
-  fadd: ['fadd', 'fsub'],
-  fmul: ['fmul'],
-  fdiv: ['fdiv'],
-
-  // Memory operations
-  mem: ['load', 'store'],
-  mem_indexed: ['load_indexed', 'store_indexed'],
-  alloca: ['alloca'],
-
-  // Logical operations
+  // Logic
   logic: ['or', 'not', 'and', 'xor'],
   cmp: ['icmp', 'fcmp'],
   sel: ['sel'],
 
-  // Type conversion operations
-  type_conv: ['cast', 'sext', 'zext'],
-
-  // Vector operations
-  vfmul: ['vfmul'],
-
-  // Fused operations
-  fadd_fadd: ['fadd_fadd'],
+  // Floating Point
+  fadd: ['fadd', 'fsub'],
+  fmul: ['fmul'],
+  fdiv: ['fdiv'],
   fmul_fadd: ['fmul_fadd'],
+  fadd_fadd: ['fadd_fadd'],
 
-  // Shift operations
-  shift: ['shl'],
+  // Memory
+  mem: ['load', 'store'],
+  mem_indexed: ['load_indexed', 'store_indexed'],
+  alloca: ['alloca'],
+  gep: ['gep'],
+  memset: ['memset'],
 
-  // Control flow operations
-  return: ['return'],
+  // Type
+  type_conv: ['cast', 'sext', 'zext'],
+  constant: ['constant'],
+
+  // Control
   phi: ['phi'],
+  return: ['return'],
+  branch: ['br', 'cond_br'],
   loop_control: ['loop_control'],
 
-  // Predicate operations
-  grant: ['grant_predicate', 'grant_once', 'grant_always']
+  // Data Movement
+  data_mov: ['data_mov'],
+  ctrl_mov: ['ctrl_mov'],
+  reserve: ['reserve'],
+  data: ['data'],
+
+  // Grants
+  grant: ['grant_predicate', 'grant_once', 'grant_always'],
+
+  // Vector
+  vadd: ['vadd'],
+  vmul: ['vmul'],
+  vfmul: ['vfmul'],
+  vector: ['vector']
 };
 
 // Metadata for UI display
 export const FUNCTION_UNIT_METADATA = {
   // Integer Arithmetic
-  add: { displayName: 'Integer ALU', description: 'Integer arithmetic (add, sub)' },
+  alu: { displayName: 'Integer ALU', description: 'Integer arithmetic (add, sub)' },
   mul: { displayName: 'Integer Multiplier', description: 'Integer multiplication' },
   div: { displayName: 'Integer Divider', description: 'Integer division and remainder' },
   shift: { displayName: 'Shifter', description: 'Bit shift operations' },
+  mac: { displayName: 'MAC Unit', description: 'Multiply-accumulate' },
 
   // Logic
   logic: { displayName: 'Logic Unit', description: 'Bitwise logic (and, or, xor, not)' },
@@ -92,6 +99,8 @@ export const FUNCTION_UNIT_METADATA = {
   mem: { displayName: 'Memory Unit', description: 'Load/store operations' },
   mem_indexed: { displayName: 'Indexed Memory', description: 'Indexed memory access' },
   alloca: { displayName: 'Stack Allocator', description: 'Stack allocation' },
+  gep: { displayName: 'Address Calculator', description: 'Address computation (GEP)' },
+  memset: { displayName: 'Memory Set', description: 'Memory initialization' },
 
   // Type
   type_conv: { displayName: 'Type Converter', description: 'Type casting/extension' },
@@ -100,22 +109,33 @@ export const FUNCTION_UNIT_METADATA = {
   // Control
   phi: { displayName: 'Phi Node', description: 'SSA merge point' },
   return: { displayName: 'Return Unit', description: 'Function return' },
+  branch: { displayName: 'Branch Unit', description: 'Control flow branching' },
   loop_control: { displayName: 'Loop Control', description: 'Loop iteration control' },
+
+  // Data Movement
+  data_mov: { displayName: 'Data Mover', description: 'Data transfer between PEs' },
+  ctrl_mov: { displayName: 'Control Mover', description: 'Control signal routing' },
+  reserve: { displayName: 'Reservation', description: 'Resource reservation' },
+  data: { displayName: 'Data Channel', description: 'Data streaming' },
 
   // Grants
   grant: { displayName: 'Grant Unit', description: 'Token/permission management' },
 
   // Vector
-  vfmul: { displayName: 'Vector FP Mul', description: 'Vector FP multiply' }
+  vadd: { displayName: 'Vector ALU', description: 'Vector addition' },
+  vmul: { displayName: 'Vector Multiplier', description: 'Vector multiplication' },
+  vfmul: { displayName: 'Vector FP Mul', description: 'Vector FP multiply' },
+  vector: { displayName: 'Vector Generic', description: 'Generic vector ops' }
 };
 
 // Default enabled function units for new PEs (all enabled by default)
 export const DEFAULT_FUNCTION_UNITS = {
   // Integer Arithmetic
-  add: true,
+  alu: true,
   mul: true,
   div: true,
   shift: true,
+  mac: true,
 
   // Logic
   logic: true,
@@ -133,6 +153,8 @@ export const DEFAULT_FUNCTION_UNITS = {
   mem: true,
   mem_indexed: true,
   alloca: true,
+  gep: true,
+  memset: true,
 
   // Type
   type_conv: true,
@@ -141,13 +163,23 @@ export const DEFAULT_FUNCTION_UNITS = {
   // Control
   phi: true,
   return: true,
+  branch: true,
   loop_control: true,
+
+  // Data Movement
+  data_mov: true,
+  ctrl_mov: true,
+  reserve: true,
+  data: true,
 
   // Grants
   grant: true,
 
   // Vector
-  vfmul: true
+  vadd: true,
+  vmul: true,
+  vfmul: true,
+  vector: true
 };
 
 /**
@@ -169,29 +201,6 @@ export function functionUnitsToInstructions(functionalUnits) {
   }
 
   return instructions;
-}
-
-/**
- * Convert function units configuration to a list of enabled operation names.
- * These operation names are what the backend expects (e.g., 'add', 'logic', 'mem').
- * @param {Object} functionalUnits - Object with function unit names as keys, booleans as values
- * @returns {Array<string>} - Array of enabled operation names for the backend
- */
-export function functionUnitsToOperationNames(functionalUnits) {
-  if (!functionalUnits || typeof functionalUnits !== 'object') {
-    return [];
-  }
-
-  const operations = [];
-
-  for (const [unitName, enabled] of Object.entries(functionalUnits)) {
-    // Only include if enabled and it's a valid function unit
-    if (enabled === true && FUNCTION_UNIT_TO_INSTRUCTIONS[unitName]) {
-      operations.push(unitName);
-    }
-  }
-
-  return operations;
 }
 
 /**
