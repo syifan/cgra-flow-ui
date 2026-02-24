@@ -1,20 +1,71 @@
 schema: spec-driven
 
-# Project context (optional)
-# This is shown to AI when creating artifacts.
-# Add your tech stack, conventions, style guides, domain knowledge, etc.
-# Example:
-#   context: |
-#     Tech stack: TypeScript, React, Node.js
-#     We use conventional commits
-#     Domain: e-commerce platform
+# Project context configuration
+# This configuration is presented to the AI to help create more accurate work artifacts
 
-# Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
-#   rules:
-#     proposal:
-#       - Keep proposals under 500 words
-#       - Always include a "Non-goals" section
-#     tasks:
-#       - Break tasks into chunks of max 2 hours
+context: |
+  ## Project Overview
+  CGRA Flow UI is a frontend application for CGRA (Coarse-Grained Reconfigurable Architecture) flow design and visualization.
+  
+  ## Tech Stack
+  - **Frontend Framework**: React 19 + React Router 7
+  - **UI Components**: MUI (Material-UI) 7.x
+  - **Styling**: Emotion (CSS-in-JS)
+  - **Backend Services**: Supabase (Auth, Database, Storage)
+  - **Data Visualization**: D3.js 7.x
+  - **Layout Management**: FlexLayout React (dockable panels)
+  - **Build Tool**: Vite 7.x
+  - **Testing Framework**: Playwright (E2E)
+  - **Node.js Version**: ^20.19.0 || >=22.12.0
+  
+  ## Project Structure
+  ```
+  src/
+  ├── App.jsx              # Main app entry, routing config
+  ├── Workspace.jsx        # Workspace main component
+  ├── main.jsx             # React entry point
+  ├── contexts/            # React Context (Auth, Notification)
+  ├── lib/                 # Utility libraries
+  ├── pages/               # Page components
+  │   ├── DashboardPage.jsx
+  │   ├── LandingPage.jsx
+  │   ├── LoginPage.jsx
+  │   └── SignupPage.jsx
+  ├── shared/              # Shared modules
+  └── workspace/           # Core workspace modules
+      ├── canvas/          # Canvas-related components
+      ├── DesignTab.jsx    # Design tab
+      ├── LayoutTab.jsx    # Layout tab
+      ├── MappingTab.jsx   # Mapping tab
+      ├── VerificationTab.jsx  # Verification tab
+      ├── MainCanvas.jsx   # Main canvas component
+      ├── DotGraph.jsx     # DOT graph rendering
+      └── PropertyInspector.jsx  # Property inspector
+  ```
+  
+  ## Core Domain Concepts
+  - **PE (Processing Element)**: The basic computational unit of CGRA architecture
+  - **Architecture**: CGRA architecture definition, including PE arrangement and connections
+  - **Mapping**: The process of mapping a computation graph onto a CGRA architecture
+  - **Benchmark**: Performance benchmarks for evaluating mapping results
+  
+  ## Code Conventions
+  - Use functional components and React Hooks
+  - Component files use PascalCase naming
+  - Utility files use camelCase naming
+  - Use ES6 module syntax
+  - Styling via MUI sx prop or styled API
+
+# Artifact rules configuration
+rules:
+  proposal:
+    - Proposals should include clear background and objectives
+    - Must include a "Non-goals" section
+    - Keep concise, under 500 words
+  tasks:
+    - Break tasks into manageable chunks, each estimated at no more than 2 hours
+    - Clearly define task dependencies
+    - Task descriptions should be specific and actionable
+  spec:
+    - Specs should include data structure definitions and interface descriptions
+    - Use TypeScript-style type definitions (even though the project uses JSX)

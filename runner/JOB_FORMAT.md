@@ -174,7 +174,7 @@ RUNNER_MODE=fake
 RUNNER_MODE=real
 ```
 - Executes actual mapping in Docker
-- Requires `cgra-flow:latest` Docker image
+- Requires `cgra/cgra-flow:ui` Docker image
 - Creates job directories with real outputs
 - Runs llvm-lit tests for each benchmark
 
@@ -192,7 +192,7 @@ RUNNER_MODE=fake                  # 'fake' or 'real'
 
 # Real mode config
 JOBS_DIR=./jobs                   # Job output directory
-DOCKER_IMAGE=cgra-flow:latest     # Docker image name
+DOCKER_IMAGE=cgra/cgra-flow:ui     # Docker image name
 DOCKER_TIMEOUT_MS=600000          # Per-benchmark timeout (10 min)
 ```
 
@@ -202,7 +202,7 @@ To run in real mode, you need the `cgra-flow` Docker image:
 
 ```bash
 cd cgra-flow-docker
-docker build -t cgra-flow:latest .
+docker build -t cgra/cgra-flow:ui .
 ```
 
 The image must include:
@@ -243,8 +243,8 @@ Common errors and solutions:
 
 **Docker image not found:**
 ```
-Error: Docker image cgra-flow:latest not found
-Solution: Build the image with docker build -t cgra-flow:latest .
+Error: Docker image cgra/cgra-flow:ui not found
+Solution: Build the image with docker build -t cgra/cgra-flow:ui .
 ```
 
 **Timeout errors:**

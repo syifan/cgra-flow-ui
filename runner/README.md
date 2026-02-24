@@ -48,7 +48,7 @@ POLL_INTERVAL_MS=5000
 
 # Real mode settings (required for RUNNER_MODE=real)
 JOBS_DIR=./jobs
-DOCKER_IMAGE=cgra-flow:latest
+DOCKER_IMAGE=cgra/cgra-flow:ui
 DOCKER_TIMEOUT_MS=600000
 ```
 

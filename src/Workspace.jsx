@@ -40,7 +40,7 @@ import {
   VerificationTab,
   LayoutTab,
   BenchmarkSelector
-} from './workspace';
+} from './workspace/index.js';
 
 const NAVBAR_HEIGHT = 56;
 
