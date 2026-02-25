@@ -5,6 +5,7 @@ import path from "path";
 test.describe("Mapping job lifecycle", () => {
   test("completes full mapping job cycle: queued -> running -> success", async ({
     workspacePage: page,
+    projectId,
   }) => {
     // Increase timeout for this test since the fake runner takes 10-30 seconds
     test.setTimeout(120000);
@@ -32,16 +33,27 @@ test.describe("Mapping job lifecycle", () => {
       // Click Start Mapping button
       await page.getByRole("button", { name: "Start Mapping" }).click();
 
-      // Handle the "Missing Functional Units" confirmation dialog
-      // The test architecture doesn't have all ops required by FIR benchmark
+      // The architecture may or may not require confirmation depending on enabled units.
+      // Support both flows:
+      // 1) Missing units dialog appears and requires confirmation
+      // 2) Job queues directly without a dialog
       const confirmDialog = page.getByRole("dialog", { name: "Missing Functional Units" });
-      await expect(confirmDialog).toBeVisible({ timeout: 5000 });
-      await confirmDialog.getByRole("button", { name: "Start Mapping" }).click();
+      const queuedToast = page.locator("text=Mapping job queued successfully");
+      const firstSignal = await Promise.race([
+        confirmDialog
+          .waitFor({ state: "visible", timeout: 5000 })
+          .then(() => "confirm"),
+        queuedToast
+          .waitFor({ state: "visible", timeout: 5000 })
+          .then(() => "queued"),
+      ]).catch(() => null);
+
+      if (firstSignal === "confirm") {
+        await confirmDialog.getByRole("button", { name: "Start Mapping" }).click();
+      }
 
       // Wait for success notification
-      await expect(
-        page.locator("text=Mapping job queued successfully")
-      ).toBeVisible({ timeout: 5000 });
+      await expect(queuedToast).toBeVisible({ timeout: 5000 });
 
       // ===== PHASE 1: Verify QUEUED state (before runner starts) =====
 
@@ -73,6 +85,7 @@ test.describe("Mapping job lifecycle", () => {
         env: {
           ...process.env,
           POLL_INTERVAL_MS: "1000", // Poll every 1 second for faster tests
+          RUNNER_PROJECT_ID: projectId, // Isolate test runner from global queue backlog
         },
       });
 
