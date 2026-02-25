@@ -245,61 +245,6 @@ function AIAssistantPanel() {
         </Collapse>
       </Box>
 
-      {/* Action Buttons */}
-      <Box
-        sx={{
-          px: 2.5,
-          py: 2,
-          borderBottom: '1px solid',
-          borderColor: 'rgba(148,163,184,0.3)',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 1
-        }}
-      >
-        <Button
-          variant="contained"
-          size="small"
-          fullWidth
-          onClick={handleGenerateFromKernel}
-          sx={{
-            textTransform: 'none',
-            bgcolor: '#2E7D32',
-            '&:hover': { bgcolor: '#1B5E20' }
-          }}
-        >
-          Generate CGRA from Given Kernel
-        </Button>
-        <Button
-          variant="contained"
-          size="small"
-          fullWidth
-          disabled={!hasRecommendedConfig}
-          onClick={() => setConfigDialogOpen(true)}
-          sx={{
-            textTransform: 'none',
-            bgcolor: '#1565C0',
-            '&:hover': { bgcolor: '#0D47A1' },
-            '&:disabled': { bgcolor: 'rgba(21, 101, 192, 0.5)' }
-          }}
-        >
-          Apply AI-Generated CGRA Design
-        </Button>
-        <Button
-          variant="contained"
-          size="small"
-          fullWidth
-          onClick={handleAnalyzeMapping}
-          sx={{
-            textTransform: 'none',
-            bgcolor: '#F57C00',
-            '&:hover': { bgcolor: '#E65100' }
-          }}
-        >
-          Analyze CGRA Mapping Report
-        </Button>
-      </Box>
-
       {/* Messages Area */}
       <Box
         sx={{
@@ -356,6 +301,62 @@ function AIAssistantPanel() {
             </Paper>
           ))
         )}
+      </Box>
+
+      {/* Action Buttons */}
+      <Box
+        sx={{
+          px: 2.5,
+          py: 2,
+          borderTop: '1px solid',
+          borderBottom: '1px solid',
+          borderColor: 'rgba(148,163,184,0.3)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 1
+        }}
+      >
+        <Button
+          variant="contained"
+          size="small"
+          fullWidth
+          onClick={handleGenerateFromKernel}
+          sx={{
+            textTransform: 'none',
+            bgcolor: '#2E7D32',
+            '&:hover': { bgcolor: '#1B5E20' }
+          }}
+        >
+          Generate CGRA from Given Kernel
+        </Button>
+        <Button
+          variant="contained"
+          size="small"
+          fullWidth
+          disabled={!hasRecommendedConfig}
+          onClick={() => setConfigDialogOpen(true)}
+          sx={{
+            textTransform: 'none',
+            bgcolor: '#1565C0',
+            '&:hover': { bgcolor: '#0D47A1' },
+            '&:disabled': { bgcolor: 'rgba(21, 101, 192, 0.5)' }
+          }}
+        >
+          Apply AI-Generated CGRA Design
+        </Button>
+        <Button
+          variant="contained"
+          size="small"
+          fullWidth
+          onClick={handleAnalyzeMapping}
+          sx={{
+            textTransform: 'none',
+            bgcolor: '#F57C00',
+            '&:hover': { bgcolor: '#E65100' }
+          }}
+        >
+          Analyze CGRA Mapping Report
+        </Button>
       </Box>
 
       {/* Input Area */}
