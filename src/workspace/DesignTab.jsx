@@ -1,7 +1,7 @@
 import { Box } from '@mui/material';
 import PropTypes from 'prop-types';
 import MainCanvas from './MainCanvas';
-import PropertyInspector from './PropertyInspector';
+import SidePanel from './SidePanel';
 
 function DesignTab({
   architecture,
@@ -35,17 +35,17 @@ function DesignTab({
         />
       </Box>
 
-      {/* Properties Panel - 30% */}
+      {/* Side Panel - 30% */}
       <Box
         sx={{
           flex: '0 0 30%',
           height: '100%',
-          overflow: 'auto',
+          overflow: 'hidden',
           borderLeft: '1px solid',
           borderColor: 'divider'
         }}
       >
-        <PropertyInspector
+        <SidePanel
           architecture={architecture}
           selection={selection}
           onPropertyChange={onPropertyChange}
