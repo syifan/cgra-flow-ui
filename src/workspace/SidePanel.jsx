@@ -8,6 +8,8 @@ function SidePanel({
   architecture,
   selection,
   onPropertyChange,
+  onApplyAIConfig,
+  mappingInfo,
   disabled
 }) {
   const [activeTab, setActiveTab] = useState(0);
@@ -75,7 +77,13 @@ function SidePanel({
             disabled={disabled}
           />
         )}
-        {activeTab === 1 && <AIAssistantPanel />}
+        {activeTab === 1 && (
+          <AIAssistantPanel
+            architecture={architecture}
+            onApplyConfig={onApplyAIConfig}
+            mappingInfo={mappingInfo}
+          />
+        )}
       </Box>
     </Box>
   );
@@ -85,6 +93,8 @@ SidePanel.propTypes = {
   architecture: PropTypes.object,
   selection: PropTypes.object,
   onPropertyChange: PropTypes.func.isRequired,
+  onApplyAIConfig: PropTypes.func,
+  mappingInfo: PropTypes.object,
   disabled: PropTypes.bool
 };
 

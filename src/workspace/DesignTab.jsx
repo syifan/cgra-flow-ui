@@ -8,6 +8,8 @@ function DesignTab({
   selection,
   onSelectionChange,
   onPropertyChange,
+  onApplyAIConfig,
+  mappingInfo,
   disabled
 }) {
   return (
@@ -49,6 +51,8 @@ function DesignTab({
           architecture={architecture}
           selection={selection}
           onPropertyChange={onPropertyChange}
+          onApplyAIConfig={onApplyAIConfig}
+          mappingInfo={mappingInfo}
           disabled={disabled}
         />
       </Box>
@@ -61,6 +65,8 @@ DesignTab.propTypes = {
   selection: PropTypes.object,
   onSelectionChange: PropTypes.func.isRequired,
   onPropertyChange: PropTypes.func.isRequired,
+  onApplyAIConfig: PropTypes.func,
+  mappingInfo: PropTypes.object,
   disabled: PropTypes.bool
 };
 

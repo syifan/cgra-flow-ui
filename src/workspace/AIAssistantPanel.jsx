@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import {
   Box,
   TextField,
@@ -16,7 +16,9 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  Stack
+  Stack,
+  CircularProgress,
+  Alert
 } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import ClearIcon from '@mui/icons-material/Clear';
@@ -25,28 +27,10 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
+import { callOpenAICompatibleApi, AI_PROVIDERS } from './services/aiApiService';
+import { extractCgraConfig } from './services/aiConfigExtractor';
 
-// AI Provider configuration matching Python reference implementation
-const AI_PROVIDERS = {
-  OpenAI: {
-    models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'],
-    defaultModel: 'gpt-4o-mini'
-  },
-  Gemini: {
-    models: ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'],
-    defaultModel: 'gemini-2.0-flash'
-  },
-  Qwen: {
-    models: ['qwen-plus', 'qwen-turbo', 'qwen-max', 'qwen-long'],
-    defaultModel: 'qwen-plus'
-  },
-  DeepSeek: {
-    models: ['deepseek-chat', 'deepseek-reasoner'],
-    defaultModel: 'deepseek-chat'
-  }
-};
-
-function AIAssistantPanel() {
+function AIAssistantPanel({ onApplyConfig, architecture, mappingInfo }) {
   // Configuration state
   const [provider, setProvider] = useState('OpenAI');
   const [apiKey, setApiKey] = useState('');
@@ -56,11 +40,17 @@ function AIAssistantPanel() {
 
   // Chat state
   const [inputValue, setInputValue] = useState('');
-  const [messages] = useState([]);
+  const [messages, setMessages] = useState([]);
+  const [isThinking, setIsThinking] = useState(false);
+  const chatHistoryRef = useRef([]);
 
   // Config mode dialog state
   const [configDialogOpen, setConfigDialogOpen] = useState(false);
-  const [hasRecommendedConfig, setHasRecommendedConfig] = useState(false);
+  const [lastRecommendedConfigs, setLastRecommendedConfigs] = useState(null);
+
+  // Kernel description dialog state
+  const [kernelDialogOpen, setKernelDialogOpen] = useState(false);
+  const [kernelDescription, setKernelDescription] = useState('');
 
   // Handle provider change - reset model to default for new provider
   const handleProviderChange = (event) => {
@@ -69,18 +59,90 @@ function AIAssistantPanel() {
     setModel(AI_PROVIDERS[newProvider].defaultModel);
   };
 
-  const handleSend = () => {
-    if (inputValue.trim()) {
-      // Placeholder: Log to console for now
-      // eslint-disable-next-line no-console
-      console.log('AI Assistant: User message:', inputValue);
-      setInputValue('');
-      // TODO: When AI returns config, set hasRecommendedConfig to true
+  // Add message to display
+  const addMessage = useCallback((text, isUser = false) => {
+    setMessages((prev) => [...prev, { text, isUser }]);
+  }, []);
+
+  // Update last message (for replacing "Thinking...")
+  const updateLastMessage = useCallback((text) => {
+    setMessages((prev) => {
+      const newMessages = [...prev];
+      if (newMessages.length > 0) {
+        newMessages[newMessages.length - 1] = { text, isUser: false };
+      }
+      return newMessages;
+    });
+  }, []);
+
+  // Handle sending message
+  const handleSend = async () => {
+    const userMessage = inputValue.trim();
+    if (!userMessage || isThinking) return;
+
+    // Add user message
+    addMessage(userMessage, true);
+    setInputValue('');
+
+    // Add to chat history
+    chatHistoryRef.current.push({ role: 'user', content: userMessage });
+
+    // Show thinking indicator
+    setIsThinking(true);
+    addMessage('Thinking...');
+
+    try {
+      await callOpenAICompatibleApi({
+        provider,
+        apiKey,
+        model,
+        messages: chatHistoryRef.current,
+        onSuccess: (response) => {
+          // Add to chat history
+          chatHistoryRef.current.push({ role: 'assistant', content: response });
+
+          // Update the "Thinking..." message with actual response
+          updateLastMessage(response);
+
+          // Extract CGRA config if present
+          const configs = extractCgraConfig(response);
+          if (configs) {
+            setLastRecommendedConfigs(configs);
+
+            // Add info about available configs
+            const availableModes = [];
+            if (configs.high_performance) availableModes.push('High Performance');
+            if (configs.balanced) availableModes.push('Balanced');
+            if (configs.low_power) availableModes.push('Low Power');
+
+            // Add success indicator after the response
+            setMessages((prev) => [
+              ...prev,
+              {
+                text: `\n✅ Configuration extracted! Available modes: ${availableModes.join(', ')}\nClick "Apply AI-Generated CGRA Design" to apply.`,
+                isUser: false
+              }
+            ]);
+          }
+
+          setIsThinking(false);
+        },
+        onError: (error) => {
+          updateLastMessage(`⚠️ ${error}`);
+          setIsThinking(false);
+        }
+      });
+    } catch (error) {
+      updateLastMessage(`⚠️ Error: ${error.message}`);
+      setIsThinking(false);
     }
   };
 
-  const handleClear = () => {
-    setInputValue('');
+  // Clear chat history and messages
+  const handleClearChat = () => {
+    setMessages([]);
+    chatHistoryRef.current = [];
+    setLastRecommendedConfigs(null);
   };
 
   const handleKeyDown = (event) => {
@@ -90,23 +152,104 @@ function AIAssistantPanel() {
     }
   };
 
+  // Apply selected configuration
   const handleApplyConfig = (mode) => {
     setConfigDialogOpen(false);
-    // TODO: Apply the selected mode configuration
-    // eslint-disable-next-line no-console
-    console.log('Apply config mode:', mode);
+
+    if (!lastRecommendedConfigs || !lastRecommendedConfigs[mode]) {
+      return;
+    }
+
+    const config = lastRecommendedConfigs[mode];
+
+    // Call the callback to update architecture
+    if (onApplyConfig) {
+      onApplyConfig(config);
+
+      // Show success message
+      const modeLabels = {
+        high_performance: 'High Performance',
+        balanced: 'Balanced',
+        low_power: 'Low Power'
+      };
+      setMessages((prev) => [
+        ...prev,
+        {
+          text: `✓ ${modeLabels[mode]} configuration applied:\n` +
+            `  CGRA: ${config.cgra_rows}x${config.cgra_columns}\n` +
+            `  Multi-CGRA: ${config.multi_cgra_rows}x${config.multi_cgra_columns}\n` +
+            `  Config Memory: ${config.configMemSize} entries\n` +
+            `  Data SPM: ${config.data_spm_kb} KB`,
+          isUser: false
+        }
+      ]);
+    }
   };
 
+  // Generate CGRA from kernel description
   const handleGenerateFromKernel = () => {
-    // TODO: Open dialog to input kernel description
-    // eslint-disable-next-line no-console
-    console.log('Generate CGRA from kernel');
+    setKernelDialogOpen(true);
   };
 
-  const handleAnalyzeMapping = () => {
-    // TODO: Analyze current mapping
-    // eslint-disable-next-line no-console
-    console.log('Analyze CGRA mapping');
+  const handleKernelDialogSubmit = () => {
+    if (!kernelDescription.trim()) return;
+
+    setKernelDialogOpen(false);
+
+    // Format the prompt
+    const prompt = `Please recommend optimal CGRA parameters for: ${kernelDescription.trim()}`;
+
+    // Set input and send
+    setInputValue(prompt);
+    setTimeout(() => {
+      handleSend();
+    }, 100);
+
+    setKernelDescription('');
+  };
+
+  // Analyze mapping report
+  const handleAnalyzeMapping = async () => {
+    // Check if mapping info is available
+    if (!mappingInfo || !mappingInfo.hasMapping) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          text: 'ℹ️ No mapping data available.\nPlease first complete compilation and mapping in the Kernel panel, then click this button again for AI analysis.',
+          isUser: false
+        }
+      ]);
+      return;
+    }
+
+    // Gather mapping results
+    const currentArch = architecture?.architecture || {};
+    const currentRows = currentArch.multiCgraRows || 1;
+    const currentCols = currentArch.multiCgraColumns || 1;
+    const cgra = currentArch.CGRAs?.[0] || {};
+    const peRows = cgra.perCgraRows || 4;
+    const peCols = cgra.perCgraColumns || 4;
+
+    const analyzePrompt = `Based on the following CGRA mapping results, analyze and recommend a better configuration:
+
+## Current Configuration
+- Multi-CGRA: ${currentRows}x${currentCols}
+- Per CGRA: ${peRows}x${peCols} PEs
+- Config Memory: ${cgra.configMemoryEntries || 8} entries
+
+## Mapping Results
+${mappingInfo.summary || 'Mapping data available'}
+
+## Analysis Required
+1. Is the current configuration optimal?
+2. What improvements would you suggest?
+3. Please provide CGRA parameter recommendations for high_performance, balanced, and low_power modes.`;
+
+    // Set input and send
+    setInputValue(analyzePrompt);
+    setTimeout(() => {
+      handleSend();
+    }, 100);
   };
 
   return (
@@ -241,6 +384,12 @@ function AIAssistantPanel() {
                 }
               }}
             />
+
+            {!apiKey && (
+              <Alert severity="info" sx={{ py: 0.5 }}>
+                Enter your API key to start chatting with AI
+              </Alert>
+            )}
           </Box>
         </Collapse>
       </Box>
@@ -293,11 +442,15 @@ function AIAssistantPanel() {
                   : 'rgba(148,163,184,0.15)',
                 color: message.isUser ? 'primary.contrastText' : 'text.primary',
                 alignSelf: message.isUser ? 'flex-end' : 'flex-start',
-                maxWidth: '80%',
-                borderRadius: 2
+                maxWidth: '85%',
+                borderRadius: 2,
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word'
               }}
             >
-              <Typography variant="body2">{message.text}</Typography>
+              <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
+                {message.text}
+              </Typography>
             </Paper>
           ))
         )}
@@ -321,6 +474,7 @@ function AIAssistantPanel() {
           size="small"
           fullWidth
           onClick={handleGenerateFromKernel}
+          disabled={isThinking}
           sx={{
             textTransform: 'none',
             bgcolor: '#2E7D32',
@@ -333,7 +487,7 @@ function AIAssistantPanel() {
           variant="contained"
           size="small"
           fullWidth
-          disabled={!hasRecommendedConfig}
+          disabled={!lastRecommendedConfigs || isThinking}
           onClick={() => setConfigDialogOpen(true)}
           sx={{
             textTransform: 'none',
@@ -349,6 +503,7 @@ function AIAssistantPanel() {
           size="small"
           fullWidth
           onClick={handleAnalyzeMapping}
+          disabled={isThinking}
           sx={{
             textTransform: 'none',
             bgcolor: '#F57C00',
@@ -376,6 +531,7 @@ function AIAssistantPanel() {
           onChange={(e) => setInputValue(e.target.value)}
           onKeyDown={handleKeyDown}
           size="small"
+          disabled={isThinking}
           sx={{
             '& .MuiInputBase-root': {
               bgcolor: 'rgba(148,163,184,0.1)',
@@ -386,17 +542,17 @@ function AIAssistantPanel() {
             input: {
               endAdornment: (
                 <InputAdornment position="end" sx={{ gap: 0.5 }}>
+                  {isThinking && <CircularProgress size={16} />}
                   <IconButton
-                    onClick={handleClear}
-                    disabled={!inputValue}
+                    onClick={handleClearChat}
                     size="small"
-                    title="Clear"
+                    title="Clear chat"
                   >
                     <ClearIcon fontSize="small" />
                   </IconButton>
                   <IconButton
                     onClick={handleSend}
-                    disabled={!inputValue.trim()}
+                    disabled={!inputValue.trim() || isThinking}
                     size="small"
                     color="primary"
                     title="Send"
@@ -428,6 +584,7 @@ function AIAssistantPanel() {
             <Button
               variant="contained"
               fullWidth
+              disabled={!lastRecommendedConfigs?.high_performance}
               onClick={() => handleApplyConfig('high_performance')}
               sx={{
                 textTransform: 'none',
@@ -441,6 +598,7 @@ function AIAssistantPanel() {
             <Button
               variant="contained"
               fullWidth
+              disabled={!lastRecommendedConfigs?.balanced}
               onClick={() => handleApplyConfig('balanced')}
               sx={{
                 textTransform: 'none',
@@ -454,6 +612,7 @@ function AIAssistantPanel() {
             <Button
               variant="contained"
               fullWidth
+              disabled={!lastRecommendedConfigs?.low_power}
               onClick={() => handleApplyConfig('low_power')}
               sx={{
                 textTransform: 'none',
@@ -473,6 +632,43 @@ function AIAssistantPanel() {
             sx={{ textTransform: 'none' }}
           >
             Cancel
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Kernel Description Dialog */}
+      <Dialog
+        open={kernelDialogOpen}
+        onClose={() => setKernelDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Describe Your Kernel/Application</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Describe the application or kernel you want to implement, and AI will recommend optimal CGRA parameters.
+          </Typography>
+          <TextField
+            fullWidth
+            multiline
+            rows={4}
+            value={kernelDescription}
+            onChange={(e) => setKernelDescription(e.target.value)}
+            placeholder="e.g., 'matrix multiplication', 'convolution for CNN', 'FFT processing', 'sparse matrix operations'..."
+            sx={{ mt: 1 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setKernelDialogOpen(false)} sx={{ textTransform: 'none' }}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleKernelDialogSubmit}
+            disabled={!kernelDescription.trim()}
+            sx={{ textTransform: 'none' }}
+          >
+            Generate Configuration
           </Button>
         </DialogActions>
       </Dialog>

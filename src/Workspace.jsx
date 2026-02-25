@@ -791,6 +791,115 @@ function Workspace() {
     }
   }, [projectId, isLocked, appState, getSelectedBenchmarkNames, showError, showSuccess, benchmarkIndex, showConfirm]);
 
+  // Handle AI-generated configuration application
+  const handleApplyAIConfig = useCallback((config) => {
+    if (!config) return;
+
+    setAppState((prev) => {
+      if (!prev?.architecture) return prev;
+
+      const currentArch = prev.architecture.architecture || prev.architecture;
+      const newMultiCgraRows = config.multi_cgra_rows || 1;
+      const newMultiCgraColumns = config.multi_cgra_columns || 1;
+      const newPerCgraRows = config.cgra_rows || 4;
+      const newPerCgraColumns = config.cgra_columns || 4;
+      const newConfigMemSize = config.configMemSize || 8;
+      const newDataSpmKb = config.data_spm_kb || 8;
+      const fuTypes = config.fu_types || [];
+
+      // Build updated CGRAs with new dimensions and FU types
+      const updatedCgras = (currentArch.CGRAs || []).map((cgra, index) => {
+        // Update FU types for each PE
+        const updatedPEs = (cgra.PEs || []).map((pe) => {
+          const newFuConfig = {};
+          // Set all FU types based on config
+          const allFuTypes = ['add', 'mul', 'div', 'fadd', 'fmul', 'fdiv', 'logic', 'cmp', 'sel', 
+            'type_conv', 'vfmul', 'fadd_fadd', 'fmul_fadd', 'loop_control', 'phi', 
+            'constant', 'mem', 'mem_indexed', 'shift', 'return', 'alloca', 'grant'];
+          
+          allFuTypes.forEach((fu) => {
+            newFuConfig[fu] = fuTypes.includes(fu) ? 1 : 1; // Enable all by default
+          });
+
+          // If fuTypes is specified, enable only those
+          if (fuTypes.length > 0) {
+            allFuTypes.forEach((fu) => {
+              newFuConfig[fu] = fuTypes.includes(fu) ? 1 : 0;
+            });
+          }
+
+          return {
+            ...pe,
+            tileFunctionalUnits: newFuConfig
+          };
+        });
+
+        return {
+          ...cgra,
+          perCgraRows: newPerCgraRows,
+          perCgraColumns: newPerCgraColumns,
+          configMemoryEntries: newConfigMemSize,
+          sramBanks: newDataSpmKb,
+          PEs: updatedPEs
+        };
+      });
+
+      // Resize CGRAs if multi-cgra dimensions changed
+      let finalArchitecture = {
+        ...currentArch,
+        multiCgraRows: newMultiCgraRows,
+        multiCgraColumns: newMultiCgraColumns,
+        CGRAs: updatedCgras
+      };
+
+      // Use resizeArchitectureGrid to properly handle PE resizing
+      finalArchitecture = resizeArchitectureGrid(
+        finalArchitecture,
+        newMultiCgraRows,
+        newMultiCgraColumns
+      );
+
+      // Update PE dimensions within each CGRA
+      finalArchitecture.CGRAs = finalArchitecture.CGRAs.map((cgra) => ({
+        ...cgra,
+        perCgraRows: newPerCgraRows,
+        perCgraColumns: newPerCgraColumns,
+        configMemoryEntries: newConfigMemSize,
+        sramBanks: newDataSpmKb,
+        PEs: (cgra.PEs || []).slice(0, newPerCgraRows * newPerCgraColumns).concat(
+          Array(Math.max(0, newPerCgraRows * newPerCgraColumns - (cgra.PEs || []).length))
+            .fill(null)
+            .map((_, i) => ({
+              id: `pe-${cgra.y}-${cgra.x}-${Math.floor(i / newPerCgraColumns)}-${i % newPerCgraColumns}`,
+              label: `PE (${Math.floor(i / newPerCgraColumns)}, ${i % newPerCgraColumns})`,
+              x: i % newPerCgraColumns,
+              y: Math.floor(i / newPerCgraColumns),
+              disabled: false,
+              tileFunctionalUnits: fuTypes.length > 0 
+                ? Object.fromEntries(['add', 'mul', 'div', 'fadd', 'fmul', 'fdiv', 'logic', 'cmp', 'sel', 
+                    'type_conv', 'vfmul', 'fadd_fadd', 'fmul_fadd', 'loop_control', 'phi', 
+                    'constant', 'mem', 'mem_indexed', 'shift', 'return', 'alloca', 'grant']
+                    .map(fu => [fu, fuTypes.includes(fu) ? 1 : 0]))
+                : cgra.PEs?.[0]?.tileFunctionalUnits || {}
+            }))
+        )
+      }));
+
+      return {
+        ...prev,
+        architecture: finalArchitecture
+      };
+    });
+
+    showSuccess('AI configuration applied successfully');
+  }, [showSuccess]);
+
+  // Mapping info for AI analysis
+  const mappingInfo = useMemo(() => ({
+    hasMapping: latestMappingJob?.status === 'success',
+    summary: latestMappingJob?.info ? JSON.stringify(latestMappingJob.info, null, 2) : null
+  }), [latestMappingJob]);
+
   const factory = useCallback(
     (node) => {
       const component = node.getComponent();
@@ -804,6 +913,8 @@ function Workspace() {
               selection={selection}
               onSelectionChange={setSelection}
               onPropertyChange={handlePropertyChange}
+              onApplyAIConfig={handleApplyAIConfig}
+              mappingInfo={mappingInfo}
               disabled={isLocked}
             />
           );
@@ -827,7 +938,7 @@ function Workspace() {
           return null;
       }
     },
-    [architecture, selection, handlePropertyChange, isLocked, latestMappingJob, graphData, instructionData, handleStartMapping, getSelectedBenchmarkNames, currentBenchmark]
+    [architecture, selection, handlePropertyChange, handleApplyAIConfig, mappingInfo, isLocked, latestMappingJob, graphData, instructionData, handleStartMapping, getSelectedBenchmarkNames, currentBenchmark]
   );
 
   const handleCurrentBenchmarkChange = useCallback((benchmarkName) => {
