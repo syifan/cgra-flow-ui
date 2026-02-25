@@ -164,6 +164,7 @@ jobs:
           port: ${{ secrets.RUNNER_SSH_PORT || 22 }}
           username: ${{ secrets.RUNNER_SSH_USER }}
           key: ${{ secrets.RUNNER_SSH_KEY }}
+          command_timeout: 90m
           script: |
             set -e
 
