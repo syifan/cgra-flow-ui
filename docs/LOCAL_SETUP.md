@@ -137,6 +137,7 @@ RUNNER_ID=runner-001
 POLL_INTERVAL_MS=5000
 
 RUNNER_MODE=real
+RUNNER_ALLOW_FAKE_CLAIM=false
 JOBS_DIR=./jobs
 DOCKER_IMAGE=cgra/cgra-flow:ui
 DOCKER_TIMEOUT_MS=600000
@@ -237,6 +238,7 @@ If the job reaches **Completed**, your local setup is fully working.
 2. If the runner terminal is closed or shows errors, restart it: `npm run runner`
 3. In `runner/.env`, confirm:
    - `RUNNER_MODE=real` (not `fake`)
+   - `RUNNER_ALLOW_FAKE_CLAIM=false`
    - `DOCKER_IMAGE=cgra/cgra-flow:ui`
 4. Check for stale runner processes from previous sessions:
 
@@ -278,5 +280,4 @@ kill <PID>
 ```
 
 Alternatively, change the Supabase ports in `supabase/config.toml` and update both `.env` files to match.
-
 

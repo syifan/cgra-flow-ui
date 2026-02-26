@@ -199,6 +199,7 @@ jobs:
             SUPABASE_URL=${{ steps.supabase-branch.outputs.branch_url }}
             SUPABASE_SERVICE_ROLE_KEY=${{ steps.supabase-keys.outputs.service_key }}
             RUNNER_MODE=real
+            RUNNER_ALLOW_FAKE_CLAIM=false
             RUNNER_ID=runner-${{ github.event.number }}
             POLL_INTERVAL_MS=5000
             JOBS_DIR=./jobs

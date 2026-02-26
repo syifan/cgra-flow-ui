@@ -10,56 +10,82 @@ import { executeMappingJob } from './mappingExecutor.js';
  *
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  * @param {string} runnerId
+ * @param {string} runnerMode - 'real' or 'fake'
  * @param {string|null} targetProjectId - Optional project filter for test isolation
+ * @param {boolean} allowFakeClaim - Explicit opt-in allowing fake runner to claim jobs
  * @returns {Promise<object|null>} The claimed job or null if no jobs available
  */
-export async function claimNextJob(supabase, runnerId, targetProjectId = null) {
-  // Test-only path: scope claims to one project to avoid queue interference
-  if (targetProjectId) {
-    const { data: queuedJob, error: selectError } = await supabase
-      .from('jobs')
-      .select('*')
-      .eq('status', 'queued')
-      .eq('project_id', targetProjectId)
-      .order('created_at', { ascending: true })
-      .limit(1)
-      .maybeSingle()
-
-    if (selectError) {
-      throw selectError
-    }
-    if (!queuedJob) {
-      return null
-    }
-
-    const nextInfo = {
-      ...(queuedJob.info || {}),
-      runner_id: runnerId
-    }
-
-    const { data: claimedJob, error: updateError } = await supabase
-      .from('jobs')
-      .update({
-        status: 'running',
-        started_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        info: nextInfo
-      })
-      .eq('id', queuedJob.id)
-      .eq('status', 'queued')
-      .select('*')
-      .maybeSingle()
-
-    if (updateError) {
-      throw updateError
-    }
-
-    return claimedJob || null
+export async function claimNextJob(
+  supabase,
+  runnerId,
+  runnerMode = 'real',
+  targetProjectId = null,
+  allowFakeClaim = false
+) {
+  if (runnerMode !== 'real' && !allowFakeClaim) {
+    return null
   }
 
-  const { data, error } = await supabase.rpc('claim_next_job', {
-    p_runner_id: runnerId
+  const callModeAwareClaim = async () => supabase.rpc('claim_next_job', {
+    p_runner_id: runnerId,
+    p_runner_mode: runnerMode,
+    p_target_project_id: targetProjectId,
+    p_allow_fake_claim: allowFakeClaim
   })
+
+  let data
+  let error
+
+  ;({ data, error } = await callModeAwareClaim())
+
+  // Backward-compat fallback for environments where new migration is not applied yet.
+  if (error && /function .*claim_next_job/i.test(error.message || '')) {
+    if (targetProjectId) {
+      const { data: queuedJob, error: selectError } = await supabase
+        .from('jobs')
+        .select('*')
+        .eq('status', 'queued')
+        .eq('project_id', targetProjectId)
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle()
+
+      if (selectError) {
+        throw selectError
+      }
+      if (!queuedJob) {
+        return null
+      }
+
+      const nextInfo = {
+        ...(queuedJob.info || {}),
+        runner_id: runnerId,
+        runner_mode: runnerMode
+      }
+
+      const { data: claimedJob, error: updateError } = await supabase
+        .from('jobs')
+        .update({
+          status: 'running',
+          started_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          info: nextInfo
+        })
+        .eq('id', queuedJob.id)
+        .eq('status', 'queued')
+        .select('*')
+        .maybeSingle()
+
+      if (updateError) {
+        throw updateError
+      }
+      return claimedJob || null
+    }
+
+    ;({ data, error } = await supabase.rpc('claim_next_job', {
+      p_runner_id: runnerId
+    }))
+  }
 
   if (error) {
     throw error

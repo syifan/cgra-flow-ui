@@ -163,11 +163,12 @@ queued → running → success
 ### Fake Mode
 ```bash
 RUNNER_MODE=fake
+RUNNER_ALLOW_FAKE_CLAIM=true
 ```
 - Simulates job execution with random duration (10-30s)
 - No Docker required
 - Returns fake results
-- Good for testing UI and job queue
+- Good for isolated testing only
 
 ### Real Mode
 ```bash
@@ -188,7 +189,8 @@ SUPABASE_SERVICE_ROLE_KEY=...
 # Runner config
 RUNNER_ID=runner-001              # Unique runner identifier
 POLL_INTERVAL_MS=5000             # Polling interval
-RUNNER_MODE=fake                  # 'fake' or 'real'
+RUNNER_MODE=real                  # 'fake' or 'real'
+RUNNER_ALLOW_FAKE_CLAIM=false     # must be true for fake runner to claim jobs
 
 # Real mode config
 JOBS_DIR=./jobs                   # Job output directory

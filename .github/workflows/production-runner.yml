@@ -41,6 +41,7 @@ jobs:
               'SUPABASE_URL=${{ secrets.SUPABASE_URL }}' \
               'SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}' \
               'RUNNER_MODE=real' \
+              'RUNNER_ALLOW_FAKE_CLAIM=false' \
               'DOCKER_IMAGE=cgra/cgra-flow:ui' \
               'DOCKER_TIMEOUT_MS=600000' \
               'RUNNER_ID=runner-production' \
