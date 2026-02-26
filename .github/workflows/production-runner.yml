@@ -64,10 +64,17 @@ jobs:
             # Install dependencies
             npm ci --omit=dev
 
-            # Stop existing production runner (keeps PR-specific runners intact)
-            pm2 delete cgra-runner 2>/dev/null || true
+            # Ensure PM2 can resurrect processes after host reboot (best effort).
+            # This requires passwordless sudo on the target host.
+            if command -v systemctl >/dev/null 2>&1; then
+              if sudo -n true 2>/dev/null; then
+                sudo -n env PATH="$PATH" pm2 startup systemd -u "$USER" --hp "$HOME" >/dev/null
+              else
+                echo "Warning: passwordless sudo unavailable; skipping pm2 startup bootstrap"
+              fi
+            fi
 
-            # Start production runner
+            # Start production runner with hardened restart policy
             cat > start.sh << 'STARTEOF'
             #!/bin/bash
             set -a
@@ -77,7 +84,26 @@ jobs:
             STARTEOF
             chmod +x start.sh
 
-            pm2 start ./start.sh --name cgra-runner
+            cat > ecosystem.config.cjs << 'ECOEOF'
+            module.exports = {
+              apps: [
+                {
+                  name: 'cgra-runner',
+                  script: './start.sh',
+                  autorestart: true,
+                  min_uptime: '10s',
+                  max_restarts: 20,
+                  restart_delay: 5000,
+                  exp_backoff_restart_delay: 100,
+                  max_memory_restart: '1G',
+                  kill_timeout: 30000,
+                  time: true
+                }
+              ]
+            };
+            ECOEOF
+
+            pm2 startOrReload ecosystem.config.cjs --update-env
             pm2 save
 
             # Show status and recent logs
