@@ -64,7 +64,7 @@ npm run db:migrate
 ### 5. Pull the CGRA-Flow Docker Image
 
 ```bash
-docker pull cgra-flow:latest
+docker pull cgra/cgra-flow:ui
 ```
 
 ### 6. Start the Development Server
@@ -118,7 +118,7 @@ RUNNER_MODE=fake
 
 # Job execution configuration (for real mode)
 JOBS_DIR=./jobs
-DOCKER_IMAGE=cgra-flow:latest
+DOCKER_IMAGE=cgra/cgra-flow:ui
 DOCKER_TIMEOUT_MS=600000
 ```
 
