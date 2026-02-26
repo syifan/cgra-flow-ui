@@ -198,11 +198,10 @@ DOCKER_TIMEOUT_MS=600000          # Per-benchmark timeout (10 min)
 
 ## Docker Requirements
 
-To run in real mode, you need the `cgra-flow` Docker image:
+To run in real mode, pull the required Docker image:
 
 ```bash
-cd cgra-flow-docker
-docker build -t cgra/cgra-flow:ui .
+docker pull cgra/cgra-flow:ui
 ```
 
 The image must include:
@@ -244,7 +243,7 @@ Common errors and solutions:
 **Docker image not found:**
 ```
 Error: Docker image cgra/cgra-flow:ui not found
-Solution: Build the image with docker build -t cgra/cgra-flow:ui .
+Solution: Pull the image with docker pull cgra/cgra-flow:ui .
 ```
 
 **Timeout errors:**

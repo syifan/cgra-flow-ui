@@ -55,7 +55,7 @@ let graphBucketReady = false;
 let graphBucketLastAttempt = 0;
 const GRAPH_BUCKET_RETRY_INTERVAL_MS = 60000; // Retry bucket creation after 1 minute on failure
 
-// Docker container paths - these match the structure in cgra-flow-docker/Dockerfile
+// Docker container paths - these match the structure in cgra/cgra-flow:ui
 const DOCKER_DATAFLOW_TEST_DIR = process.env.DOCKER_DATAFLOW_TEST_DIR || '/cgra/dataflow/test';
 const DOCKER_ARCH_SPEC_PATH = process.env.DOCKER_ARCH_SPEC_PATH || '/cgra/dataflow/test/arch_spec/architecture.yaml';
 const DOCKER_LLVM_LIT_PATH = process.env.DOCKER_LLVM_LIT_PATH || '/cgra/llvm-project/build/bin/llvm-lit';
@@ -263,7 +263,7 @@ async function verifyDockerImage() {
   } catch (error) {
     throw new Error(
       `Docker image "${DOCKER_IMAGE}" not found. ` +
-      `Build it from the cgra-flow-docker directory using: docker build -t ${DOCKER_IMAGE} .`
+      `Pull it using: docker pull ${DOCKER_IMAGE}`
     );
   }
 }

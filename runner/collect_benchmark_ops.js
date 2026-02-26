@@ -42,7 +42,7 @@ const verifyDockerImage = async () => {
   } catch (error) {
     throw new Error(
       `Docker image "${DOCKER_IMAGE}" not found. ` +
-      `Build it from the cgra-flow-docker directory using: docker build -t ${DOCKER_IMAGE} .`
+      `Pull it using: docker pull ${DOCKER_IMAGE}`
     );
   }
 };
