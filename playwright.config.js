@@ -28,7 +28,17 @@ export default defineConfig({
         storageState: AUTH_FILE,
       },
       dependencies: ['setup'],
-      testIgnore: /auth\.setup\.js/,
+      testIgnore: [/auth\.setup\.js/, /mapping-job\.spec\.js/],
+    },
+    // Run mapping lifecycle after the main suite to avoid project lock contention.
+    {
+      name: 'chromium-mapping',
+      use: {
+        ...devices['Desktop Chrome'],
+        storageState: AUTH_FILE,
+      },
+      dependencies: ['setup', 'chromium'],
+      testMatch: /mapping-job\.spec\.js/,
     },
   ],
   webServer: {

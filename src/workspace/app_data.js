@@ -16,7 +16,8 @@ const appData = (() => {
       for (let col = 0; col < PE_COLUMNS; col += 1) {
         pes.push({
           id: `pe-${offsetY}-${offsetX}-${row}-${col}`,
-          label: `PE (${row}, ${col})`,
+          // Label format is (x, y) = (col, row) for Cartesian coordinates
+          label: `PE (${col}, ${row})`,
           x: col,
           y: row,
           disabled: false,

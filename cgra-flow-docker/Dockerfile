@@ -95,10 +95,10 @@ ENV PYMTL_VERILATOR_INCLUDE_DIR=/cgra/verilator/share/verilator/include
 ENV PATH="${PATH}:/cgra/verilator/bin"
 
 # Clone and build dataflow
-# Pinned to commit 19f2a17 for reproducible builds and supply chain security
+# Pinned to commit 79d9d8debc6311ef1d4351d77f19ab446d583786 for reproducible builds and supply chain security
 RUN git clone https://github.com/coredac/dataflow.git && \
     cd dataflow && \
-    git checkout 19f2a17 && \
+    git checkout 79d9d8debc6311ef1d4351d77f19ab446d583786 && \
     git submodule update --init --recursive && \
     cd /cgra && \
     mkdir dataflow/build

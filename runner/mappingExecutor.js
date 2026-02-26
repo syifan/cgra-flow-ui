@@ -9,6 +9,7 @@ import { promisify } from 'util';
 import { tmpdir } from 'os';
 import { createClient } from '@supabase/supabase-js';
 import { config } from 'dotenv';
+import yaml from 'js-yaml';
 import { convertJsonToYamlString } from './converter/converter.js';
 
 config();
@@ -338,6 +339,7 @@ async function processBenchmark(jobDir, jobId, benchmark, archYamlPath) {
     await fs.writeFile(path.join(benchmarkDir, 'stderr.txt'), stderr, 'utf8');
     await convertDotFilesWithGraphviz(benchmarkDir, benchmark);
     const graphUploads = await uploadGraphJsonFiles(jobId, benchmark, benchmarkDir);
+    const instructionFile = await uploadInstructionsFile(jobId, benchmark, benchmarkDir);
 
     // Parse llvm-lit output for results (case-insensitive for robustness)
     const passed = /pass(?:ed)?:?\s*1/i.test(stdout);
@@ -355,6 +357,7 @@ async function processBenchmark(jobDir, jobId, benchmark, archYamlPath) {
       rec_mii: recMiiMatch ? parseInt(recMiiMatch[1]) : null,
       res_mii: resMiiMatch ? parseInt(resMiiMatch[1]) : null,
       graph_files: graphUploads,
+      instruction_file: instructionFile,
       stdout_length: stdout.length,
       stderr_length: stderr.length
     };
@@ -460,6 +463,63 @@ async function uploadGraphJsonFiles(jobId, benchmark, benchmarkDir) {
     }
   }
   return uploads;
+}
+
+/**
+ * Upload instructions YAML file as JSON to Supabase storage.
+ * Looks for tmp-generated-instructions.yaml in the benchmark directory.
+ * Returns { file, path, publicUrl } or null if not found.
+ */
+async function uploadInstructionsFile(jobId, benchmark, benchmarkDir) {
+  if (!graphBucketReady) {
+    console.warn(`      ⚠️  Graph bucket "${GRAPH_BUCKET}" is not available; skipping instructions upload.`);
+    return null;
+  }
+
+  const yamlFileName = 'tmp-generated-instructions.yaml';
+  const yamlPath = path.join(benchmarkDir, yamlFileName);
+
+  try {
+    // Check if the file exists
+    await fs.access(yamlPath);
+  } catch {
+    console.log(`      ℹ️  No instructions file found at ${yamlPath}`);
+    return null;
+  }
+
+  try {
+    // Read and parse YAML
+    const yamlContent = await fs.readFile(yamlPath, 'utf8');
+    const jsonContent = yaml.load(yamlContent);
+
+    // Upload JSON to Supabase storage
+    const jsonFileName = `${benchmark}_instructions.json`;
+    const storagePath = `jobs/${jobId}/${benchmark}/${jsonFileName}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from(GRAPH_BUCKET)
+      .upload(storagePath, JSON.stringify(jsonContent, null, 2), {
+        contentType: 'application/json',
+        upsert: true
+      });
+
+    if (uploadError) {
+      throw uploadError;
+    }
+
+    const { data: publicData } = supabase.storage.from(GRAPH_BUCKET).getPublicUrl(storagePath);
+
+    console.log(`      ✓ Uploaded instructions file: ${jsonFileName}`);
+
+    return {
+      file: jsonFileName,
+      path: storagePath,
+      publicUrl: publicData?.publicUrl || null
+    };
+  } catch (err) {
+    console.warn(`      ⚠️  Failed to upload instructions file: ${err.message}`);
+    return null;
+  }
 }
 
 /**

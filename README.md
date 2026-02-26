@@ -15,35 +15,62 @@ A modern web-based interface for the CGRA (Coarse-Grained Reconfigurable Array) 
 ### Prerequisites
 
 - Node.js 20.19+ or 22.12+
-- A Supabase project (for database and auth)
+- Docker (required for local Supabase)
+- Supabase CLI (`npm install -g supabase` or use via `npx`)
 
-### Frontend Setup
+### 1. Install Dependencies
 
 ```bash
-# Install dependencies
 npm install
+```
 
-# Start development server
+### 2. Start Local Supabase
+
+Make sure Docker is running, then start the local Supabase services:
+
+```bash
+npx supabase start
+```
+
+This spins up local containers for Postgres, Auth, Storage, and the API gateway. Once running, you'll have:
+
+- **API**: http://127.0.0.1:54321
+- **Database**: localhost:54322
+- **Studio** (admin UI): http://127.0.0.1:54323
+
+### 3. Configure Environment Variables
+
+Create a `.env.local` file in the project root:
+
+```bash
+VITE_SUPABASE_URL=http://127.0.0.1:54321
+VITE_SUPABASE_ANON_KEY=<your-local-anon-key>
+```
+
+The anon key is printed when `npx supabase start` completes. You can also retrieve it with:
+
+```bash
+npx supabase status
+```
+
+### 4. Apply Database Migrations
+
+```bash
+npm run db:migrate
+```
+
+### 5. Start the Development Server
+
+```bash
 npm run dev
 ```
 
-The development server runs on `http://localhost:5173` by default.
+The app runs on http://localhost:5173 by default.
 
-### Environment Variables
-
-Create a `.env` file in the project root:
+### Stopping Supabase
 
 ```bash
-VITE_SUPABASE_URL=https://your-project.supabase.co
-VITE_SUPABASE_ANON_KEY=your-anon-key
-```
-
-### Database Setup
-
-Push the database schema to your Supabase project:
-
-```bash
-npm run db:push
+npx supabase stop
 ```
 
 ### Production Build
@@ -73,10 +100,19 @@ cp runner/.env.example runner/.env
 Create `runner/.env`:
 
 ```bash
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key  # NOT the anon key
+SUPABASE_URL=http://127.0.0.1:54321
+SUPABASE_SERVICE_ROLE_KEY=<your-service-role-key>  # NOT the anon key
+
 RUNNER_ID=runner-001
 POLL_INTERVAL_MS=5000
+
+# Runner mode: 'fake' for testing, 'real' for actual Docker execution
+RUNNER_MODE=fake
+
+# Job execution configuration (for real mode)
+JOBS_DIR=./jobs
+DOCKER_IMAGE=cgra-flow:latest
+DOCKER_TIMEOUT_MS=600000
 ```
 
 ### Start the Runner
@@ -85,38 +121,51 @@ POLL_INTERVAL_MS=5000
 npm run runner
 ```
 
-The runner will poll for queued jobs and process them. Currently implements a fake runner that simulates job execution with a random 10-30 second delay.
+The runner will poll for queued jobs and process them.
 
 ## Project Structure
 
 ```
 cgra-flow-ui/
 ├── src/
-│   ├── App.jsx              # Root component with routing
-│   ├── Workspace.jsx        # Main workspace with panels
-│   ├── PropertyInspector.jsx # Property editing panel
-│   ├── canvas/              # D3-based CGRA visualization
-│   │   ├── cgraNodesLayer.js
-│   │   ├── cgraConnectionsLayer.js
-│   │   ├── peNodesLayer.js
-│   │   └── peConnectionsLayer.js
-│   ├── contexts/            # React contexts
-│   │   ├── AuthContext.jsx  # Authentication state
+│   ├── App.jsx                # Root component with routing
+│   ├── main.jsx               # Entry point
+│   ├── Workspace.jsx          # Main workspace with panels
+│   ├── workspace/             # Workspace components
+│   │   ├── PropertyInspector.jsx
+│   │   ├── DesignTab.jsx
+│   │   ├── MappingTab.jsx
+│   │   ├── VerificationTab.jsx
+│   │   ├── LayoutTab.jsx
+│   │   ├── DependencyGraph.jsx
+│   │   ├── MainCanvas.jsx
+│   │   ├── canvas/            # D3-based CGRA visualization
+│   │   │   ├── cgraNodesLayer.js
+│   │   │   ├── cgraConnectionsLayer.js
+│   │   │   ├── peNodesLayer.js
+│   │   │   └── peConnectionsLayer.js
+│   │   └── mapping-canvas/    # Mapping visualization
+│   │       ├── instructionPeLayer.js
+│   │       └── dataFlowArrowsLayer.js
+│   ├── shared/                # Shared utilities
+│   ├── contexts/              # React contexts
+│   │   ├── AuthContext.jsx
 │   │   └── NotificationContext.jsx
-│   ├── pages/               # Route pages
+│   ├── pages/                 # Route pages
 │   │   ├── LandingPage.jsx
 │   │   ├── LoginPage.jsx
 │   │   ├── SignupPage.jsx
 │   │   └── DashboardPage.jsx
 │   └── lib/
-│       └── supabase.js      # Supabase client
-├── runner/                  # Job runner service
-│   ├── index.js             # Entry point
-│   ├── jobProcessor.js      # Job claiming & execution
+│       └── supabase.js        # Supabase client
+├── runner/                    # Job runner service
+│   ├── index.js
+│   ├── jobProcessor.js
 │   └── .env.example
 ├── supabase/
-│   └── migrations/          # Database migrations
-├── tests/                   # Playwright E2E tests
+│   ├── config.toml            # Local Supabase configuration
+│   └── migrations/            # Database migrations
+├── tests/                     # Playwright E2E tests
 └── package.json
 ```
 

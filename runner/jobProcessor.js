@@ -10,9 +10,53 @@ import { executeMappingJob } from './mappingExecutor.js';
  *
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  * @param {string} runnerId
+ * @param {string|null} targetProjectId - Optional project filter for test isolation
  * @returns {Promise<object|null>} The claimed job or null if no jobs available
  */
-export async function claimNextJob(supabase, runnerId) {
+export async function claimNextJob(supabase, runnerId, targetProjectId = null) {
+  // Test-only path: scope claims to one project to avoid queue interference
+  if (targetProjectId) {
+    const { data: queuedJob, error: selectError } = await supabase
+      .from('jobs')
+      .select('*')
+      .eq('status', 'queued')
+      .eq('project_id', targetProjectId)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle()
+
+    if (selectError) {
+      throw selectError
+    }
+    if (!queuedJob) {
+      return null
+    }
+
+    const nextInfo = {
+      ...(queuedJob.info || {}),
+      runner_id: runnerId
+    }
+
+    const { data: claimedJob, error: updateError } = await supabase
+      .from('jobs')
+      .update({
+        status: 'running',
+        started_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        info: nextInfo
+      })
+      .eq('id', queuedJob.id)
+      .eq('status', 'queued')
+      .select('*')
+      .maybeSingle()
+
+    if (updateError) {
+      throw updateError
+    }
+
+    return claimedJob || null
+  }
+
   const { data, error } = await supabase.rpc('claim_next_job', {
     p_runner_id: runnerId
   })

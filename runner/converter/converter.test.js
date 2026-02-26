@@ -42,7 +42,8 @@ describe('Architecture Converter - Basic Structure', () => {
               },
               {
                 id: 'pe-0-0-0-1',
-                label: 'PE (0, 1)',
+                // Label format is (x, y) = (column, row)
+                label: 'PE (1, 0)',
                 x: 1,
                 y: 0,
                 disabled: false,
@@ -55,7 +56,8 @@ describe('Architecture Converter - Basic Structure', () => {
               },
               {
                 id: 'pe-0-0-1-0',
-                label: 'PE (1, 0)',
+                // Label format is (x, y) = (column, row)
+                label: 'PE (0, 1)',
                 x: 0,
                 y: 1,
                 disabled: false,
@@ -199,10 +201,10 @@ describe('Architecture Converter - Functional Units', () => {
 
     const result = convertJsonToYaml(input);
 
-    // When no operations are specified, it should fall back to all supported operations
+    // When no operations are specified, it should fall back to all supported instructions
     assert.ok(Array.isArray(result.tile_defaults.operations));
     assert.ok(result.tile_defaults.operations.length > 0, 'Should have fallback operations');
-    // Check a few common operations are present in the fallback
+    // Check a few common instructions are present in the fallback
     assert.ok(result.tile_defaults.operations.includes('add'));
     assert.ok(result.tile_defaults.operations.includes('mul'));
     assert.ok(result.tile_defaults.operations.includes('load'));

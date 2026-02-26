@@ -93,6 +93,7 @@ function Workspace() {
   const [pendingJob, setPendingJob] = useState(null);
   const [latestMappingJob, setLatestMappingJob] = useState(null);
   const [graphData, setGraphData] = useState({});
+  const [instructionData, setInstructionData] = useState({});
   const [model] = useState(() => Model.fromJson(mainLayout));
   const [currentBenchmark, setCurrentBenchmark] = useState(null);
   // Benchmark index loaded from public/benchmark_ops_index.json
@@ -139,7 +140,7 @@ function Workspace() {
     appStateRef.current = appState;
   }, [appState]);
 
-  // Fetch and log graph JSONs when a mapping job finishes
+  // Fetch and log graph JSONs and instruction data when a mapping job finishes
   useEffect(() => {
     const logGraphs = async () => {
       if (!latestMappingJob || latestMappingJob.status !== 'success') return;
@@ -147,15 +148,19 @@ function Workspace() {
 
       const benchmarks = latestMappingJob.info?.benchmarks || latestMappingJob.info || {};
       const graphFilesByBenchmark = {};
+      const instructionFilesByBenchmark = {};
 
       // Normalize structure: latestMappingJob.info may be an object keyed by benchmark
       for (const [bench, result] of Object.entries(benchmarks)) {
         if (result && Array.isArray(result.graph_files)) {
           graphFilesByBenchmark[bench] = result.graph_files;
         }
+        if (result && result.instruction_file?.publicUrl) {
+          instructionFilesByBenchmark[bench] = result.instruction_file;
+        }
       }
 
-      const fetchGraph = async (url) => {
+      const fetchJson = async (url) => {
         const response = await fetch(url);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const contentType = response.headers.get('content-type') || '';
@@ -165,12 +170,13 @@ function Workspace() {
         return response.json();
       };
 
-      const allFetches = [];
+      // Fetch graph files
+      const allGraphFetches = [];
       for (const [bench, files] of Object.entries(graphFilesByBenchmark)) {
         files.forEach((f) => {
           if (f?.publicUrl) {
-            allFetches.push(
-              fetchGraph(f.publicUrl)
+            allGraphFetches.push(
+              fetchJson(f.publicUrl)
                 .then((json) => ({ bench, file: f.file, json }))
                 .catch((err) => {
                   console.warn(`Failed to fetch graph ${f.file} for ${bench}: ${err.message}`);
@@ -181,7 +187,23 @@ function Workspace() {
         });
       }
 
-      const graphs = (await Promise.all(allFetches)).filter(Boolean);
+      // Fetch instruction files
+      const allInstructionFetches = [];
+      for (const [bench, file] of Object.entries(instructionFilesByBenchmark)) {
+        if (file?.publicUrl) {
+          allInstructionFetches.push(
+            fetchJson(file.publicUrl)
+              .then((json) => ({ bench, json }))
+              .catch((err) => {
+                console.warn(`Failed to fetch instruction file for ${bench}: ${err.message}`);
+                return null;
+              })
+          );
+        }
+      }
+
+      const graphs = (await Promise.all(allGraphFetches)).filter(Boolean);
+      const instructions = (await Promise.all(allInstructionFetches)).filter(Boolean);
 
       if (graphs.length > 0) {
         const grouped = graphs.reduce((acc, g) => {
@@ -195,6 +217,18 @@ function Workspace() {
       } else {
         setGraphData({});
         console.log('Mapping job has no graphs to display', latestMappingJob.id);
+      }
+
+      if (instructions.length > 0) {
+        const grouped = instructions.reduce((acc, inst) => {
+          acc[inst.bench] = inst.json;
+          return acc;
+        }, {});
+        setInstructionData(grouped);
+        console.log('Instruction data for job', latestMappingJob.id, grouped);
+      } else {
+        setInstructionData({});
+        console.log('Mapping job has no instruction data to display', latestMappingJob.id);
       }
 
       latestJobGraphsLoggedRef.current = latestMappingJob.id;
@@ -778,6 +812,7 @@ function Workspace() {
             <MappingTab
               latestMappingJob={latestMappingJob}
               graphData={graphData}
+              instructionData={instructionData}
               isLocked={isLocked}
               onStartMapping={handleStartMapping}
               selectedBenchmarkNames={selectedBenchmarkNames}
@@ -792,7 +827,7 @@ function Workspace() {
           return null;
       }
     },
-    [architecture, selection, handlePropertyChange, isLocked, latestMappingJob, graphData, handleStartMapping, getSelectedBenchmarkNames, currentBenchmark]
+    [architecture, selection, handlePropertyChange, isLocked, latestMappingJob, graphData, instructionData, handleStartMapping, getSelectedBenchmarkNames, currentBenchmark]
   );
 
   const handleCurrentBenchmarkChange = useCallback((benchmarkName) => {

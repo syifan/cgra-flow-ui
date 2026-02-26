@@ -18,6 +18,7 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
 const RUNNER_ID = process.env.RUNNER_ID || `runner-${Date.now()}`
 const POLL_INTERVAL_MS = parseInt(process.env.POLL_INTERVAL_MS || '5000', 10)
 const RUNNER_MODE = process.env.RUNNER_MODE || 'fake' // 'fake' or 'real'
+const RUNNER_PROJECT_ID = process.env.RUNNER_PROJECT_ID || null
 
 // Validate required environment variables
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -45,12 +46,15 @@ async function runLoop() {
   console.log(`Runner ${RUNNER_ID} started`)
   console.log(`Mode: ${RUNNER_MODE}`)
   console.log(`Polling interval: ${POLL_INTERVAL_MS}ms`)
+  if (RUNNER_PROJECT_ID) {
+    console.log(`Project scope: ${RUNNER_PROJECT_ID}`)
+  }
   console.log('Waiting for jobs...\n')
 
   while (isRunning) {
     try {
       // Try to claim a job
-      const job = await claimNextJob(supabase, RUNNER_ID)
+      const job = await claimNextJob(supabase, RUNNER_ID, RUNNER_PROJECT_ID)
 
       if (job) {
         currentJob = job
@@ -75,7 +79,8 @@ async function runLoop() {
           if (execError.stack) {
             console.error(`  Stack trace: ${execError.stack}`)
           }
-          await failJob(supabase, job.id, execError.message, job)
+          // Use execError.jobInfo which contains job_package from the finally block
+          await failJob(supabase, job.id, execError.message, execError.jobInfo || {})
           console.log('')
         }
 
