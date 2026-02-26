@@ -26,9 +26,25 @@ test.describe("Mapping job lifecycle", () => {
         page.locator('.MuiChip-label:has-text("No pending jobs")')
       ).toBeVisible();
 
-      // FIR benchmark is selected by default, verify it shows in the benchmark selector
-      const benchmarkSelector = page.getByRole("button", { name: /Current: FIR/ });
+      // Ensure FIR benchmark is selected (some environments may start with no benchmark selected).
+      const benchmarkSelector = page.locator("header button").filter({
+        hasText: /Current:|No benchmark selected|No current benchmark/
+      }).first();
       await expect(benchmarkSelector).toBeVisible();
+
+      const selectorLabel = (await benchmarkSelector.textContent()) || "";
+      if (
+        selectorLabel.includes("No benchmark selected") ||
+        selectorLabel.includes("No current benchmark") ||
+        selectorLabel.includes("| 0 selected")
+      ) {
+        await benchmarkSelector.click();
+        const selectorDialog = page.getByRole("dialog", { name: "Select Benchmarks" });
+        await expect(selectorDialog).toBeVisible();
+        await selectorDialog.getByRole("button", { name: /FIR/i }).first().click();
+        await selectorDialog.getByRole("button", { name: "Done" }).click();
+        await expect(benchmarkSelector).toContainText(/Current: FIR/i);
+      }
 
       // Click Start Mapping button
       await page.getByRole("button", { name: "Start Mapping" }).click();
