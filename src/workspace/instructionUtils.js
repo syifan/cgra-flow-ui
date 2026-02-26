@@ -89,8 +89,9 @@ export function getArrayDimensions(instructionData) {
  */
 export function directionToDelta(direction) {
   const map = {
-    NORTH: { dx: 0, dy: -1 },
-    SOUTH: { dx: 0, dy: 1 },
+    // Row 0 is at bottom (Cartesian-style), so north increases row.
+    NORTH: { dx: 0, dy: 1 },
+    SOUTH: { dx: 0, dy: -1 },
     EAST: { dx: 1, dy: 0 },
     WEST: { dx: -1, dy: 0 }
   };
