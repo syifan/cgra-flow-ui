@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - "runner/**"
+      - "cgra-flow-docker/**"
       - ".github/workflows/production-runner.yml"
 
 jobs:
@@ -23,6 +24,7 @@ jobs:
           port: ${{ secrets.RUNNER_SSH_PORT || 22 }}
           username: ${{ secrets.RUNNER_SSH_USER }}
           key: ${{ secrets.RUNNER_SSH_KEY }}
+          command_timeout: 90m
           script: |
             set -e
 
@@ -34,6 +36,18 @@ jobs:
             rm -rf repo
             git clone --depth 1 https://github.com/${{ github.repository }}.git repo
 
+            # Build production Docker image used by mapping jobs
+            DOCKER_BASE_IMAGE="cgra-flow-base:llvm-v1"
+            DOCKER_IMAGE="cgra-flow:latest"
+            cd repo/cgra-flow-docker
+            if ! docker image inspect "$DOCKER_BASE_IMAGE" >/dev/null 2>&1; then
+              echo "Base image not found, building: $DOCKER_BASE_IMAGE"
+              docker build --target llvm-base -t "$DOCKER_BASE_IMAGE" .
+            fi
+            echo "Building production image: $DOCKER_IMAGE"
+            docker build -t "$DOCKER_IMAGE" .
+            docker image inspect "$DOCKER_IMAGE" >/dev/null
+
             cd repo/runner
 
             # Write production environment file
@@ -43,6 +57,8 @@ jobs:
               'RUNNER_MODE=real' \
               'RUNNER_ID=runner-production' \
               'POLL_INTERVAL_MS=5000' \
+              'DOCKER_IMAGE=cgra-flow:latest' \
+              'DOCKER_TIMEOUT_MS=600000' \
               > .env
 
             # Install dependencies
