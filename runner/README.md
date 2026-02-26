@@ -42,7 +42,8 @@ SUPABASE_URL=your_supabase_url
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 
 # Runner settings
-RUNNER_MODE=fake  # or 'real' for actual Docker execution
+RUNNER_MODE=real  # or 'fake' for test-only simulation
+RUNNER_ALLOW_FAKE_CLAIM=false  # set true only for isolated test environments
 RUNNER_ID=runner-local
 POLL_INTERVAL_MS=5000
 

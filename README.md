@@ -114,7 +114,9 @@ RUNNER_ID=runner-001
 POLL_INTERVAL_MS=5000
 
 # Runner mode: 'fake' for testing, 'real' for actual Docker execution
-RUNNER_MODE=fake
+RUNNER_MODE=real
+# Safety guard: set true only for isolated test environments
+RUNNER_ALLOW_FAKE_CLAIM=false
 
 # Job execution configuration (for real mode)
 JOBS_DIR=./jobs

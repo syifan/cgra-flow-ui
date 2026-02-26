@@ -5,3 +5,4 @@ export { default as LayoutTab } from './LayoutTab';
 export { default as BenchmarkSelector } from './BenchmarkSelector';
 export { default as SidePanel } from './SidePanel';
 export { default as AIAssistantPanel } from './AIAssistantPanel';
+export { default as RunnerStatusDialog } from './RunnerStatusDialog';

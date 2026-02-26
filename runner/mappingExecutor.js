@@ -55,7 +55,7 @@ let graphBucketReady = false;
 let graphBucketLastAttempt = 0;
 const GRAPH_BUCKET_RETRY_INTERVAL_MS = 60000; // Retry bucket creation after 1 minute on failure
 
-// Docker container paths - these match the structure in cgra-flow-docker/Dockerfile
+// Docker container paths - these match the structure in cgra/cgra-flow:ui
 const DOCKER_DATAFLOW_TEST_DIR = process.env.DOCKER_DATAFLOW_TEST_DIR || '/cgra/dataflow/test';
 const DOCKER_ARCH_SPEC_PATH = process.env.DOCKER_ARCH_SPEC_PATH || '/cgra/dataflow/test/arch_spec/architecture.yaml';
 const DOCKER_LLVM_LIT_PATH = process.env.DOCKER_LLVM_LIT_PATH || '/cgra/llvm-project/build/bin/llvm-lit';
@@ -263,7 +263,7 @@ async function verifyDockerImage() {
   } catch (error) {
     throw new Error(
       `Docker image "${DOCKER_IMAGE}" not found. ` +
-      `Build it from the cgra-flow-docker directory using: docker build -t ${DOCKER_IMAGE} .`
+      `Pull it using: docker pull ${DOCKER_IMAGE}`
     );
   }
 }
@@ -339,7 +339,8 @@ async function processBenchmark(jobDir, jobId, benchmark, archYamlPath) {
     await fs.writeFile(path.join(benchmarkDir, 'stderr.txt'), stderr, 'utf8');
     await convertDotFilesWithGraphviz(benchmarkDir, benchmark);
     const graphUploads = await uploadGraphJsonFiles(jobId, benchmark, benchmarkDir);
-    const instructionFile = await uploadInstructionsFile(jobId, benchmark, benchmarkDir);
+    const instructionData = await readInstructionsData(benchmarkDir);
+    const instructionFile = await uploadInstructionsFile(jobId, benchmark, instructionData);
 
     // Parse llvm-lit output for results (case-insensitive for robustness)
     const passed = /pass(?:ed)?:?\s*1/i.test(stdout);
@@ -358,6 +359,7 @@ async function processBenchmark(jobDir, jobId, benchmark, archYamlPath) {
       res_mii: resMiiMatch ? parseInt(resMiiMatch[1]) : null,
       graph_files: graphUploads,
       instruction_file: instructionFile,
+      instruction_data: instructionData,
       stdout_length: stdout.length,
       stderr_length: stderr.length
     };
@@ -466,16 +468,10 @@ async function uploadGraphJsonFiles(jobId, benchmark, benchmarkDir) {
 }
 
 /**
- * Upload instructions YAML file as JSON to Supabase storage.
- * Looks for tmp-generated-instructions.yaml in the benchmark directory.
- * Returns { file, path, publicUrl } or null if not found.
+ * Read instructions YAML file and convert to JSON object.
+ * Returns parsed object or null if not found/invalid.
  */
-async function uploadInstructionsFile(jobId, benchmark, benchmarkDir) {
-  if (!graphBucketReady) {
-    console.warn(`      ⚠️  Graph bucket "${GRAPH_BUCKET}" is not available; skipping instructions upload.`);
-    return null;
-  }
-
+async function readInstructionsData(benchmarkDir) {
   const yamlFileName = 'tmp-generated-instructions.yaml';
   const yamlPath = path.join(benchmarkDir, yamlFileName);
 
@@ -488,17 +484,34 @@ async function uploadInstructionsFile(jobId, benchmark, benchmarkDir) {
   }
 
   try {
-    // Read and parse YAML
     const yamlContent = await fs.readFile(yamlPath, 'utf8');
-    const jsonContent = yaml.load(yamlContent);
+    return yaml.load(yamlContent);
+  } catch (err) {
+    console.warn(`      ⚠️  Failed to parse instructions file ${yamlPath}: ${err.message}`);
+    return null;
+  }
+}
 
-    // Upload JSON to Supabase storage
+/**
+ * Upload parsed instructions JSON to Supabase storage.
+ * Returns { file, path, publicUrl } or null when upload is unavailable/failed.
+ */
+async function uploadInstructionsFile(jobId, benchmark, instructionData) {
+  if (!instructionData) {
+    return null;
+  }
+  if (!graphBucketReady) {
+    console.warn(`      ⚠️  Graph bucket "${GRAPH_BUCKET}" is not available; skipping instructions upload.`);
+    return null;
+  }
+
+  try {
     const jsonFileName = `${benchmark}_instructions.json`;
     const storagePath = `jobs/${jobId}/${benchmark}/${jsonFileName}`;
 
     const { error: uploadError } = await supabase.storage
       .from(GRAPH_BUCKET)
-      .upload(storagePath, JSON.stringify(jsonContent, null, 2), {
+      .upload(storagePath, JSON.stringify(instructionData, null, 2), {
         contentType: 'application/json',
         upsert: true
       });

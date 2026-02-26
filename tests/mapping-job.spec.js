@@ -101,6 +101,8 @@ test.describe("Mapping job lifecycle", () => {
         env: {
           ...process.env,
           POLL_INTERVAL_MS: "1000", // Poll every 1 second for faster tests
+          RUNNER_MODE: "fake", // Test mode avoids Docker dependency
+          RUNNER_ALLOW_FAKE_CLAIM: "true", // Explicitly allow fake runner claims in tests
           RUNNER_PROJECT_ID: projectId, // Isolate test runner from global queue backlog
         },
       });

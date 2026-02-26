@@ -163,11 +163,12 @@ queued → running → success
 ### Fake Mode
 ```bash
 RUNNER_MODE=fake
+RUNNER_ALLOW_FAKE_CLAIM=true
 ```
 - Simulates job execution with random duration (10-30s)
 - No Docker required
 - Returns fake results
-- Good for testing UI and job queue
+- Good for isolated testing only
 
 ### Real Mode
 ```bash
@@ -188,7 +189,8 @@ SUPABASE_SERVICE_ROLE_KEY=...
 # Runner config
 RUNNER_ID=runner-001              # Unique runner identifier
 POLL_INTERVAL_MS=5000             # Polling interval
-RUNNER_MODE=fake                  # 'fake' or 'real'
+RUNNER_MODE=real                  # 'fake' or 'real'
+RUNNER_ALLOW_FAKE_CLAIM=false     # must be true for fake runner to claim jobs
 
 # Real mode config
 JOBS_DIR=./jobs                   # Job output directory
@@ -198,11 +200,10 @@ DOCKER_TIMEOUT_MS=600000          # Per-benchmark timeout (10 min)
 
 ## Docker Requirements
 
-To run in real mode, you need the `cgra-flow` Docker image:
+To run in real mode, pull the required Docker image:
 
 ```bash
-cd cgra-flow-docker
-docker build -t cgra/cgra-flow:ui .
+docker pull cgra/cgra-flow:ui
 ```
 
 The image must include:
@@ -244,7 +245,7 @@ Common errors and solutions:
 **Docker image not found:**
 ```
 Error: Docker image cgra/cgra-flow:ui not found
-Solution: Build the image with docker build -t cgra/cgra-flow:ui .
+Solution: Pull the image with docker pull cgra/cgra-flow:ui .
 ```
 
 **Timeout errors:**

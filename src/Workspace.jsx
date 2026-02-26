@@ -20,6 +20,7 @@ import { Layout, Model } from 'flexlayout-react';
 import MenuIcon from '@mui/icons-material/Menu';
 import SaveIcon from '@mui/icons-material/Save';
 import HomeIcon from '@mui/icons-material/Home';
+import DnsIcon from '@mui/icons-material/Dns';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import LockIcon from '@mui/icons-material/Lock';
 import 'flexlayout-react/style/dark.css';
@@ -39,7 +40,8 @@ import {
   MappingTab,
   VerificationTab,
   LayoutTab,
-  BenchmarkSelector
+  BenchmarkSelector,
+  RunnerStatusDialog
 } from './workspace/index.js';
 
 const NAVBAR_HEIGHT = 56;
@@ -86,6 +88,7 @@ function Workspace() {
   const [projectName, setProjectName] = useState('');
   const [selection, setSelection] = useState(null);
   const [menuAnchorEl, setMenuAnchorEl] = useState(null);
+  const [runnerStatusOpen, setRunnerStatusOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -149,6 +152,7 @@ function Workspace() {
       const benchmarks = latestMappingJob.info?.benchmarks || latestMappingJob.info || {};
       const graphFilesByBenchmark = {};
       const instructionFilesByBenchmark = {};
+      const inlineInstructionDataByBenchmark = {};
 
       // Normalize structure: latestMappingJob.info may be an object keyed by benchmark
       for (const [bench, result] of Object.entries(benchmarks)) {
@@ -157,6 +161,9 @@ function Workspace() {
         }
         if (result && result.instruction_file?.publicUrl) {
           instructionFilesByBenchmark[bench] = result.instruction_file;
+        }
+        if (result && result.instruction_data) {
+          inlineInstructionDataByBenchmark[bench] = result.instruction_data;
         }
       }
 
@@ -223,9 +230,12 @@ function Workspace() {
         const grouped = instructions.reduce((acc, inst) => {
           acc[inst.bench] = inst.json;
           return acc;
-        }, {});
+        }, { ...inlineInstructionDataByBenchmark });
         setInstructionData(grouped);
         console.log('Instruction data for job', latestMappingJob.id, grouped);
+      } else if (Object.keys(inlineInstructionDataByBenchmark).length > 0) {
+        setInstructionData(inlineInstructionDataByBenchmark);
+        console.log('Instruction data (inline fallback) for job', latestMappingJob.id, inlineInstructionDataByBenchmark);
       } else {
         setInstructionData({});
         console.log('Mapping job has no instruction data to display', latestMappingJob.id);
@@ -656,6 +666,15 @@ function Workspace() {
 
   const handleCloseMenu = useCallback(() => {
     setMenuAnchorEl(null);
+  }, []);
+
+  const handleOpenRunnerStatus = useCallback(() => {
+    handleCloseMenu();
+    setRunnerStatusOpen(true);
+  }, [handleCloseMenu]);
+
+  const handleCloseRunnerStatus = useCallback(() => {
+    setRunnerStatusOpen(false);
   }, []);
 
   const handleBackToDashboard = useCallback(async () => {
@@ -1134,7 +1153,14 @@ function Workspace() {
           </ListItemIcon>
           <ListItemText>Back to dashboard</ListItemText>
         </MenuItem>
+        <MenuItem onClick={handleOpenRunnerStatus}>
+          <ListItemIcon>
+            <DnsIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Runner status</ListItemText>
+        </MenuItem>
       </Menu>
+      <RunnerStatusDialog open={runnerStatusOpen} onClose={handleCloseRunnerStatus} />
 
       {/* Main Tab Content */}
       <Box
