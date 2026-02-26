@@ -26,7 +26,53 @@ export async function claimNextJob(
     return null
   }
 
-  const callModeAwareClaim = async () => supabase.rpc('claim_next_job', {
+  const claimViaTable = async (projectId = null) => {
+    let selectQuery = supabase
+      .from('jobs')
+      .select('*')
+      .eq('status', 'queued')
+      .order('created_at', { ascending: true })
+      .limit(1)
+
+    if (projectId) {
+      selectQuery = selectQuery.eq('project_id', projectId)
+    }
+
+    const { data: queuedJob, error: selectError } = await selectQuery.maybeSingle()
+    if (selectError) {
+      throw selectError
+    }
+    if (!queuedJob) {
+      return null
+    }
+
+    const nextInfo = {
+      ...(queuedJob.info || {}),
+      runner_id: runnerId,
+      runner_mode: runnerMode
+    }
+
+    const { data: claimedJob, error: updateError } = await supabase
+      .from('jobs')
+      .update({
+        status: 'running',
+        started_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        info: nextInfo
+      })
+      .eq('id', queuedJob.id)
+      .eq('status', 'queued')
+      .select('*')
+      .maybeSingle()
+
+    if (updateError) {
+      throw updateError
+    }
+
+    return claimedJob || null
+  }
+
+  const callModeAwareClaimV2 = async () => supabase.rpc('claim_next_job_v2', {
     p_runner_id: runnerId,
     p_runner_mode: runnerMode,
     p_target_project_id: targetProjectId,
@@ -36,55 +82,23 @@ export async function claimNextJob(
   let data
   let error
 
-  ;({ data, error } = await callModeAwareClaim())
+  ;({ data, error } = await callModeAwareClaimV2())
 
   // Backward-compat fallback for environments where new migration is not applied yet.
-  if (error && /function .*claim_next_job/i.test(error.message || '')) {
+  if (error && /function .*claim_next_job_v2/i.test(error.message || '')) {
     if (targetProjectId) {
-      const { data: queuedJob, error: selectError } = await supabase
-        .from('jobs')
-        .select('*')
-        .eq('status', 'queued')
-        .eq('project_id', targetProjectId)
-        .order('created_at', { ascending: true })
-        .limit(1)
-        .maybeSingle()
-
-      if (selectError) {
-        throw selectError
-      }
-      if (!queuedJob) {
-        return null
-      }
-
-      const nextInfo = {
-        ...(queuedJob.info || {}),
-        runner_id: runnerId,
-        runner_mode: runnerMode
-      }
-
-      const { data: claimedJob, error: updateError } = await supabase
-        .from('jobs')
-        .update({
-          status: 'running',
-          started_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          info: nextInfo
-        })
-        .eq('id', queuedJob.id)
-        .eq('status', 'queued')
-        .select('*')
-        .maybeSingle()
-
-      if (updateError) {
-        throw updateError
-      }
-      return claimedJob || null
+      return await claimViaTable(targetProjectId)
     }
 
     ;({ data, error } = await supabase.rpc('claim_next_job', {
       p_runner_id: runnerId
     }))
+
+    // If old/new overloaded claim_next_job signatures conflict, fall back to
+    // optimistic table claim to avoid runner deadlock.
+    if (error && /Could not choose the best candidate function/i.test(error.message || '')) {
+      return await claimViaTable(null)
+    }
   }
 
   if (error) {
