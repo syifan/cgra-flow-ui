@@ -149,6 +149,7 @@ function Workspace() {
       const benchmarks = latestMappingJob.info?.benchmarks || latestMappingJob.info || {};
       const graphFilesByBenchmark = {};
       const instructionFilesByBenchmark = {};
+      const inlineInstructionDataByBenchmark = {};
 
       // Normalize structure: latestMappingJob.info may be an object keyed by benchmark
       for (const [bench, result] of Object.entries(benchmarks)) {
@@ -157,6 +158,9 @@ function Workspace() {
         }
         if (result && result.instruction_file?.publicUrl) {
           instructionFilesByBenchmark[bench] = result.instruction_file;
+        }
+        if (result && result.instruction_data) {
+          inlineInstructionDataByBenchmark[bench] = result.instruction_data;
         }
       }
 
@@ -223,9 +227,12 @@ function Workspace() {
         const grouped = instructions.reduce((acc, inst) => {
           acc[inst.bench] = inst.json;
           return acc;
-        }, {});
+        }, { ...inlineInstructionDataByBenchmark });
         setInstructionData(grouped);
         console.log('Instruction data for job', latestMappingJob.id, grouped);
+      } else if (Object.keys(inlineInstructionDataByBenchmark).length > 0) {
+        setInstructionData(inlineInstructionDataByBenchmark);
+        console.log('Instruction data (inline fallback) for job', latestMappingJob.id, inlineInstructionDataByBenchmark);
       } else {
         setInstructionData({});
         console.log('Mapping job has no instruction data to display', latestMappingJob.id);

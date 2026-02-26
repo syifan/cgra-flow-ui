@@ -108,7 +108,10 @@ function MappingTab({
     const status = latestMappingJob.status;
     const benchmarks = Array.isArray(latestMappingJob.info?.benchmarks)
       ? latestMappingJob.info.benchmarks.join(', ')
+      : latestMappingJob.info?.benchmarks && typeof latestMappingJob.info.benchmarks === 'object'
+        ? Object.keys(latestMappingJob.info.benchmarks).join(', ')
       : 'N/A';
+    const isFakeResult = latestMappingJob.info?.completed_by === 'fake_runner';
     const jobPackage = latestMappingJob.info?.job_package;
     const packageUrl = (() => {
       if (!jobPackage) return null;
@@ -150,6 +153,11 @@ function MappingTab({
         {latestMappingJob.error_message && (
           <Typography variant="body2" sx={{ color: 'error.main' }}>
             Error: {latestMappingJob.error_message}
+          </Typography>
+        )}
+        {isFakeResult && (
+          <Typography variant="body2" sx={{ color: 'warning.main' }}>
+            Processed by fake runner; no real mapping artifacts were generated.
           </Typography>
         )}
         {packageUrl && (
