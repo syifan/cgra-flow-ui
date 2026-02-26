@@ -144,3 +144,6 @@ playwright-report/
 test-results/
 tests/.auth/
 test-smtp.js
+# AI Log Plugin 推荐忽略项
+.specstory/
+.ailog/

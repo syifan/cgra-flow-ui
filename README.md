@@ -10,9 +10,11 @@ A modern web-based interface for the CGRA (Coarse-Grained Reconfigurable Array) 
 - **Layout**: FlexLayout for dockable panels
 - **Testing**: Playwright (E2E)
 
-## Getting Started
+## Local Development
 
-### Prerequisites
+For a complete step-by-step guide to running this project locally — including Docker image setup, environment configuration, and service startup order — see:
+
+**[docs/LOCAL_SETUP.md](docs/LOCAL_SETUP.md)**
 
 - Node.js 20.19+ or 22.12+
 - Docker (required for local Supabase)
@@ -21,7 +23,7 @@ A modern web-based interface for the CGRA (Coarse-Grained Reconfigurable Array) 
 ### 1. Install Dependencies
 
 ```bash
-npm install
+npm install && npm run runner:install
 ```
 
 ### 2. Start Local Supabase
@@ -59,13 +61,18 @@ npx supabase status
 npm run db:migrate
 ```
 
-### 5. Start the Development Server
+### 5. Pull the CGRA-Flow Docker Image
 
 ```bash
-npm run dev
+docker pull cgra/cgra-flow:ui
 ```
 
-The app runs on http://localhost:5173 by default.
+### 6. Start the Development Server
+
+```bash
+npm run dev        # Frontend at http://localhost:5173
+npm run runner     # Job runner (separate terminal)
+```
 
 ### Stopping Supabase
 
@@ -111,7 +118,7 @@ RUNNER_MODE=fake
 
 # Job execution configuration (for real mode)
 JOBS_DIR=./jobs
-DOCKER_IMAGE=cgra-flow:latest
+DOCKER_IMAGE=cgra/cgra-flow:ui
 DOCKER_TIMEOUT_MS=600000
 ```
 

@@ -11,7 +11,7 @@ import { promisify } from 'util';
 const execAsync = promisify(exec);
 
 // Docker configuration - matches mappingExecutor.js
-const DOCKER_IMAGE = process.env.DOCKER_IMAGE || 'cgra-flow:latest';
+const DOCKER_IMAGE = process.env.DOCKER_IMAGE || 'cgra/cgra-flow:ui';
 const DOCKER_BENCHMARK_DIR = process.env.DOCKER_BENCHMARK_DIR || '/cgra/dataflow/test/e2e';
 const OUTPUT_PATH = path.resolve(process.cwd(), 'public/benchmark_ops_index.json');
 

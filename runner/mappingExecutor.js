@@ -41,7 +41,7 @@ const supabase = createClient(
  * Configuration
  */
 const JOBS_DIR = process.env.JOBS_DIR || './jobs';
-const DOCKER_IMAGE = process.env.DOCKER_IMAGE || 'cgra-flow:latest';
+const DOCKER_IMAGE = process.env.DOCKER_IMAGE || 'cgra/cgra-flow:ui';
 const DOCKER_TIMEOUT_MS = parseInt(process.env.DOCKER_TIMEOUT_MS || '600000', 10); // 10 minutes
 
 // Validate Docker image name to prevent shell injection

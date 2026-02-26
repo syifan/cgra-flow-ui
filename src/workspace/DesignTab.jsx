@@ -1,13 +1,15 @@
 import { Box } from '@mui/material';
 import PropTypes from 'prop-types';
 import MainCanvas from './MainCanvas';
-import PropertyInspector from './PropertyInspector';
+import SidePanel from './SidePanel';
 
 function DesignTab({
   architecture,
   selection,
   onSelectionChange,
   onPropertyChange,
+  onApplyAIConfig,
+  mappingInfo,
   disabled
 }) {
   return (
@@ -35,20 +37,22 @@ function DesignTab({
         />
       </Box>
 
-      {/* Properties Panel - 30% */}
+      {/* Side Panel - 30% */}
       <Box
         sx={{
           flex: '0 0 30%',
           height: '100%',
-          overflow: 'auto',
+          overflow: 'hidden',
           borderLeft: '1px solid',
           borderColor: 'divider'
         }}
       >
-        <PropertyInspector
+        <SidePanel
           architecture={architecture}
           selection={selection}
           onPropertyChange={onPropertyChange}
+          onApplyAIConfig={onApplyAIConfig}
+          mappingInfo={mappingInfo}
           disabled={disabled}
         />
       </Box>
@@ -61,6 +65,8 @@ DesignTab.propTypes = {
   selection: PropTypes.object,
   onSelectionChange: PropTypes.func.isRequired,
   onPropertyChange: PropTypes.func.isRequired,
+  onApplyAIConfig: PropTypes.func,
+  mappingInfo: PropTypes.object,
   disabled: PropTypes.bool
 };
 
