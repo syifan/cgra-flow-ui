@@ -20,6 +20,7 @@ import { Layout, Model } from 'flexlayout-react';
 import MenuIcon from '@mui/icons-material/Menu';
 import SaveIcon from '@mui/icons-material/Save';
 import HomeIcon from '@mui/icons-material/Home';
+import DnsIcon from '@mui/icons-material/Dns';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import LockIcon from '@mui/icons-material/Lock';
 import 'flexlayout-react/style/dark.css';
@@ -39,7 +40,8 @@ import {
   MappingTab,
   VerificationTab,
   LayoutTab,
-  BenchmarkSelector
+  BenchmarkSelector,
+  RunnerStatusDialog
 } from './workspace/index.js';
 
 const NAVBAR_HEIGHT = 56;
@@ -86,6 +88,7 @@ function Workspace() {
   const [projectName, setProjectName] = useState('');
   const [selection, setSelection] = useState(null);
   const [menuAnchorEl, setMenuAnchorEl] = useState(null);
+  const [runnerStatusOpen, setRunnerStatusOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -665,6 +668,15 @@ function Workspace() {
     setMenuAnchorEl(null);
   }, []);
 
+  const handleOpenRunnerStatus = useCallback(() => {
+    handleCloseMenu();
+    setRunnerStatusOpen(true);
+  }, [handleCloseMenu]);
+
+  const handleCloseRunnerStatus = useCallback(() => {
+    setRunnerStatusOpen(false);
+  }, []);
+
   const handleBackToDashboard = useCallback(async () => {
     handleCloseMenu();
 
@@ -1141,7 +1153,14 @@ function Workspace() {
           </ListItemIcon>
           <ListItemText>Back to dashboard</ListItemText>
         </MenuItem>
+        <MenuItem onClick={handleOpenRunnerStatus}>
+          <ListItemIcon>
+            <DnsIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Runner status</ListItemText>
+        </MenuItem>
       </Menu>
+      <RunnerStatusDialog open={runnerStatusOpen} onClose={handleCloseRunnerStatus} />
 
       {/* Main Tab Content */}
       <Box
