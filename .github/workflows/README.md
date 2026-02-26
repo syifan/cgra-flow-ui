@@ -56,6 +56,18 @@ Deploys the job runner to production server.
   - Uses PM2 for process management
   - Preserves PR-specific runners
 
+### 🩺 [runner-watchdog.yml](./runner-watchdog.yml)
+**Production Runner Watchdog**
+
+Periodically verifies the production runner is online and attempts restart if down.
+
+- **Triggers:** Scheduled every 10 minutes, manual dispatch
+- **Runs on:** Ubuntu latest
+- **Key steps:**
+  - SSH health check of PM2 process `cgra-runner`
+  - Automatic restart if process is offline
+  - Fails workflow if restart cannot recover the process
+
 ## Status Badges
 
 Add these to your README.md:
@@ -65,6 +77,7 @@ Add these to your README.md:
 ![Converter Tests](https://github.com/syifan/cgra-flow-ui/actions/workflows/converter-tests.yml/badge.svg)
 ![Preview Environment](https://github.com/syifan/cgra-flow-ui/actions/workflows/preview-environment.yml/badge.svg)
 ![Production Runner](https://github.com/syifan/cgra-flow-ui/actions/workflows/production-runner.yml/badge.svg)
+![Runner Watchdog](https://github.com/syifan/cgra-flow-ui/actions/workflows/runner-watchdog.yml/badge.svg)
 ```
 
 ## Required Secrets
@@ -86,6 +99,12 @@ Configure these in repository settings → Secrets and variables → Actions:
 - `RUNNER_SSH_KEY` - SSH private key
 - `SUPABASE_URL` - Supabase project URL
 - `SUPABASE_SERVICE_ROLE_KEY` - Supabase service role key
+
+### For runner-watchdog.yml
+- `RUNNER_SSH_HOST` - Production server hostname
+- `RUNNER_SSH_PORT` - SSH port (default: 22)
+- `RUNNER_SSH_USER` - SSH username
+- `RUNNER_SSH_KEY` - SSH private key
 
 ## Local Testing
 
