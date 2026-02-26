@@ -81,9 +81,7 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
-          # Supabase creates branches automatically via GitHub integration
-          # But only when supabase files are changed in the PR
-          # Fall back to main project if no branch exists
+          # Require a PR-specific Supabase preview branch for strict isolation.
           GIT_BRANCH="${{ github.head_ref }}"
 
           echo "Looking for Supabase branch: $GIT_BRANCH"
@@ -98,9 +96,8 @@ jobs:
 
           # Check for API errors
           if echo "$BRANCHES" | jq -e '.message' > /dev/null 2>&1; then
-            echo "::warning::Failed to list branches: $(echo "$BRANCHES" | jq -r '.message')"
-            echo "Falling back to main project"
-            BRANCH_REF="$SUPABASE_PROJECT_ID"
+            echo "::error::Failed to list Supabase branches: $(echo "$BRANCHES" | jq -r '.message')"
+            exit 1
           else
             echo "Available branches:"
             echo "$BRANCHES" | jq -r '.[].name // .[].git_branch // "unknown"'
@@ -109,9 +106,8 @@ jobs:
             BRANCH_REF=$(echo "$BRANCHES" | jq -r ".[] | select(.name == \"$GIT_BRANCH\" or .git_branch == \"$GIT_BRANCH\") | .project_ref // .id")
 
             if [ -z "$BRANCH_REF" ] || [ "$BRANCH_REF" = "null" ]; then
-              echo "::notice::Supabase branch '$GIT_BRANCH' not found. This is normal if no supabase files were changed."
-              echo "Falling back to main project: $SUPABASE_PROJECT_ID"
-              BRANCH_REF="$SUPABASE_PROJECT_ID"
+              echo "::error::Supabase preview branch '$GIT_BRANCH' not found. Refusing fallback to main project."
+              exit 1
             else
               echo "Found Supabase branch!"
               echo "  Branch ref: $BRANCH_REF"
@@ -135,19 +131,22 @@ jobs:
           BRANCH_REF="${{ steps.supabase-branch.outputs.branch_ref }}"
 
           # Get API keys for the branch
-          KEYS=$(supabase projects api-keys --project-ref "$BRANCH_REF" --output json 2>/dev/null || echo "[]")
+          if ! KEYS=$(supabase projects api-keys --project-ref "$BRANCH_REF" --output json 2>/dev/null); then
+            echo "::error::Failed to fetch API keys for Supabase branch '$BRANCH_REF'."
+            exit 1
+          fi
 
           ANON_KEY=$(echo "$KEYS" | jq -r '.[] | select(.name == "anon") | .api_key')
           SERVICE_KEY=$(echo "$KEYS" | jq -r '.[] | select(.name == "service_role") | .api_key')
 
           if [ -z "$ANON_KEY" ] || [ "$ANON_KEY" = "null" ]; then
-            echo "::warning::Could not get anon key, using production key as fallback"
-            ANON_KEY="${{ secrets.SUPABASE_ANON_KEY }}"
+            echo "::error::Missing anon key for Supabase branch '$BRANCH_REF'."
+            exit 1
           fi
 
           if [ -z "$SERVICE_KEY" ] || [ "$SERVICE_KEY" = "null" ]; then
-            echo "::warning::Could not get service key, using production key as fallback"
-            SERVICE_KEY="${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}"
+            echo "::error::Missing service role key for Supabase branch '$BRANCH_REF'."
+            exit 1
           fi
 
           # Mask secrets in logs
