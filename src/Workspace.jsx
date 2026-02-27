@@ -34,6 +34,7 @@ import {
   updatePeConnectionsForDirection
 } from './workspace/peConnections.js';
 import { collectArchitectureOps } from './workspace/opMapping';
+import { DEFAULT_FUNCTION_UNITS } from './shared/functionalUnitMapping.js';
 import {
   DesignTab,
   MappingTab,
@@ -807,30 +808,33 @@ function Workspace() {
       const newDataSpmKb = config.data_spm_kb || 8;
       const fuTypes = config.fu_types || [];
 
+      // Build the tileFunctionalUnits config using canonical FU names
+      // Uses DEFAULT_FUNCTION_UNITS from functionalUnitMapping.js as the source of truth
+      const buildFuConfig = (fuList) => {
+        const fuConfig = {};
+        const allFuNames = Object.keys(DEFAULT_FUNCTION_UNITS);
+        if (fuList.length > 0) {
+          allFuNames.forEach((fu) => {
+            fuConfig[fu] = fuList.includes(fu);
+          });
+        } else {
+          // No FU types specified - enable all
+          allFuNames.forEach((fu) => {
+            fuConfig[fu] = true;
+          });
+        }
+        return fuConfig;
+      };
+
+      const fuConfig = buildFuConfig(fuTypes);
+
       // Build updated CGRAs with new dimensions and FU types
       const updatedCgras = (currentArch.CGRAs || []).map((cgra, index) => {
         // Update FU types for each PE
         const updatedPEs = (cgra.PEs || []).map((pe) => {
-          const newFuConfig = {};
-          // Set all FU types based on config
-          const allFuTypes = ['add', 'mul', 'div', 'fadd', 'fmul', 'fdiv', 'logic', 'cmp', 'sel', 
-            'type_conv', 'vfmul', 'fadd_fadd', 'fmul_fadd', 'loop_control', 'phi', 
-            'constant', 'mem', 'mem_indexed', 'shift', 'return', 'alloca', 'grant'];
-          
-          allFuTypes.forEach((fu) => {
-            newFuConfig[fu] = fuTypes.includes(fu) ? 1 : 1; // Enable all by default
-          });
-
-          // If fuTypes is specified, enable only those
-          if (fuTypes.length > 0) {
-            allFuTypes.forEach((fu) => {
-              newFuConfig[fu] = fuTypes.includes(fu) ? 1 : 0;
-            });
-          }
-
           return {
             ...pe,
-            tileFunctionalUnits: newFuConfig
+            tileFunctionalUnits: { ...fuConfig }
           };
         });
 
@@ -875,12 +879,7 @@ function Workspace() {
               x: i % newPerCgraColumns,
               y: Math.floor(i / newPerCgraColumns),
               disabled: false,
-              tileFunctionalUnits: fuTypes.length > 0 
-                ? Object.fromEntries(['add', 'mul', 'div', 'fadd', 'fmul', 'fdiv', 'logic', 'cmp', 'sel', 
-                    'type_conv', 'vfmul', 'fadd_fadd', 'fmul_fadd', 'loop_control', 'phi', 
-                    'constant', 'mem', 'mem_indexed', 'shift', 'return', 'alloca', 'grant']
-                    .map(fu => [fu, fuTypes.includes(fu) ? 1 : 0]))
-                : cgra.PEs?.[0]?.tileFunctionalUnits || {}
+              tileFunctionalUnits: { ...fuConfig }
             }))
         )
       }));
