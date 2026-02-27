@@ -45,6 +45,8 @@ SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 RUNNER_MODE=fake  # or 'real' for actual Docker execution
 RUNNER_ID=runner-local
 POLL_INTERVAL_MS=5000
+HEARTBEAT_INTERVAL_MS=10000
+JOB_LEASE_TIMEOUT_SECONDS=300
 
 # Real mode settings (required for RUNNER_MODE=real)
 JOBS_DIR=./jobs
@@ -272,6 +274,9 @@ Check:
 2. Supabase connection is working
 3. Job queue has pending jobs
 4. Runner has proper permissions
+
+If a runner crashes mid-job, stale `running` jobs are automatically re-queued
+once their heartbeat lease expires (`JOB_LEASE_TIMEOUT_SECONDS`).
 
 ### Converter errors
 
