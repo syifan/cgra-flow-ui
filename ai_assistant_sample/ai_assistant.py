@@ -52,14 +52,20 @@ aiChatConfig = {
 7. If goal is 'low_power': prefer smaller area, lower memory usage, balanced FU count.
 
 ## Available FU Types (for tile configuration):
-- Compute: add, mul, div, shift, logic
-- Floating-point: fadd, fmul, fdiv, fmul_fadd, fadd_fadd, vfmul
-- Control: cmp, sel, phi, loop_control
-- Memory: mem, mem_indexed, constant
-- Other: return, grant, alloca, type_conv
+- Integer Arithmetic: alu (add/sub), mul, div, shift, mac
+- Logic: logic (and/or/not/xor), cmp (icmp/fcmp), sel
+- Floating-point: fadd, fmul, fdiv, fmul_fadd, fadd_fadd
+- Memory: mem (load/store), mem_indexed, alloca, gep, memset
+- Type: type_conv, constant
+- Control: phi, return, branch, loop_control
+- Data Movement: data_mov, ctrl_mov, reserve, data
+- Grants: grant
+- Vector: vadd, vmul, vfmul, vector
 
 IMPORTANT: By default, all FU types should be enabled in every tile whenever we design a CGRA.
-The full FU list is: ["add", "mul", "div", "fadd", "fmul", "fdiv", "logic", "cmp", "sel", "type_conv", "vfmul", "fadd_fadd", "fmul_fadd", "loop_control", "phi", "constant", "mem", "mem_indexed", "shift", "return", "alloca", "grant"]
+The full FU list is: ["alu", "mul", "div", "shift", "mac", "logic", "cmp", "sel", "fadd", "fmul", "fdiv", "fmul_fadd", "fadd_fadd", "mem", "mem_indexed", "alloca", "gep", "memset", "type_conv", "constant", "phi", "return", "branch", "loop_control", "data_mov", "ctrl_mov", "reserve", "data", "grant", "vadd", "vmul", "vfmul", "vector"]
+IMPORTANT: Use exactly these FU names. Do NOT use instruction names (e.g., use "alu" not "add", use "mem" not "load").
+For low_power designs, you may remove some FUs, but ALWAYS keep at minimum: alu, mul, cmp, sel, phi, constant, mem, gep, return, branch, data_mov, ctrl_mov, reserve, data, grant
 
 When recommending CGRA configurations, provide THREE options:
 
@@ -72,7 +78,7 @@ When recommending CGRA configurations, provide THREE options:
     "data_spm_kb": <4-64>,
     "multi_cgra_rows": <1-4>,
     "multi_cgra_columns": <1-4>,
-    "fu_types": ["add", "mul", "div", ...],
+    "fu_types": ["alu", "mul", "div", ...],
     "explanation": "<high_performance optimization reasoning>"
   },
   "balanced": {
@@ -82,7 +88,7 @@ When recommending CGRA configurations, provide THREE options:
     "data_spm_kb": <4-64>,
     "multi_cgra_rows": <1-4>,
     "multi_cgra_columns": <1-4>,
-    "fu_types": ["add", "mul", ...],
+    "fu_types": ["alu", "mul", ...],
     "explanation": "<balanced trade-off reasoning>"
   },
   "low_power": {
@@ -92,7 +98,7 @@ When recommending CGRA configurations, provide THREE options:
     "data_spm_kb": <4-64>,
     "multi_cgra_rows": <1-4>,
     "multi_cgra_columns": <1-4>,
-    "fu_types": ["add", "mul", ...],
+    "fu_types": ["alu", "mul", ...],
     "explanation": "<power saving reasoning>"
   }
 }
@@ -127,18 +133,15 @@ VALID_CONFIG_RANGES = {
 # Kernel examples with DFG characteristics and recommended configurations
 
 ALL_FU_TYPES = [
-    "add", "mul", "div",
-    "fadd", "fmul", "fdiv",
+    "alu", "mul", "div", "shift", "mac",
     "logic", "cmp", "sel",
-    "type_conv",
-    "vfmul",
-    "fadd_fadd", "fmul_fadd",
-    "loop_control", "phi",
-    "constant",
-    "mem", "mem_indexed",
-    "shift",
-    "return", "alloca",
+    "fadd", "fmul", "fdiv", "fmul_fadd", "fadd_fadd",
+    "mem", "mem_indexed", "alloca", "gep", "memset",
+    "type_conv", "constant",
+    "phi", "return", "branch", "loop_control",
+    "data_mov", "ctrl_mov", "reserve", "data",
     "grant",
+    "vadd", "vmul", "vfmul", "vector",
 ]
 
 RAG_KERNEL_DATABASE = {

@@ -612,3 +612,351 @@ async function uploadJobPackage(jobId, jobDir) {
     }
   }
 }
+
+/**
+ * Execute a Verilog generation job
+ *
+ * @param {object} job - The job object from database
+ * @param {string} job.id - Job ID
+ * @param {string} job.project_id - Project ID
+ * @param {object} job.info - Job info containing architecture data
+ * @returns {Promise<object>} Result info
+ */
+export async function executeVerilogGenerationJob(job) {
+  const startTime = Date.now();
+  const jobDir = path.join(JOBS_DIR, job.id);
+
+  console.log(`  Starting Verilog generation job ${job.id}`);
+
+  // Validate job structure
+  if (!job.project_id) {
+    throw new Error('Job project_id is missing');
+  }
+
+  // Validate job ID format (UUID) to prevent command injection
+  const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID_PATTERN.test(job.id)) {
+    throw new Error(`Invalid job ID format: "${job.id}"`);
+  }
+
+  // Fetch architecture from project (single source of truth)
+  console.log(`  Fetching architecture from project ${job.project_id}...`);
+
+  const { data: project, error } = await supabase
+    .from('projects')
+    .select('data')
+    .eq('id', job.project_id)
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to fetch project: ${error.message}`);
+  }
+
+  if (!project || !project.data) {
+    throw new Error(`Project ${job.project_id} has no data`);
+  }
+
+  // Validate architecture structure
+  if (!project.data.architecture || typeof project.data.architecture !== 'object') {
+    throw new Error(`Project ${job.project_id} data is missing 'architecture' object`);
+  }
+
+  const architectureData = project.data;
+  console.log(`  ✓ Fetched architecture from project`);
+
+  console.log(`  Setting up job directory: ${jobDir}`);
+
+  // Step 1: Create job directory structure
+  await fs.mkdir(jobDir, { recursive: true });
+  const verilogDir = path.join(jobDir, 'verilog');
+  await fs.mkdir(verilogDir, { recursive: true });
+
+  // Step 2: Write architecture YAML
+  const archYamlPath = path.join(jobDir, 'architecture.yaml');
+  let yamlContent;
+  try {
+    // Convert architecture to VectorCGRA-compatible YAML format
+    yamlContent = convertArchitectureToVectorCGRAYaml(architectureData);
+  } catch (conversionError) {
+    throw new Error(`Failed to convert architecture to YAML: ${conversionError.message}`);
+  }
+  await fs.writeFile(archYamlPath, yamlContent, 'utf8');
+  console.log(`  ✓ Converted architecture to VectorCGRA YAML`);
+
+  // Step 3: Create Python wrapper script for VectorCGRA test
+  const pythonWrapperPath = path.join(jobDir, 'run_verilog_gen.py');
+  const archYamlInContainer = '/tmp/architecture.yaml';
+  const verilogOutputDir = '/tmp/verilog';
+  
+  const pythonScript = `#!/usr/bin/env python3
+import sys
+import os
+
+# Add VectorCGRA to path
+sys.path.insert(0, '/cgra/VectorCGRA')
+
+from VectorCGRA.multi_cgra.test.MeshMultiCgraTemplateRTL_test import test_mesh_multi_cgra_universal, test_simplified_multi_cgra
+
+def main():
+    arch_yaml_path = '${archYamlInContainer}'
+    output_dir = '${verilogOutputDir}'
+    
+    cmdline_opts = {
+        'test_verilog': 'zeros',
+        'test_yosys_verilog': '',
+        'dump_textwave': False,
+        'dump_vcd': False,
+        'dump_vtb': False,
+        'max_cycles': None
+    }
+    
+    print(f"Generating Verilog from {arch_yaml_path}...")
+    os.chdir(output_dir)
+    
+    success = True
+    
+    try:
+        test_mesh_multi_cgra_universal(cmdline_opts, arch_yaml_path)
+        print("SUCCESS: test_mesh_multi_cgra_universal completed")
+    except Exception as e:
+        print(f"FAILED: test_mesh_multi_cgra_universal failed: {e}")
+        import traceback
+        traceback.print_exc()
+        success = False
+    
+    try:
+        test_simplified_multi_cgra(cmdline_opts, arch_yaml_path)
+        print("SUCCESS: test_simplified_multi_cgra completed")
+    except Exception as e:
+        print(f"FAILED: test_simplified_multi_cgra failed: {e}")
+        import traceback
+        traceback.print_exc()
+        success = False
+    
+    # List generated files
+    print("\\nGenerated Verilog files:")
+    for f in os.listdir('.'):
+        if f.endswith('.v'):
+            size = os.path.getsize(f)
+            print(f"  {f} ({size} bytes)")
+    
+    if success:
+        print("\\nVerilog generation completed successfully")
+        sys.exit(0)
+    else:
+        print("\\nVerilog generation completed with errors")
+        sys.exit(1)
+
+if __name__ == '__main__':
+    main()
+`;
+  
+  await fs.writeFile(pythonWrapperPath, pythonScript, 'utf8');
+  console.log(`  ✓ Created VectorCGRA test wrapper script`);
+
+  // Step 4: Verify Docker image exists
+  await verifyDockerImage();
+
+  // Ensure storage bucket exists
+  await ensureGraphBucket();
+
+  // Step 5: Run VectorCGRA test in Docker using Python wrapper
+  const absoluteVerilogDir = path.resolve(verilogDir);
+  const absoluteArchYamlPath = path.resolve(archYamlPath);
+  const absolutePythonWrapper = path.resolve(pythonWrapperPath);
+
+  const dockerCommand = [
+    'docker run --rm',
+    `-v "${absoluteArchYamlPath}:${archYamlInContainer}"`,
+    `-v "${absoluteVerilogDir}:${verilogOutputDir}"`,
+    `-v "${absolutePythonWrapper}:/tmp/run_verilog_gen.py"`,
+    `-w /cgra`,
+    DOCKER_IMAGE,
+    'python3 /tmp/run_verilog_gen.py'
+  ].join(' ');
+
+  console.log(`  Running VectorCGRA test in Docker...`);
+
+  let stdout = '';
+  let stderr = '';
+  let exitCode = 0;
+
+  try {
+    const result = await execAsync(dockerCommand, {
+      timeout: DOCKER_TIMEOUT_MS,
+      maxBuffer: 50 * 1024 * 1024 // 50MB buffer for large Verilog output
+    });
+    stdout = result.stdout;
+    stderr = result.stderr;
+    console.log(`  ✓ VectorCGRA test completed`);
+  } catch (execError) {
+    // execAsync throws on non-zero exit codes
+    stdout = execError.stdout || '';
+    stderr = execError.stderr || execError.message;
+    exitCode = execError.code || 1;
+    console.log(`  ✗ VectorCGRA test failed with exit code ${exitCode}`);
+  }
+
+  const endTime = Date.now();
+  const executionTimeMs = endTime - startTime;
+
+  // Step 5: Find and collect generated Verilog files
+  let verilogFiles = [];
+  try {
+    const files = await fs.readdir(verilogDir);
+    verilogFiles = files.filter(f => f.endsWith('.v'));
+    console.log(`  Found ${verilogFiles.length} Verilog file(s)`);
+  } catch (readError) {
+    console.warn(`  ⚠️  Failed to read Verilog output directory: ${readError.message}`);
+  }
+
+  // Step 6: Upload Verilog files to Supabase Storage
+  const uploadedFiles = [];
+  for (const verilogFile of verilogFiles) {
+    const localPath = path.join(verilogDir, verilogFile);
+    try {
+      const stats = await fs.stat(localPath);
+      const fileBuffer = await fs.readFile(localPath);
+      const storagePath = `jobs/${job.id}/verilog/${verilogFile}`;
+      
+      const { error: uploadError } = await supabase.storage
+        .from(GRAPH_BUCKET)
+        .upload(storagePath, fileBuffer, {
+          contentType: 'text/plain',
+          upsert: true
+        });
+
+      if (uploadError) {
+        console.warn(`  ⚠️  Failed to upload ${verilogFile}: ${uploadError.message}`);
+        continue;
+      }
+
+      const { data: publicData } = supabase.storage.from(GRAPH_BUCKET).getPublicUrl(storagePath);
+
+      uploadedFiles.push({
+        file: verilogFile,
+        path: storagePath,
+        bucket: GRAPH_BUCKET,
+        size: stats.size,
+        publicUrl: publicData?.publicUrl || null
+      });
+      console.log(`  ✓ Uploaded ${verilogFile} (${stats.size} bytes)`);
+    } catch (uploadError) {
+      console.warn(`  ⚠️  Failed to process ${verilogFile}: ${uploadError.message}`);
+    }
+  }
+
+  // Step 7: Parse errors if test failed
+  let errorMessage = null;
+  if (exitCode !== 0) {
+    errorMessage = parsePytestErrors(stderr || stdout);
+  }
+
+  // Step 8: Build result info
+  const resultInfo = {
+    execution_time_ms: executionTimeMs,
+    job_directory: jobDir,
+    exit_code: exitCode,
+    verilog_files: uploadedFiles,
+    verilog_count: uploadedFiles.length,
+    stdout: stdout.substring(0, 10000), // Truncate large outputs
+    stderr: stderr.substring(0, 10000)
+  };
+
+  // Step 9: Upload job package
+  const jobPackage = await uploadJobPackage(job.id, jobDir);
+  resultInfo.job_package = jobPackage;
+
+  // Step 10: Throw error if test failed
+  if (exitCode !== 0) {
+    const error = new Error(errorMessage || `VectorCGRA test failed with exit code ${exitCode}`);
+    error.jobInfo = resultInfo;
+    throw error;
+  }
+
+  console.log(`  ✓ Verilog generation completed successfully`);
+  return resultInfo;
+}
+
+/**
+ * Parse pytest error output to extract user-friendly error messages
+ */
+function parsePytestErrors(output) {
+  if (!output) return 'Unknown error occurred';
+
+  // Try to extract error summary from pytest output
+  const lines = output.split('\n');
+  const errorLines = [];
+  let inErrorSection = false;
+
+  for (const line of lines) {
+    if (line.includes('FAILED') || line.includes('ERROR')) {
+      inErrorSection = true;
+    }
+    if (inErrorSection) {
+      errorLines.push(line);
+      if (errorLines.length > 20) break; // Limit error output
+    }
+  }
+
+  if (errorLines.length > 0) {
+    return errorLines.join('\n');
+  }
+
+  // Fallback to first 500 chars
+  return output.substring(0, 500);
+}
+
+/**
+ * Convert architecture JSON to VectorCGRA-compatible YAML format
+ * This ensures the YAML matches VectorCGRA's expected schema
+ */
+function convertArchitectureToVectorCGRAYaml(architectureData) {
+  // Extract architecture from the data structure
+  const arch = architectureData.architecture || architectureData;
+  
+  // Build VectorCGRA-compatible YAML structure
+  const vectorCgraYaml = {
+    architecture: {
+      name: 'NeuraMultiCgra',
+      version: '1.0'
+    },
+    multi_cgra_defaults: {
+      base_topology: arch.multi_cgra_defaults?.base_topology || 'mesh',
+      rows: arch.multi_cgra_defaults?.rows || arch.CGRAs?.length || 1,
+      columns: arch.multi_cgra_defaults?.columns || arch.CGRAs?.[0]?.length || 1,
+      memory: {
+        capacity: arch.multi_cgra_defaults?.memory?.capacity || 256,
+        'data bitwidth': arch.multi_cgra_defaults?.memory?.['data bitwidth'] || 64,
+        'vector lanes': arch.multi_cgra_defaults?.memory?.['vector lanes'] || 1
+      }
+    },
+    cgra_defaults: {
+      rows: arch.cgra_defaults?.rows || arch.CGRAs?.[0]?.[0]?.rows || 4,
+      columns: arch.cgra_defaults?.columns || arch.CGRAs?.[0]?.[0]?.columns || 4,
+      configMemSize: arch.cgra_defaults?.configMemSize || 64,
+      'per bank sram': arch.cgra_defaults?.['per bank sram'] || 8
+    },
+    tile_defaults: {
+      num_registers: arch.tile_defaults?.num_registers || 16,
+      fu_types: arch.tile_defaults?.fu_types || ['alu', 'mul', 'lsu', 'rhauld']
+    }
+  };
+
+  // Add link overrides if present
+  if (arch.link_overrides && arch.link_overrides.length > 0) {
+    vectorCgraYaml.link_overrides = arch.link_overrides;
+  }
+
+  // Add tile overrides if present
+  if (arch.tile_overrides && arch.tile_overrides.length > 0) {
+    vectorCgraYaml.tile_overrides = arch.tile_overrides;
+  }
+
+  // Convert to YAML string
+  return yaml.dump(vectorCgraYaml, {
+    sortKeys: false,
+    defaultFlowStyle: false,
+    lineWidth: -1
+  });
+}

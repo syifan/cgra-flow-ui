@@ -115,8 +115,8 @@ RUN cmake -G Ninja .. \
 
 WORKDIR /cgra
 
-# Clone VectorCGRA
-RUN git clone https://github.com/tancheng/VectorCGRA.git
+# Clone VectorCGRA with submodules
+RUN git clone --recursive https://github.com/tancheng/VectorCGRA.git
 
 # Set up Python virtual environment and install dependencies
 RUN python3.12 -m venv /cgra/venv
@@ -131,7 +131,8 @@ RUN pip install --upgrade pip && \
     pip install -U git+https://github.com/tancheng/pymtl3.1@yo-struct-list-fix && \
     pip install hypothesis && \
     pip install pytest && \
-    pip install py-markdown-table
+    pip install py-markdown-table && \
+    pip install pyyaml
 
 # Set default working directory
 WORKDIR /cgra

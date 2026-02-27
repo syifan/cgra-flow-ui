@@ -195,7 +195,7 @@ export function functionUnitsToInstructions(functionalUnits) {
   const instructions = [];
 
   for (const [unitName, enabled] of Object.entries(functionalUnits)) {
-    if (enabled === true && FUNCTION_UNIT_TO_INSTRUCTIONS[unitName]) {
+    if (enabled && FUNCTION_UNIT_TO_INSTRUCTIONS[unitName]) {
       instructions.push(...FUNCTION_UNIT_TO_INSTRUCTIONS[unitName]);
     }
   }
