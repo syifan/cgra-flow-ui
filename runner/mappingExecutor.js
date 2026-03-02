@@ -1018,12 +1018,19 @@ function convertArchitectureToVectorCGRAYaml(architectureData) {
 
   // ── Per-CGRA dimensions (from the first CGRA in the array) ──────────────
   const firstCgra = (arch.CGRAs || [])[0] || {};
-  const perRows = firstCgra.perCgraRows
-    ?? arch.cgra_defaults?.rows
-    ?? 4;
-  const perCols = firstCgra.perCgraColumns
-    ?? arch.cgra_defaults?.columns
-    ?? 4;
+  // VectorCGRA's Verilator compilation becomes OOM-fatal for per-CGRA sizes > 2×2.
+  // The reference arch.yaml (and all passing tests) use 2×2 per-CGRA tiles.
+  // A 4×4 per-CGRA grid produces ~16× more RTL, causing g++ (cc1plus) to be
+  // killed by the Linux OOM killer during Verilated shared-library compilation.
+  // Cap at 2 to match the only tested/supported Verilator compilation size.
+  const MAX_PER_CGRA_TILES = 2;
+  const rawPerRows = firstCgra.perCgraRows ?? arch.cgra_defaults?.rows ?? 4;
+  const rawPerCols = firstCgra.perCgraColumns ?? arch.cgra_defaults?.columns ?? 4;
+  const perRows = Math.min(rawPerRows, MAX_PER_CGRA_TILES);
+  const perCols = Math.min(rawPerCols, MAX_PER_CGRA_TILES);
+  if (rawPerRows > MAX_PER_CGRA_TILES || rawPerCols > MAX_PER_CGRA_TILES) {
+    console.log(`  ⚠ Per-CGRA size clamped from ${rawPerRows}×${rawPerCols} to ${perRows}×${perCols} for SVerilog generation (Verilator OOM limit)`);
+  }
   // configMemSize MUST be 16 — the test (MeshMultiCgraTemplateRTL_test.py) hardcodes
   // ctrl_mem_size = 16 when creating all payload types (CtrlAddrType = mk_bits(clog2(16)) = Bits4).
   // id2ctrlMemSize_map in the test is read from our YAML and passed to TileRTL, which creates
