@@ -930,7 +930,7 @@ function Workspace() {
             />
           );
         case 'verification':
-          return <VerificationTab />;
+          return <VerificationTab architecture={architecture} projectId={projectId} />;
         case 'layout':
           return <LayoutTab />;
         default:

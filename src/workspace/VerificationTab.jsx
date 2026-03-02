@@ -1,3 +1,4 @@
+import PropTypes from 'prop-types';
 import {
   Accordion,
   AccordionDetails,
@@ -10,7 +11,7 @@ import TestsPanel from './verification/TestsPanel';
 import SverilogPanel from './verification/SverilogPanel';
 import ReportPanel from './verification/ReportPanel';
 
-function VerificationTab() {
+function VerificationTab({ architecture, projectId }) {
   return (
     <Box sx={{ height: '100%', overflow: 'auto', p: 2 }}>
       <Accordion defaultExpanded>
@@ -27,7 +28,7 @@ function VerificationTab() {
           <Typography variant="subtitle1" fontWeight="bold">SVerilog</Typography>
         </AccordionSummary>
         <AccordionDetails sx={{ p: 1 }}>
-          <SverilogPanel />
+          <SverilogPanel architecture={architecture} projectId={projectId} />
         </AccordionDetails>
       </Accordion>
 
@@ -42,5 +43,10 @@ function VerificationTab() {
     </Box>
   );
 }
+
+VerificationTab.propTypes = {
+  architecture: PropTypes.object,
+  projectId: PropTypes.string,
+};
 
 export default VerificationTab;
