@@ -27,6 +27,7 @@ RUN apt-get update && apt-get install -y \
     ccache \
     git \
     wget \
+    curl \
     graphviz \
     make \
     autoconf \
@@ -34,6 +35,8 @@ RUN apt-get update && apt-get install -y \
     libfl-dev \
     bison \
     libffi-dev \
+    libgmp-dev \
+    libnuma-dev \
     python3.12 \
     python3.12-venv \
     python3.12-dev \
@@ -115,8 +118,37 @@ RUN cmake -G Ninja .. \
 
 WORKDIR /cgra
 
-# Clone VectorCGRA
-RUN git clone https://github.com/tancheng/VectorCGRA.git
+# Clone VectorCGRA with submodules
+RUN git clone --recursive https://github.com/tancheng/VectorCGRA.git
+
+# ============================================
+# Synthesis tools (oss-cad-suite, sv2v, mflowgen)
+# These are required for the Report Area/Power synthesis flow.
+# Installation order: heavy static tools first (better layer caching).
+# ============================================
+
+# Install oss-cad-suite (provides Yosys and related open-source EDA tools)
+# Pinned to 2024-09-20 release for reproducibility — same version used in CI
+RUN wget -q https://github.com/YosysHQ/oss-cad-suite-build/releases/download/2024-09-20/oss-cad-suite-linux-x64-20240920.tgz && \
+    tar -C /cgra -xzf oss-cad-suite-linux-x64-20240920.tgz && \
+    rm oss-cad-suite-linux-x64-20240920.tgz
+ENV PATH="/cgra/oss-cad-suite/bin:${PATH}"
+
+# Install Haskell Stack — required to compile sv2v from source
+# Uses upstream installer script; stack binary is placed in /usr/local/bin
+RUN curl -sSL https://get.haskellstack.org/ | sh -s -- -d /usr/local/bin
+
+# Clone and build sv2v (SystemVerilog → Verilog converter)
+# Pinned to commit 9bab0448 for reproducibility — same commit used in CI
+RUN git clone https://github.com/zachjs/sv2v.git /cgra/sv2v && \
+    cd /cgra/sv2v && \
+    git checkout 9bab0448e32504cef764692018914f0f2f314911 && \
+    stack setup && \
+    make
+ENV PATH="/cgra/sv2v/bin:${PATH}"
+
+# Clone mflowgen (ASIC flow manager) — installed as a Python package after venv is set up below
+RUN git clone https://github.com/tancheng/mflowgen.git /cgra/mflowgen
 
 # Set up Python virtual environment and install dependencies
 RUN python3.12 -m venv /cgra/venv
@@ -131,7 +163,15 @@ RUN pip install --upgrade pip && \
     pip install -U git+https://github.com/tancheng/pymtl3.1@yo-struct-list-fix && \
     pip install hypothesis && \
     pip install pytest && \
-    pip install py-markdown-table
+    pip install py-markdown-table && \
+    pip install pyyaml
+
+# Install mflowgen as a Python package using the already-cloned repo
+# Must happen after the venv is activated so the correct pip is used
+RUN pip install -e /cgra/mflowgen
+
+# Smoke-check: fail the Docker build early if any synthesis tool is missing
+RUN yosys --version && sv2v --version && mflowgen --help > /dev/null
 
 # Set default working directory
 WORKDIR /cgra

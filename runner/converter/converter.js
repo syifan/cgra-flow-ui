@@ -29,14 +29,17 @@ function functionalUnitsToOperations(tileFunctionalUnits) {
 }
 
 /**
- * Gets the most common set of operations from all PEs to use as default
+ * Gets the union (superset) of all operations from all enabled PEs.
+ * Uses the superset because the dataflow mapper does not support tile_overrides
+ * (any tile_override triggers a segfault in mlir-neura-opt). All tiles therefore
+ * share a single operation set defined in tile_defaults.
  * @param {Array} cgras - Array of CGRA objects
- * @returns {Array<string>} - Most common operations list
+ * @returns {Array<string>} - Union of all operations across enabled tiles
  */
 function deriveDefaultOperations(cgras) {
-  const operationSets = new Map();
+  const allOps = new Set();
 
-  // Collect all operation sets
+  // Collect union of all operations from enabled tiles
   cgras.forEach(cgra => {
     if (!Array.isArray(cgra?.PEs)) return;
 
@@ -44,28 +47,16 @@ function deriveDefaultOperations(cgras) {
       if (pe.disabled) return;
 
       const ops = functionalUnitsToOperations(pe.tileFunctionalUnits);
-      const key = JSON.stringify(ops.sort());
-      operationSets.set(key, (operationSets.get(key) || 0) + 1);
+      ops.forEach(op => allOps.add(op));
     });
   });
 
-  // Find most common set
-  let maxCount = 0;
-  let commonOps = [];
-
-  for (const [opsJson, count] of operationSets.entries()) {
-    if (count > maxCount) {
-      maxCount = count;
-      commonOps = JSON.parse(opsJson);
-    }
+  // If no operations found, use all supported operations as default
+  if (allOps.size === 0) {
+    return [...SUPPORTED_OPERATIONS];
   }
 
-  // If no common set, use all supported operations as default
-  if (commonOps.length === 0) {
-    commonOps = [...SUPPORTED_OPERATIONS];
-  }
-
-  return commonOps;
+  return Array.from(allOps);
 }
 
 /**
@@ -123,8 +114,7 @@ function generateTileOverrides(cgras, defaultOperations, normalizeOps = ops => o
           cgra_y: cgraY,
           tile_x: tileX,
           tile_y: tileY,
-          operations: tileOps,
-          existence: true
+          operations: tileOps
         });
       }
     });
@@ -187,11 +177,11 @@ export function convertJsonToYaml(jsonArchitecture) {
 
     link_overrides: [],
 
-    tile_overrides: generateTileOverrides(
-      arch.CGRAs || [],
-      defaultOperations,
-      normalizeOperations
-    ),
+    // tile_overrides intentionally left empty: the dataflow mapper
+    // (mlir-neura-opt) segfaults when any tile_override is present.
+    // Per-tile operation differences are absorbed by the superset in
+    // tile_defaults so every tile appears fully capable to the mapper.
+    tile_overrides: [],
 
     extensions: {
       crossbar: false

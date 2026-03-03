@@ -1,0 +1,24 @@
+architecture:
+  name: NeuraMultiCgra
+  version: '1.0'
+multi_cgra_defaults:
+  base_topology: mesh
+  rows: 1
+  columns: 1
+  memory:
+    capacity: 256
+    data bitwidth: 64
+    vector lanes: 1
+cgra_defaults:
+  rows: 2
+  columns: 2
+  configMemSize: 64
+  per bank sram: 8
+tile_defaults:
+  num_registers: 16
+  fu_types:
+    - alu
+    - mul
+    - lsu
+    - rhaul
+    - rhauld

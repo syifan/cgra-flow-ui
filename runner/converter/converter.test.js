@@ -248,7 +248,7 @@ describe('Architecture Converter - Functional Units', () => {
 });
 
 describe('Architecture Converter - Tile Overrides', () => {
-  it('should create tile override for disabled tile', () => {
+  it('should produce empty tile_overrides (mapper does not support them)', () => {
     const input = {
       version: 1,
       architecture: {
@@ -296,18 +296,11 @@ describe('Architecture Converter - Tile Overrides', () => {
     const result = convertJsonToYaml(input);
 
     assert.ok(Array.isArray(result.tile_overrides));
-    assert.equal(result.tile_overrides.length, 1);
-
-    const override = result.tile_overrides[0];
-    assert.equal(override.cgra_x, 0);
-    assert.equal(override.cgra_y, 0);
-    assert.equal(override.tile_x, 1);
-    assert.equal(override.tile_y, 0);
-    assert.equal(override.existence, false);
+    assert.equal(result.tile_overrides.length, 0, 'tile_overrides must be empty (mapper segfaults otherwise)');
   });
 
-  it('should create override when tile has different function units than default', () => {
-    // Tiles with different function units should generate overrides
+  it('should include all tile operations in tile_defaults when tiles differ', () => {
+    // Tiles with different function units: tile_defaults should be the union
     const input = {
       version: 1,
       architecture: {
@@ -326,13 +319,13 @@ describe('Architecture Converter - Tile Overrides', () => {
                 x: 0,
                 y: 0,
                 disabled: false,
-                tileFunctionalUnits: { alu: true, mul: true, mem: true }
+                tileFunctionalUnits: { alu: true, mul: true, mem: false }
               },
               {
                 x: 0,
                 y: 1,
                 disabled: false,
-                tileFunctionalUnits: { mem: true } // Different - only mem enabled
+                tileFunctionalUnits: { alu: false, mul: false, mem: true } // Different - only mem enabled
               }
             ]
           }
@@ -342,20 +335,16 @@ describe('Architecture Converter - Tile Overrides', () => {
 
     const result = convertJsonToYaml(input);
 
-    // Override should be created for tile with different operations
+    // tile_overrides should be empty
     assert.ok(Array.isArray(result.tile_overrides));
-    assert.equal(result.tile_overrides.length, 1, 'Override created for tile with different operations');
+    assert.equal(result.tile_overrides.length, 0, 'tile_overrides must be empty');
 
-    const override = result.tile_overrides[0];
-    assert.equal(override.tile_x, 0);
-    assert.equal(override.tile_y, 1);
-
-    // Override should only contain instructions from its function units (mem -> load, store)
-    const opsSet = new Set(override.operations);
-    assert.ok(opsSet.has('load'), 'Override should include load from mem unit');
-    assert.ok(opsSet.has('store'), 'Override should include store from mem unit');
-    assert.ok(!opsSet.has('add'), 'Override should not include add (alu disabled)');
-    assert.ok(!opsSet.has('mul'), 'Override should not include mul (mul disabled)');
+    // tile_defaults operations should be the union of all tile operations
+    const opsSet = new Set(result.tile_defaults.operations);
+    assert.ok(opsSet.has('load'), 'tile_defaults should include load from mem unit');
+    assert.ok(opsSet.has('store'), 'tile_defaults should include store from mem unit');
+    assert.ok(opsSet.has('add'), 'tile_defaults should include add from alu unit');
+    assert.ok(opsSet.has('mul'), 'tile_defaults should include mul from mul unit');
   });
 });
 

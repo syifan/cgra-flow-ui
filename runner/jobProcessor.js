@@ -2,7 +2,9 @@
  * Job processor for claiming and executing jobs from the queue.
  */
 
-import { executeMappingJob } from './mappingExecutor.js';
+import { executeMappingJob, executeVerilogGenerationJob } from './mappingExecutor.js';
+import { executeRunTestsJob } from './testExecutor.js';
+import { executeSynthesisJob } from './synthesisExecutor.js';
 
 /**
  * Claim the next available job atomically.
@@ -151,7 +153,15 @@ export async function executeJob(job) {
     case 'mapping':
       return await executeMappingJob(job);
 
-    case 'verification':
+    case 'verilog-generation':
+      return await executeVerilogGenerationJob(job);
+
+    case 'run_tests':
+      return await executeRunTestsJob(job);
+
+    case 'synthesis':
+      return await executeSynthesisJob(job);
+
     case 'layout':
       throw new Error(`Job type "${job.type}" not yet implemented`);
 

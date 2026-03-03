@@ -3,6 +3,8 @@
  * Parses AI responses and extracts validated CGRA configurations
  */
 
+import { getAllFunctionUnits, getUnitForInstruction, FUNCTION_UNIT_TO_INSTRUCTIONS } from '../../shared/functionalUnitMapping.js';
+
 // Valid parameter ranges for validation
 const VALID_CONFIG_RANGES = {
   cgra_rows: { min: 2, max: 8 },
@@ -13,21 +15,8 @@ const VALID_CONFIG_RANGES = {
   multi_cgra_columns: { min: 1, max: 4 }
 };
 
-// Default FU types (all enabled)
-const DEFAULT_FU_TYPES = [
-  'add', 'mul', 'div',
-  'fadd', 'fmul', 'fdiv',
-  'logic', 'cmp', 'sel',
-  'type_conv',
-  'vfmul',
-  'fadd_fadd', 'fmul_fadd',
-  'loop_control', 'phi',
-  'constant',
-  'mem', 'mem_indexed',
-  'shift',
-  'return', 'alloca',
-  'grant'
-];
+// Default FU types - derived from the canonical source in functionalUnitMapping.js
+const DEFAULT_FU_TYPES = getAllFunctionUnits();
 
 /**
  * Validate and fix a single configuration
@@ -106,14 +95,29 @@ export function validateAndFixConfig(config) {
   }
   fixedConfig.multi_cgra_columns = mcCols;
 
-  // Validate fu_types
+  // Validate fu_types - normalize instruction names to FU names
   let fuTypes = config.fu_types ?? DEFAULT_FU_TYPES;
   if (Array.isArray(fuTypes)) {
-    const validFus = fuTypes.filter(fu => DEFAULT_FU_TYPES.includes(fu));
-    if (validFus.length !== fuTypes.length) {
-      fixes.push(`Removed invalid FU types from list`);
+    // Map each entry: if it's a valid FU name keep it, if it's an instruction name resolve to its FU
+    const resolvedFus = new Set();
+    const invalidEntries = [];
+    for (const entry of fuTypes) {
+      if (DEFAULT_FU_TYPES.includes(entry)) {
+        resolvedFus.add(entry);
+      } else {
+        // Try to resolve as an instruction name
+        const unit = getUnitForInstruction(entry);
+        if (unit) {
+          resolvedFus.add(unit);
+        } else {
+          invalidEntries.push(entry);
+        }
+      }
     }
-    fixedConfig.fu_types = validFus.length > 0 ? validFus : DEFAULT_FU_TYPES;
+    if (invalidEntries.length > 0) {
+      fixes.push(`Resolved/removed invalid FU types: ${invalidEntries.join(', ')}`);
+    }
+    fixedConfig.fu_types = resolvedFus.size > 0 ? [...resolvedFus] : DEFAULT_FU_TYPES;
   } else {
     fixedConfig.fu_types = DEFAULT_FU_TYPES;
   }
