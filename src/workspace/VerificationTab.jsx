@@ -19,7 +19,7 @@ function VerificationTab({ architecture, projectId }) {
           <Typography variant="subtitle1" fontWeight="bold">Tests</Typography>
         </AccordionSummary>
         <AccordionDetails sx={{ p: 0 }}>
-          <TestsPanel />
+          <TestsPanel projectId={projectId} />
         </AccordionDetails>
       </Accordion>
 

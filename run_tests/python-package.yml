@@ -1,0 +1,160 @@
+# This workflow will install Python dependencies, run tests and lint with a variety of Python versions
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
+
+name: Python package
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9.20", "3.12.8"]
+
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        # same as `git submodule update --init` to update submodules
+        submodules: recursive
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v3
+      with:
+        python-version: ${{ matrix.python-version }}
+  
+    - name: Install Verilator
+      run: |
+        wget https://github.com/tancheng/pymtl-verilator/raw/master/verilator-travis-4.036.tar.gz
+        tar -C ${HOME} -xzf verilator-travis-4.036.tar.gz
+        echo "VERILATOR_ROOT=${HOME}/verilator" >> $GITHUB_ENV
+        echo "PYMTL_VERILATOR_INCLUDE_DIR=${HOME}/verilator/share/verilator/include" >> $GITHUB_ENV
+        echo "${HOME}/verilator/bin" >> $GITHUB_PATH
+        
+    - name: Check Verilator
+      run: |
+        echo ${VERILATOR_ROOT}
+        echo ${PYMTL_VERILATOR_INCLUDE_DIR}
+        verilator --version
+        
+    - name: Install dependencies
+      run: |
+        sudo apt-get install -y graphviz
+        sudo apt-get install git libffi-dev
+        python3 -m venv ${HOME}/venv
+        source ${HOME}/venv/bin/activate
+        pip install py==1.11.0
+        pip install wheel
+        pip install -U git+https://github.com/tancheng/pymtl3.1@yo-struct-list-fix
+        pip install hypothesis
+        pip install pytest
+        pip install py-markdown-table
+        pip install PyYAML
+        pip list
+        
+    - name: Install dependencies for sv2v
+      run: stack upgrade
+    - name: Build for sv2v
+      run: |
+        mkdir -p ${{github.workspace}}/tools && cd ${{github.workspace}}/tools
+        git clone https://github.com/zachjs/sv2v.git
+        cd sv2v
+        git checkout 9bab0448e32504cef764692018914f0f2f314911
+        make
+
+    - name: Install dependencies for mflowgen
+      run: |
+        wget https://github.com/YosysHQ/oss-cad-suite-build/releases/download/2024-09-20/oss-cad-suite-linux-x64-20240920.tgz
+        tar -C ${HOME} -xzf oss-cad-suite-linux-x64-20240920.tgz
+        export PATH="${HOME}/oss-cad-suite/bin:$PATH"
+        yosys -V
+
+    - name: Build for mflowgen
+      run: |
+        mkdir -p ${{github.workspace}}/tools && cd ${{github.workspace}}/tools
+        git clone https://github.com/tancheng/mflowgen.git
+        cd mflowgen
+        pip install -e .
+
+    - name: Test and translate with pytest
+      run: |
+        mkdir -p build && cd build
+        source ${HOME}/venv/bin/activate
+        # Simulation across all tests.
+        pytest .. -v --tb=short
+        # CtrlMemDynamicRTL
+        pytest ../mem/ctrl/test/CtrlMemDynamicRTL_test.py -xvs
+        # Tile translation.
+        pytest ../tile/test/TileRTL_test.py -xvs --test-verilog --dump-vtb --dump-vcd
+        # Controller
+        pytest ../controller/test/ControllerRTL_test.py -xvs --test-verilog --dump-vtb --dump-vcd
+        # CGRA template translation.
+        pytest ../cgra/test/CgraTemplateRTL_test.py -xvs --test-verilog --dump-vtb --dump-vcd
+        # TODO: Need to check vector/heterogneous modules exist in the generated Verilog.
+        # CGRA simulation/translation (including heterogeneous, kingmesh, vector).
+        pytest ../cgra/test/CgraRTL_test.py -xvs --test-verilog --dump-vtb --dump-vcd
+        # Ring network simulation.
+        pytest ../noc/PyOCN/pymtl3_net/ringnet/test/RingNetworkRTL_test.py
+        # CGRAs are interconnected with ring topology. The CGRA contains
+        # separate crossbars (for tiles and FUs), crossbar-based data memory (for multi-bank), and controller.
+        pytest ../multi_cgra/test/RingMultiCgraRTL_test.py -xvs --test-verilog --dump-vtb --dump-vcd
+        # Multi-cgra with mesh topology.
+        pytest ../multi_cgra/test/MeshMultiCgraRTL_test.py::test_verilog_homo_2x2_4x4 -xvs --test-verilog --dump-vtb --dump-vcd
+        # Const Queue
+        pytest ../mem/const/test/ConstQueueDynamicRTL_test.py -xvs
+        # Data Mem
+        pytest ../mem/data/test/DataMemControllerRTL_test.py -xvs --test-verilog --dump-vtb --dump-vcd
+        # MeshMultiCgraTemplateRTL Test
+        pytest ../multi_cgra/test/MeshMultiCgraTemplateRTL_test.py -xvs --test-verilog --dump-vtb --dump-vcd
+        # Generate FIR scalar .v file with explicit file & module names.
+        pytest ../multi_cgra/test/MeshMultiCgraRTL_test.py::test_multi_CGRA_fir_scalar_translation -xvs --test-verilog --dump-vtb --dump-vcd
+        # Generate FIR vector global reduce .v file with explicit file & module names.
+        pytest ../multi_cgra/test/MeshMultiCgraRTL_test.py::test_multi_CGRA_fir_vector_global_reduce_translation -xvs --test-verilog --dump-vtb --dump-vcd
+        # Generate 2x2 Systolic-array .v file with explicit file & module names.
+        pytest ../multi_cgra/test/MeshMultiCgraRTL_test.py::test_multi_CGRA_systolic_2x2_2x2_translation -xvs --test-verilog --dump-vtb --dump-vcd
+
+    - name: Test synthesis for CGRA template
+      run: |
+        start_time=$(date +%s)
+        export PATH="${HOME}/oss-cad-suite/bin:$PATH"
+        cd build
+        cp CgraTemplateRTL__pickled.v design.v
+        export PATH="${{github.workspace}}/tools/sv2v/bin:$PATH"
+        ${{github.workspace}}/tools/sv2v/bin/sv2v design.v > design_sv2v.v
+        cp design_sv2v.v ${{github.workspace}}/tools/mflowgen/designs/cgra/rtl/outputs/design.v
+        cd ${{github.workspace}}/tools/mflowgen
+        mkdir -p build && cd build
+        mflowgen run --design ../designs/cgra
+        make 2
+        make 3
+        end_time=$(date +%s)
+        duration=$((end_time - start_time))
+        echo "Synthesis step duration: $duration seconds"
+        if [ $duration -gt 900 ]; then
+          echo "ERROR: Synthesis step took longer than 15 minutes!"
+          exit 1
+        fi
+
+    - name: Use setup-verilator action
+      uses: veryl-lang/setup-verilator@v1 # Check the marketplace for the latest tag/version
+      with:
+        verilator-version: 'v5.026' # Specify the desired version
+
+    - name: Test pure SV tb.
+      run: |
+        unset VERILATOR_ROOT
+        unset PYMTL_VERILATOR_INCLUDE_DIR
+        mkdir -p build && cd build
+        verilator --version
+        verilator --binary -j 0 -Wno-UNOPTFLAT -Wno-WIDTHEXPAND -Wno-TIMESCALEMOD --error-limit 1000 --trace --timing -I../multi_cgra/test/sv_test/ ./MeshMultiCgraRTL__explicit__pickled.v ../multi_cgra/test/sv_test/MeshMultiCgraRTL_2x2_fir_scalar_tb.v --top cgra_test
+        ./obj_dir/Vcgra_test
+        verilator --binary -j 0 -Wno-UNOPTFLAT -Wno-WIDTHEXPAND -Wno-TIMESCALEMOD -Wno-WIDTHTRUNC --error-limit 1000 --trace --timing -I../multi_cgra/test/sv_test/ ./MeshMultiCgraRTL__explicit_vector_global_reduce__pickled.v ../multi_cgra/test/sv_test/MeshMultiCgraRTL_2x2_fir_vector_global_reduce_tb.v --top cgra_test
+        ./obj_dir/Vcgra_test
+        verilator --binary -j 0 -Wno-UNOPTFLAT -Wno-WIDTHEXPAND -Wno-TIMESCALEMOD -Wno-WIDTHTRUNC -Wno-SELRANGE --error-limit 1000 --trace --timing -I../multi_cgra/test/sv_test/ ./MeshMultiCgraRTL__explicit_systolic_2x2_2x2__pickled.v ../multi_cgra/test/sv_test/MeshMultiCgraRTL_systolic_2x2_2x2_tb.v --top cgra_test
+        ./obj_dir/Vcgra_test
+

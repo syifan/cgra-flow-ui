@@ -1,0 +1,30 @@
+# CtrlMemDynamicRTL
+pytest ../mem/ctrl/test/CtrlMemDynamicRTL_test.py -xvs
+# Tile translation.
+pytest ../tile/test/TileRTL_test.py -xvs
+# Controller
+pytest ../controller/test/ControllerRTL_test.py -xvs
+# CGRA template translation.
+pytest ../cgra/test/CgraTemplateRTL_test.py -xvs
+# TODO: Need to check vector/heterogneous modules exist in the generated Verilog.
+# CGRA simulation/translation (including heterogeneous, kingmesh, vector).
+pytest ../cgra/test/CgraRTL_test.py -xvs
+# Ring network simulation.
+pytest ../noc/PyOCN/pymtl3_net/ringnet/test/RingNetworkRTL_test.py
+# CGRAs are interconnected with ring topology. The CGRA contains
+# separate crossbars (for tiles and FUs), crossbar-based data memory (for multi-bank), and controller.
+pytest ../multi_cgra/test/RingMultiCgraRTL_test.py -xvs
+# Multi-cgra with mesh topology.
+pytest ../multi_cgra/test/MeshMultiCgraRTL_test.py::test_verilog_homo_2x2_4x4 -xvs
+# Const Queue
+pytest ../mem/const/test/ConstQueueDynamicRTL_test.py -xvs
+# Data Mem
+pytest ../mem/data/test/DataMemControllerRTL_test.py -xvs
+# MeshMultiCgraTemplateRTL Test
+pytest ../multi_cgra/test/MeshMultiCgraTemplateRTL_test.py -xvs
+# Generate FIR scalar .v file with explicit file & module names.
+pytest ../multi_cgra/test/MeshMultiCgraRTL_test.py::test_multi_CGRA_fir_scalar_translation -xvs
+# Generate FIR vector global reduce .v file with explicit file & module names.
+pytest ../multi_cgra/test/MeshMultiCgraRTL_test.py::test_multi_CGRA_fir_vector_global_reduce_translation -xvs
+# Generate 2x2 Systolic-array .v file with explicit file & module names.
+pytest ../multi_cgra/test/MeshMultiCgraRTL_test.py::test_multi_CGRA_systolic_2x2_2x2_translation -xvs

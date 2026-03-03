@@ -38,6 +38,37 @@ export async function submitVerilogGenerationJob(projectId) {
 }
 
 /**
+ * Submit a run-tests job for the given project.
+ * The runner reads run_tests/cases.txt and executes each pytest command in Docker.
+ *
+ * @param {string} projectId - The project ID
+ * @returns {Promise<string>} The new job's ID
+ */
+export async function submitRunTestsJob(projectId) {
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+
+  const { data: newJob, error } = await supabase
+    .from('jobs')
+    .insert({
+      project_id: projectId,
+      user_id: user?.id,
+      type: 'run_tests',
+      status: 'queued',
+      info: {}
+    })
+    .select()
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to submit run-tests job: ${error.message}`);
+  }
+
+  return newJob.id;
+}
+
+/**
  * Subscribe to job row updates for a specific job.
  *
  * @param {string} jobId - The job ID to watch

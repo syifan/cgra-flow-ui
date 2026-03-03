@@ -3,6 +3,7 @@
  */
 
 import { executeMappingJob, executeVerilogGenerationJob } from './mappingExecutor.js';
+import { executeRunTestsJob } from './testExecutor.js';
 
 /**
  * Claim the next available job atomically.
@@ -153,6 +154,9 @@ export async function executeJob(job) {
 
     case 'verilog-generation':
       return await executeVerilogGenerationJob(job);
+
+    case 'run_tests':
+      return await executeRunTestsJob(job);
 
     case 'verification':
     case 'layout':
