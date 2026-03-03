@@ -16,7 +16,7 @@ import {
 
 // status: 'idle' | 'pending' | 'running' | 'done' | 'error'
 
-function SverilogPanel({ architecture, projectId }) {
+function SverilogPanel({ architecture, projectId, onSverilogSuccess }) {
   const [status, setStatus] = useState('idle');
   const [sverilogText, setSverilogText] = useState(null);
   const [errorMessage, setErrorMessage] = useState(null);
@@ -55,6 +55,9 @@ function SverilogPanel({ architecture, projectId }) {
       if (jobStatus === 'success') {
         unsubscribeRef.current?.();
         unsubscribeRef.current = null;
+
+        // Notify parent that SVerilog generation succeeded (enables Synthesize)
+        onSverilogSuccess?.();
 
         // Fetch SVerilog text from the first uploaded file's public URL
         const files = result?.verilog_files ?? [];
@@ -157,6 +160,7 @@ function SverilogPanel({ architecture, projectId }) {
 SverilogPanel.propTypes = {
   architecture: PropTypes.object,
   projectId: PropTypes.string,
+  onSverilogSuccess: PropTypes.func,
 };
 
 export default SverilogPanel;

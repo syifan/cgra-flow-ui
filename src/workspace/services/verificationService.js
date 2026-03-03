@@ -69,6 +69,39 @@ export async function submitRunTestsJob(projectId) {
 }
 
 /**
+ * Submit a synthesis job for the given project.
+ * The runner picks up the latest successful verilog-generation job for the
+ * project, runs sv2v + mflowgen + Yosys inside Docker, and writes tile area
+ * results back to this job's info column.
+ *
+ * @param {string} projectId - The project ID
+ * @returns {Promise<string>} The new job's ID
+ */
+export async function submitSynthesisJob(projectId) {
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+
+  const { data: newJob, error } = await supabase
+    .from('jobs')
+    .insert({
+      project_id: projectId,
+      user_id: user?.id,
+      type: 'synthesis',
+      status: 'queued',
+      info: {}
+    })
+    .select()
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to submit synthesis job: ${error.message}`);
+  }
+
+  return newJob.id;
+}
+
+/**
  * Subscribe to job row updates for a specific job.
  *
  * @param {string} jobId - The job ID to watch

@@ -1,0 +1,304 @@
+name: build
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+env:
+  # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
+  BUILD_TYPE: Release
+
+jobs:
+  build:
+    # The CMake configure and build commands are platform agnostic and should work equally well on Windows or Mac.
+    # You can convert this to a matrix build if you need cross-platform coverage.
+    # See: https://docs.github.com/en/free-pro-team@latest/actions/learn-github-actions/managing-complex-workflows#using-a-build-matrix
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9.20", "3.12.8"]
+
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        submodules: true
+    
+    # Update references
+    - name: Git Submodule Update
+      run: |
+        git submodule update --init
+        
+
+    - name: Install LLVM and Clang for CGRA-Mapper
+      run: |
+        dpkg -l | grep llvm
+        sudo apt-get purge llvm-13
+        sudo apt-get purge llvm-14
+        sudo apt-get purge llvm-15
+        sudo apt-get -y update
+        sudo apt-get -y install cmake
+        sudo apt-get -y install llvm-12 llvm-12-dev llvm-12-tools clang-12
+        sudo apt-get -y install build-essential
+
+    - name: Configure CMake for CGRA-Mapper
+      run: cd CGRA-Mapper && mkdir build && cd build && cmake ..
+
+    - name: Build for CGRA-Mapper
+      working-directory: ${{github.workspace}}/CGRA-Mapper/build
+      run: make
+
+    - name: Test for CGRA-Mapper
+      working-directory: ${{github.workspace}}/CGRA-Mapper/test
+      run: sudo ln -sf /usr/bin/opt-12 /usr/bin/opt && source compile.sh
+      
+    - name: Set up Python ${{ matrix.python-version }} for VectorCGRA
+      uses: actions/setup-python@v3
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: VectorCGRA Git Sumbodule Update
+      run: |
+        cd VectorCGRA
+        git submodule update --init
+    - name: Install Verilator for VectorCGRA
+      run: |
+        wget https://github.com/tancheng/pymtl-verilator/raw/master/verilator-travis-4.036.tar.gz
+        tar -C ${HOME} -xzf verilator-travis-4.036.tar.gz
+        echo "VERILATOR_ROOT=${HOME}/verilator" >> $GITHUB_ENV
+        echo "PYMTL_VERILATOR_INCLUDE_DIR=${HOME}/verilator/share/verilator/include" >> $GITHUB_ENV
+        echo "${HOME}/verilator/bin" >> $GITHUB_PATH
+        
+    - name: Check Verilator for VectorCGRA
+      run: |
+        echo ${VERILATOR_ROOT}
+        echo ${PYMTL_VERILATOR_INCLUDE_DIR}
+        verilator --version
+        
+    - name: Install dependencies for VectorCGRA
+      run: |
+        sudo apt-get install -y graphviz
+        sudo apt-get install git libffi-dev
+        python3 -m venv ${HOME}/venv
+        source ${HOME}/venv/bin/activate
+        pip install py==1.11.0
+        pip install wheel
+        pip install -U git+https://github.com/tancheng/pymtl3.1@yo-struct-list-fix
+        pip install hypothesis
+        pip install pytest
+        pip install py-markdown-table
+        pip install PyYAML
+        pip list
+    - name: Test with pytest for VectorCGRA
+      run: |
+        cd VectorCGRA
+        mkdir -p build && cd build
+        source ${HOME}/venv/bin/activate
+        pytest .. -v --tb=short
+        
+        
+    - name: Install dependencies for mflowgen
+      run: |
+        sudo apt-get install -y yosys
+        
+    - name: Build for mflowgen
+      working-directory: ${{github.workspace}}/tools/mflowgen
+      run: |
+        pip install -e .
+    
+    - name: Test for mflowgen
+      working-directory: ${{github.workspace}}/tools/mflowgen
+      run: |
+        mkdir build && cd build
+        mflowgen run --design ../designs/GcdUnit
+        make 3
+      
+    - name: Build for cacti
+      working-directory: ${{github.workspace}}/tools/cacti
+      run: make
+      
+      
+    - name: Install dependencies for sv2v
+      run: stack upgrade
+      
+    - name: Build for sv2v
+      working-directory: ${{github.workspace}}/tools/sv2v
+      run: make 
+      
+
+    - name: Install dependencies for tkinter
+      run: |
+        sudo apt-get install python3-tk
+        source ${HOME}/venv/bin/activate
+        pip install pillow
+
+    - name: Test for tkinter
+      working-directory: ${{github.workspace}}/
+      run: |
+        mkdir build && cd build
+        source ${HOME}/venv/bin/activate
+
+  dataflow:
+    runs-on: ubuntu-22.04
+
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        submodules: true
+
+    - name: Git Submodule Update
+      run: |
+        git submodule update --init --recursive dataflow/
+
+    - name: Set up Python 3.11.13 for dataflow
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11.13"
+
+    - name: Download pre-built LLVM for dataflow
+      env:
+        LLVM_RELEASE_URL: "https://github.com/tancheng/CGRA-Flow/releases/download/LLVM%406146a88/llvm-project-6146a88-prebuild.tar.xz"
+      run: |
+        mkdir -p ${{ github.workspace }}/llvm-project
+        wget ${LLVM_RELEASE_URL}
+        tar -xJf llvm-project-6146a88-prebuild.tar.xz -C ./llvm-project
+        rm llvm-project-6146a88-prebuild.tar.xz
+
+    - name: Install dependencies for dataflow
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y ninja-build graphviz
+
+    - name: Build dataflow
+      working-directory: ${{github.workspace}}/dataflow
+      run: |
+        mkdir -p build && cd build
+        cmake -G Ninja .. \
+          -DCMAKE_PREFIX_PATH=${{github.workspace}}/llvm-project \
+          -DCMAKE_CXX_FLAGS="-std=c++17"
+        ninja
+
+    - name: Install NumPy 1.x for torch-mlir
+      run: pip install "numpy<2.0"
+
+    - name: Install PyTorch
+      run: |
+        wget https://github.com/llvm/torch-mlir/releases/download/snapshot-20231229.1067/torch-2.2.0.dev20231204+cpu-cp311-cp311-linux_x86_64.whl
+        pip install torch-2.2.0.dev20231204+cpu-cp311-cp311-linux_x86_64.whl
+
+    - name: Install torch-mlir
+      run: |
+        wget https://github.com/llvm/torch-mlir/releases/download/snapshot-20231229.1067/torch_mlir-20231229.1067-cp311-cp311-linux_x86_64.whl
+        pip install torch_mlir-20231229.1067-cp311-cp311-linux_x86_64.whl
+
+    - name: Run dataflow tests
+      working-directory: ${{github.workspace}}/dataflow
+      run: |
+        pip install lit
+        export PATH="${{github.workspace}}/llvm-project/bin:$PATH"
+        echo $PATH
+        which llvm-extract
+        export TMPDIR="${{github.workspace}}/dataflow/test/e2e"
+        mkdir -p "${TMPDIR}"
+        cd ${{github.workspace}}/dataflow/test
+        lit . -v
+
+    - name: Fix fir output (re-run fir_kernel after fir_vec)
+      working-directory: ${{github.workspace}}/dataflow
+      run: |
+        # fir_vec runs after fir and overwrites the output
+        # Re-run fir_kernel.mlir to restore the correct fir output
+        export PATH="${{github.workspace}}/llvm-project/bin:$PATH"
+        export TMPDIR="${{github.workspace}}/dataflow/test/e2e"
+        cd ${{github.workspace}}/dataflow/test
+        lit e2e/fir/fir_kernel.mlir -v
+        # Copy the newly generated FIR output to a deterministic location for downstream consumption
+        latest_dir="$(find "${TMPDIR}" -path "*fir_kernel.mlir.tmp.dir" -type d | sort | tail -n 1)"
+        if [ -z "${latest_dir}" ]; then
+          echo "Failed to locate fir_kernel.mlir.tmp.dir after rerun" >&2
+          exit 1
+        fi
+        mkdir -p "${TMPDIR}/fir"
+        cp "${latest_dir}/tmp-generated-instructions.yaml" "${TMPDIR}/fir/tmp-generated-instructions.yaml"
+        if [ -f "${latest_dir}/tmp-generated-instructions.asm" ]; then
+          cp "${latest_dir}/tmp-generated-instructions.asm" "${TMPDIR}/fir/tmp-generated-instructions.asm"
+        fi
+
+    - name: Upload dataflow e2e outputs
+      uses: actions/upload-artifact@v4
+      with:
+        name: dataflow-e2e
+        path: ${{github.workspace}}/dataflow/test/e2e
+
+  zeonica:
+    needs: dataflow
+    runs-on: ubuntu-22.04
+
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+        submodules: false  # Disable auto submodule checkout to manually configure URLs
+
+    - name: Git Submodule Update (Zeonica)
+      run: |
+        # Update zeonica submodule only (skip nested Zeonica_Testbench submodule)
+        # CI reads YAML files from dataflow/test/e2e
+        git submodule update --init zeonica
+
+    - name: Set up Go (for Zeonica)
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: zeonica/go.mod
+        cache: true
+
+    - name: Download dataflow e2e outputs
+      uses: actions/download-artifact@v4
+      with:
+        name: dataflow-e2e
+        path: ${{github.workspace}}/dataflow/test/e2e
+
+    - name: Run testbenches from dataflow outputs (Zeonica)
+      working-directory: ${{github.workspace}}/zeonica
+      run: |
+        go mod download
+        WORKDIR="${{github.workspace}}/dataflow/test/e2e"
+        mapfile -t YAML_FILES < <(find "$WORKDIR" -name tmp-generated-instructions.yaml -print)
+        if [ "${#YAML_FILES[@]}" -eq 0 ]; then
+          echo "No tmp-generated-instructions.yaml found under $WORKDIR; skipping testbenches."
+          exit 0
+        fi
+        for f in "${YAML_FILES[@]}"; do
+          kernel="$(basename "$(dirname "$f")")"
+          echo "=== Run testbench for kernel: $kernel ==="
+          case "$kernel" in
+            fir)
+              ZEONICA_PROGRAM_YAML="$f" go test ./test/testbench/fir -run TestFir
+              ;;
+            # histogram)
+            #   ZEONICA_PROGRAM_YAML="$f" go test ./test/testbench/histogram -run TestHistogram
+            #   ;;
+            # axpy)
+            #   ZEONICA_PROGRAM_YAML="$f" go test ./test/testbench/axpy -run TestAxpy
+            #   ;;
+            # bicg)
+            #   ZEONICA_PROGRAM_YAML="$f" go test ./test/testbench/bicg -run TestBicg
+            #   ;;
+            # gemm)
+            #   ZEONICA_PROGRAM_YAML="$f" go test ./test/testbench/gemm -run TestGemm
+            #   ;;
+            # gemv)
+            #   ZEONICA_PROGRAM_YAML="$f" go test ./test/testbench/gemv -run TestGemv
+            #   ;;
+            # spmv)
+            #   ZEONICA_PROGRAM_YAML="$f" go test ./test/testbench/spmv -run TestSpmv
+            #   ;;
+            # relu)
+            #   ZEONICA_PROGRAM_YAML="$f" go test ./test/testbench/relu -run TestRelu
+            #   ;;
+            *)
+              echo "Skip unknown kernel: $kernel"
+              ;;
+          esac
+        done

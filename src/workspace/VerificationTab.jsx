@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import PropTypes from 'prop-types';
 import {
   Accordion,
@@ -12,6 +13,13 @@ import SverilogPanel from './verification/SverilogPanel';
 import ReportPanel from './verification/ReportPanel';
 
 function VerificationTab({ architecture, projectId }) {
+  // Tracks whether a successful SVerilog generation result is available
+  // for this project in the current session.
+  // The Synthesize button in ReportPanel is disabled until this is true.
+  const [sverilogDone, setSverilogDone] = useState(false);
+
+  const handleSverilogSuccess = () => setSverilogDone(true);
+
   return (
     <Box sx={{ height: '100%', overflow: 'auto', p: 2 }}>
       <Accordion defaultExpanded>
@@ -28,7 +36,11 @@ function VerificationTab({ architecture, projectId }) {
           <Typography variant="subtitle1" fontWeight="bold">SVerilog</Typography>
         </AccordionSummary>
         <AccordionDetails sx={{ p: 1 }}>
-          <SverilogPanel architecture={architecture} projectId={projectId} />
+          <SverilogPanel
+            architecture={architecture}
+            projectId={projectId}
+            onSverilogSuccess={handleSverilogSuccess}
+          />
         </AccordionDetails>
       </Accordion>
 
@@ -37,7 +49,10 @@ function VerificationTab({ architecture, projectId }) {
           <Typography variant="subtitle1" fontWeight="bold">Report Area/Power</Typography>
         </AccordionSummary>
         <AccordionDetails>
-          <ReportPanel />
+          <ReportPanel
+            projectId={projectId}
+            sverilogReady={sverilogDone}
+          />
         </AccordionDetails>
       </Accordion>
     </Box>
