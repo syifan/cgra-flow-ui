@@ -11,7 +11,7 @@ import { fileURLToPath } from 'url';
 import { parseCasesFile } from './testExecutor.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const CASES_FILE = path.resolve(__dirname, '../run_tests/cases.txt');
+const CASES_FILE = path.resolve(__dirname, '../CGRA-Flow-sample/cases.txt');
 
 test('parseCasesFile returns an array of cases', async () => {
   const cases = await parseCasesFile(CASES_FILE);

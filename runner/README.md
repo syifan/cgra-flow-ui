@@ -52,7 +52,7 @@ DOCKER_IMAGE=cgra/cgra-flow:ui
 DOCKER_TIMEOUT_MS=600000
 
 # Run-tests job settings
-CASES_FILE_PATH=../run_tests/cases.txt  # Path to cases.txt (relative to runner dir)
+CASES_FILE_PATH=../CGRA-Flow-sample/cases.txt  # Path to cases.txt (relative to runner dir)
 TEST_DOCKER_TIMEOUT_MS=600000           # Per-test Docker timeout in ms (default: 10 min)
 ```
 

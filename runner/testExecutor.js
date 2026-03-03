@@ -6,7 +6,7 @@
  * patching jobs.info in Supabase after each test completes.
  *
  * Environment variables:
- *   CASES_FILE_PATH       - Path to cases.txt (default: ../run_tests/cases.txt relative to this file)
+ *   CASES_FILE_PATH       - Path to cases.txt (default: ../CGRA-Flow-sample/cases.txt relative to this file)
  *   DOCKER_IMAGE          - Docker image to use (default: cgra/cgra-flow:ui)
  *   TEST_DOCKER_TIMEOUT_MS - Per-test timeout in ms (default: 600000 = 10 min)
  * 
@@ -41,7 +41,7 @@ const supabase = createClient(
 
 // Configuration
 const CASES_FILE_PATH = process.env.CASES_FILE_PATH
-  || path.resolve(__dirname, '../run_tests/cases.txt');
+  || path.resolve(__dirname, '../CGRA-Flow-sample/cases.txt');
 
 const DOCKER_IMAGE = process.env.DOCKER_IMAGE || 'cgra/cgra-flow:ui';
 const TEST_DOCKER_TIMEOUT_MS = parseInt(process.env.TEST_DOCKER_TIMEOUT_MS || '600000', 10);
