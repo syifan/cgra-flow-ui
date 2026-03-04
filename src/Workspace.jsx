@@ -97,6 +97,8 @@ function Workspace() {
   const [instructionData, setInstructionData] = useState({});
   const [model] = useState(() => Model.fromJson(mainLayout));
   const [currentBenchmark, setCurrentBenchmark] = useState(null);
+  const [sverilogDone, setSverilogDone] = useState(false);
+  const handleSverilogSuccess = useCallback(() => setSverilogDone(true), []);
   // Benchmark index loaded from public/benchmark_ops_index.json
   const [benchmarkIndex, setBenchmarkIndex] = useState(null);
   const [availableBenchmarks, setAvailableBenchmarks] = useState(DEFAULT_BENCHMARKS);
@@ -930,14 +932,14 @@ function Workspace() {
             />
           );
         case 'verification':
-          return <VerificationTab architecture={architecture} projectId={projectId} />;
+          return <VerificationTab architecture={architecture} projectId={projectId} onSverilogSuccess={handleSverilogSuccess} />;
         case 'layout':
-          return <LayoutTab />;
+          return <LayoutTab projectId={projectId} sverilogReady={sverilogDone} />;
         default:
           return null;
       }
     },
-    [architecture, selection, handlePropertyChange, handleApplyAIConfig, mappingInfo, isLocked, latestMappingJob, graphData, instructionData, handleStartMapping, getSelectedBenchmarkNames, currentBenchmark]
+    [architecture, selection, handlePropertyChange, handleApplyAIConfig, mappingInfo, isLocked, latestMappingJob, graphData, instructionData, handleStartMapping, getSelectedBenchmarkNames, currentBenchmark, sverilogDone, handleSverilogSuccess]
   );
 
   const handleCurrentBenchmarkChange = useCallback((benchmarkName) => {

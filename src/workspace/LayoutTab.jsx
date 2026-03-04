@@ -1,5 +1,9 @@
 import { useState, useRef } from 'react';
+import PropTypes from 'prop-types';
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   Box,
   Typography,
   TextField,
@@ -13,10 +17,12 @@ import {
   InputAdornment,
   IconButton,
 } from '@mui/material';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import FolderOpenIcon from '@mui/icons-material/FolderOpen';
 import layoutImage from '../../CGRA-Flow-sample/layout/final_all.webp';
+import ReportPanel from './verification/ReportPanel';
 
-function LayoutTab() {
+function LayoutTab({ projectId, sverilogReady }) {
   const [sdcPath, setSdcPath] = useState('');
   const [mkPath, setMkPath] = useState('');
   const [process, setProcess] = useState('asap7');
@@ -37,7 +43,19 @@ function LayoutTab() {
 
   return (
     <Box sx={{ height: '100%', overflowY: 'auto', p: 3 }}>
-      <Paper elevation={2} sx={{ p: 3, display: 'flex', flexDirection: 'column', gap: 2, maxWidth: 800 }}>
+      <Accordion defaultExpanded sx={{ mb: 2 }}>
+        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+          <Typography variant="subtitle1" fontWeight="bold">Report Area/Power</Typography>
+        </AccordionSummary>
+        <AccordionDetails>
+          <ReportPanel
+            projectId={projectId}
+            sverilogReady={sverilogReady}
+          />
+        </AccordionDetails>
+      </Accordion>
+
+      <Paper elevation={2} sx={{ p: 3, display: 'flex', flexDirection: 'column', gap: 2 }}>
         <Typography variant="h6">Place and Route</Typography>
 
         {/* Hidden file inputs */}
@@ -124,7 +142,7 @@ function LayoutTab() {
       </Paper>
 
       {showResult && (
-        <Box sx={{ mt: 3, maxWidth: 800 }}>
+        <Box sx={{ mt: 3 }}>
           <Typography variant="h6" sx={{ mb: 1 }}>Layout Result</Typography>
           <Box
             component="img"
@@ -137,5 +155,10 @@ function LayoutTab() {
     </Box>
   );
 }
+
+LayoutTab.propTypes = {
+  projectId: PropTypes.string,
+  sverilogReady: PropTypes.bool,
+};
 
 export default LayoutTab;
