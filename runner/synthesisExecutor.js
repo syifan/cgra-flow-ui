@@ -18,7 +18,7 @@
  * Environment variables:
  *   DOCKER_IMAGE                 - Docker image (default: cgra/cgra-flow:ui)
  *   SUPABASE_STORAGE_BUCKET      - Storage bucket (default: job-artifacts)
- *   SYNTHESIS_DOCKER_TIMEOUT_MS  - Timeout in ms (default: 1800000 = 30 min)
+ *   SYNTHESIS_DOCKER_TIMEOUT_MS  - Timeout in ms (default: 3600000 = 60 min)
  */
 
 import { promises as fs } from 'fs';
@@ -42,9 +42,9 @@ const supabase = createClient(
 const DOCKER_IMAGE = process.env.DOCKER_IMAGE || 'cgra/cgra-flow:ui';
 const GRAPH_BUCKET = process.env.SUPABASE_STORAGE_BUCKET || 'job-artifacts';
 const SYNTHESIS_DOCKER_TIMEOUT_MS = parseInt(
-  process.env.SYNTHESIS_DOCKER_TIMEOUT_MS || '1800000',
+  process.env.SYNTHESIS_DOCKER_TIMEOUT_MS || '3600000',
   10
-); // 30 minutes default
+); // 60 minutes default
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

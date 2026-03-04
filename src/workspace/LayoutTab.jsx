@@ -1,27 +1,139 @@
-import { Box, Typography } from '@mui/material';
-import ConstructionIcon from '@mui/icons-material/Construction';
+import { useState, useRef } from 'react';
+import {
+  Box,
+  Typography,
+  TextField,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Button,
+  CircularProgress,
+  Paper,
+  InputAdornment,
+  IconButton,
+} from '@mui/material';
+import FolderOpenIcon from '@mui/icons-material/FolderOpen';
+import layoutImage from '../../CGRA-Flow-sample/layout/final_all.webp';
 
 function LayoutTab() {
+  const [sdcPath, setSdcPath] = useState('');
+  const [mkPath, setMkPath] = useState('');
+  const [process, setProcess] = useState('asap7');
+  const [loading, setLoading] = useState(false);
+  const [showResult, setShowResult] = useState(false);
+
+  const sdcInputRef = useRef(null);
+  const mkInputRef = useRef(null);
+
+  const handleRun = () => {
+    setLoading(true);
+    setShowResult(false);
+    setTimeout(() => {
+      setLoading(false);
+      setShowResult(true);
+    }, 1500);
+  };
+
   return (
-    <Box
-      sx={{
-        height: '100%',
-        p: 3,
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        color: 'text.secondary'
-      }}
-    >
-      <ConstructionIcon sx={{ fontSize: 64, mb: 2, opacity: 0.5 }} />
-      <Typography variant="h6" sx={{ mb: 1 }}>
-        Under Construction
-      </Typography>
-      <Typography variant="body2" sx={{ textAlign: 'center', maxWidth: 400 }}>
-        The layout workspace is currently being developed.
-        This feature will provide tools for physical layout and placement of your CGRA design.
-      </Typography>
+    <Box sx={{ height: '100%', overflowY: 'auto', p: 3 }}>
+      <Paper elevation={2} sx={{ p: 3, display: 'flex', flexDirection: 'column', gap: 2, maxWidth: 800 }}>
+        <Typography variant="h6">Place and Route</Typography>
+
+        {/* Hidden file inputs */}
+        <input
+          ref={sdcInputRef}
+          type="file"
+          accept=".sdc"
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            if (e.target.files[0]) setSdcPath(e.target.files[0].name);
+          }}
+        />
+        <input
+          ref={mkInputRef}
+          type="file"
+          accept=".mk"
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            if (e.target.files[0]) setMkPath(e.target.files[0].name);
+          }}
+        />
+
+        <TextField
+          label="Constraint (constraint.sdc)"
+          placeholder="Click to select constraint.sdc..."
+          value={sdcPath}
+          onClick={() => sdcInputRef.current.click()}
+          inputProps={{ readOnly: true, style: { cursor: 'pointer' } }}
+          fullWidth
+          size="small"
+          InputProps={{
+            endAdornment: (
+              <InputAdornment position="end">
+                <IconButton size="small" onClick={() => sdcInputRef.current.click()}>
+                  <FolderOpenIcon fontSize="small" />
+                </IconButton>
+              </InputAdornment>
+            ),
+          }}
+        />
+
+        <TextField
+          label="Config (config.mk)"
+          placeholder="Click to select config.mk..."
+          value={mkPath}
+          onClick={() => mkInputRef.current.click()}
+          inputProps={{ readOnly: true, style: { cursor: 'pointer' } }}
+          fullWidth
+          size="small"
+          InputProps={{
+            endAdornment: (
+              <InputAdornment position="end">
+                <IconButton size="small" onClick={() => mkInputRef.current.click()}>
+                  <FolderOpenIcon fontSize="small" />
+                </IconButton>
+              </InputAdornment>
+            ),
+          }}
+        />
+
+        <FormControl fullWidth size="small">
+          <InputLabel>Process</InputLabel>
+          <Select
+            value={process}
+            label="Process"
+            onChange={(e) => setProcess(e.target.value)}
+          >
+            <MenuItem value="asap7">asap7</MenuItem>
+            <MenuItem value="nangate45">nangate45</MenuItem>
+            <MenuItem value="sky130hd">sky130hd</MenuItem>
+          </Select>
+        </FormControl>
+
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Button
+            variant="contained"
+            onClick={handleRun}
+            disabled={loading}
+          >
+            RTL → Layout
+          </Button>
+          {loading && <CircularProgress size={24} />}
+        </Box>
+      </Paper>
+
+      {showResult && (
+        <Box sx={{ mt: 3, maxWidth: 800 }}>
+          <Typography variant="h6" sx={{ mb: 1 }}>Layout Result</Typography>
+          <Box
+            component="img"
+            src={layoutImage}
+            alt="Layout result"
+            sx={{ width: '100%', maxWidth: 800, display: 'block', borderRadius: 1 }}
+          />
+        </Box>
+      )}
     </Box>
   );
 }
