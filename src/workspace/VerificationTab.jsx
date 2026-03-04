@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import PropTypes from 'prop-types';
 import {
   Accordion,
@@ -10,15 +9,8 @@ import {
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import TestsPanel from './verification/TestsPanel';
 import SverilogPanel from './verification/SverilogPanel';
-import ReportPanel from './verification/ReportPanel';
 
-function VerificationTab({ architecture, projectId }) {
-  // Tracks whether a successful SVerilog generation result is available
-  // for this project in the current session.
-  // The Synthesize button in ReportPanel is disabled until this is true.
-  const [sverilogDone, setSverilogDone] = useState(false);
-
-  const handleSverilogSuccess = () => setSverilogDone(true);
+function VerificationTab({ architecture, projectId, onSverilogSuccess }) {
 
   return (
     <Box sx={{ height: '100%', overflow: 'auto', p: 2 }}>
@@ -39,22 +31,11 @@ function VerificationTab({ architecture, projectId }) {
           <SverilogPanel
             architecture={architecture}
             projectId={projectId}
-            onSverilogSuccess={handleSverilogSuccess}
+            onSverilogSuccess={onSverilogSuccess}
           />
         </AccordionDetails>
       </Accordion>
 
-      <Accordion>
-        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-          <Typography variant="subtitle1" fontWeight="bold">Report Area/Power</Typography>
-        </AccordionSummary>
-        <AccordionDetails>
-          <ReportPanel
-            projectId={projectId}
-            sverilogReady={sverilogDone}
-          />
-        </AccordionDetails>
-      </Accordion>
     </Box>
   );
 }
@@ -62,6 +43,7 @@ function VerificationTab({ architecture, projectId }) {
 VerificationTab.propTypes = {
   architecture: PropTypes.object,
   projectId: PropTypes.string,
+  onSverilogSuccess: PropTypes.func,
 };
 
 export default VerificationTab;
