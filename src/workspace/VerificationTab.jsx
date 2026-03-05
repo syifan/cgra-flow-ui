@@ -1,41 +1,27 @@
 import PropTypes from 'prop-types';
-import {
-  Accordion,
-  AccordionDetails,
-  AccordionSummary,
-  Box,
-  Typography,
-} from '@mui/material';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import { Box, Divider, Grid, Typography } from '@mui/material';
 import TestsPanel from './verification/TestsPanel';
 import SverilogPanel from './verification/SverilogPanel';
 
 function VerificationTab({ architecture, projectId, onSverilogSuccess }) {
 
   return (
-    <Box sx={{ height: '100%', overflow: 'auto', p: 2 }}>
-      <Accordion defaultExpanded>
-        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-          <Typography variant="subtitle1" fontWeight="bold">Tests</Typography>
-        </AccordionSummary>
-        <AccordionDetails sx={{ p: 0 }}>
+    <Box sx={{ height: '100%', p: 2, boxSizing: 'border-box' }}>
+      <Grid container spacing={2} sx={{ height: '100%' }}>
+        <Grid size="grow" sx={{ height: '100%', overflow: 'auto' }}>
+          <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 1 }}>Tests</Typography>
           <TestsPanel projectId={projectId} />
-        </AccordionDetails>
-      </Accordion>
-
-      <Accordion>
-        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-          <Typography variant="subtitle1" fontWeight="bold">SVerilog</Typography>
-        </AccordionSummary>
-        <AccordionDetails sx={{ p: 1 }}>
+        </Grid>
+        <Divider orientation="vertical" flexItem />
+        <Grid size="grow" sx={{ height: '100%', overflow: 'auto' }}>
+          <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 1 }}>SVerilog</Typography>
           <SverilogPanel
             architecture={architecture}
             projectId={projectId}
             onSverilogSuccess={onSverilogSuccess}
           />
-        </AccordionDetails>
-      </Accordion>
-
+        </Grid>
+      </Grid>
     </Box>
   );
 }
