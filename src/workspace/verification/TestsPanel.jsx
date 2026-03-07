@@ -102,7 +102,7 @@ function TestsPanel({ projectId }) {
   const failCount = cases.filter((c) => c.status === 'fail').length;
 
   return (
-    <Box sx={{ p: 1 }}>
+    <Box>
       {/* Run Tests button */}
       <Button
         variant="contained"

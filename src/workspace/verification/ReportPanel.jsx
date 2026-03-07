@@ -159,9 +159,10 @@ function ReportPanel({ projectId, sverilogReady }) {
   const synthesizeButton = (
     <Button
       variant="contained"
-      fullWidth
+      size="small"
       disabled={!canSynthesize}
       onClick={handleSynthesize}
+      sx={{ mb: 1 }}
       startIcon={
         isInFlight
           ? <CircularProgress size={16} color="inherit" />
@@ -181,7 +182,7 @@ function ReportPanel({ projectId, sverilogReady }) {
           title="No SVerilog generated yet — will use the bundled default design for synthesis"
           placement="top"
         >
-          <span style={{ display: 'block' }}>{synthesizeButton}</span>
+          <span style={{ display: 'inline-block' }}>{synthesizeButton}</span>
         </Tooltip>
       ) : (
         synthesizeButton

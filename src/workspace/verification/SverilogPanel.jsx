@@ -99,12 +99,13 @@ function SverilogPanel({ architecture, projectId, onSverilogSuccess }) {
         title={!architecture ? 'No architecture loaded' : ''}
         disableHoverListener={!!architecture}
       >
-        <span style={{ display: 'block' }}>
+        <span style={{ display: 'inline-block' }}>
           <Button
             variant="contained"
-            fullWidth
+            size="small"
             disabled={!canGenerate}
             onClick={handleGenerate}
+            sx={{ mb: 1 }}
             startIcon={
               isInFlight
                 ? <CircularProgress size={16} color="inherit" />
