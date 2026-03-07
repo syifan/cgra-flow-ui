@@ -1,9 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import * as d3 from 'd3';
 
+// Layout constants
+const NODE_HEIGHT = 36;
+const NODE_V_SPACING = 80;   // vertical distance between layer centers
+const NODE_H_SPACING = 54;   // horizontal distance between node centers within a layer
+const PADDING = 80;          // left/top/right/bottom padding
+
 /**
  * D3 renderer for Graphviz JSON (dot -Tjson output).
- * Directly renders Graphviz drawing instructions from _draw_ and _ldraw_ attributes.
+ * Computes a topological (layered) layout from the graph's edge structure so
+ * nodes are grouped into horizontal tiers by data-dependency depth.
  * Supports highlighting nodes that match patterns in highlightedPatterns.
  */
 export default function DotGraph({ graph, width = 800, height = 600, highlightedPatterns = [] }) {
@@ -18,55 +25,139 @@ export default function DotGraph({ graph, width = 800, height = 600, highlighted
   useEffect(() => {
     if (!graph || !svgRef.current) return;
 
-    // Parse bounding box
-    const bbStr = graph.bb || '';
-    const bbParts = bbStr.split(',').map(Number);
-    const graphHeight = bbParts.length === 4 ? bbParts[3] : 1000;
-    const graphWidth = bbParts.length === 4 ? bbParts[2] : 1000;
-
-    // Helper to flip Y coordinate (Graphviz uses bottom-left origin)
-    const flipY = (y) => graphHeight - y;
-
-    // Helper to convert Graphviz color to CSS (inverted for dark theme)
-    const parseColor = (color) => {
-      if (!color) return null;
-      if (color === 'none') return 'transparent';
-      // Invert black to white for dark background
-      if (color === 'black' || color === '#000000' || color === '#000') return '#e2e8f0';
-      // Invert white to dark for fills that should remain visible
-      if (color === 'white' || color === '#ffffff' || color === '#fff') return '#1e293b';
-      if (color.startsWith('#')) return color;
-      return color;
-    };
-
     const objects = graph.objects || graph.nodes || [];
     const edges = graph.edges || [];
 
-    // Build id map for edge references
-    const idMap = new Map();
-    objects.forEach((o) => {
-      const id = o.name || String(o._gvid);
-      if (o._gvid !== undefined) {
-        idMap.set(o._gvid, id);
+    // --- 1. Extract drawable nodes and build canonical ID map ---
+    // Only include objects that were drawn (same filter as before, excludes bare subgraph wrappers)
+    const allNodes = objects.filter((o) => o._draw_ || o._ldraw_);
+    if (allNodes.length === 0) return;
+
+    // Canonical ID: prefer name, fallback to string _gvid
+    const nodeId = (o) => (o.name != null ? String(o.name) : String(o._gvid));
+
+    // nodeMap: both name and _gvid string -> node object (for edge lookup)
+    const nodeMap = new Map();
+    allNodes.forEach((o) => {
+      nodeMap.set(nodeId(o), o);
+      if (o._gvid !== undefined) nodeMap.set(String(o._gvid), o);
+    });
+
+    // --- 2. Build adjacency list and in-degree map ---
+    const adj = new Map();       // nodeId -> [nodeId, ...]
+    const inDegree = new Map();  // nodeId -> number
+    allNodes.forEach((o) => {
+      adj.set(nodeId(o), []);
+      inDegree.set(nodeId(o), 0);
+    });
+
+    edges.forEach((edge) => {
+      // Graphviz JSON: tail/head are _gvid integers referencing objects array
+      const tailNode = nodeMap.get(String(edge.tail));
+      const headNode = nodeMap.get(String(edge.head));
+      if (!tailNode || !headNode) return;
+      const tId = nodeId(tailNode);
+      const hId = nodeId(headNode);
+      adj.get(tId).push(hId);
+      inDegree.set(hId, inDegree.get(hId) + 1);
+    });
+
+    // --- 3. Kahn's BFS: assign longest-path depth to each node ---
+    const depth = new Map();
+    allNodes.forEach((o) => depth.set(nodeId(o), 0));
+
+    const queue = [];
+    allNodes.forEach((o) => {
+      if (inDegree.get(nodeId(o)) === 0) queue.push(nodeId(o));
+    });
+
+    const visited = new Set();
+    let qi = 0;
+    while (qi < queue.length) {
+      const nId = queue[qi++];
+      visited.add(nId);
+      for (const mId of adj.get(nId)) {
+        const newDepth = depth.get(nId) + 1;
+        if (newDepth > depth.get(mId)) depth.set(mId, newDepth);
+        inDegree.set(mId, inDegree.get(mId) - 1);
+        if (inDegree.get(mId) === 0) queue.push(mId);
       }
-      idMap.set(id, id);
+    }
+
+    // --- 4. Cycle fallback: append unvisited nodes to the last layer ---
+    const maxVisitedDepth = Math.max(0, ...[...depth.values()]);
+    allNodes.forEach((o) => {
+      if (!visited.has(nodeId(o))) depth.set(nodeId(o), maxVisitedDepth + 1);
     });
 
-    // Include all nodes (clusters will be rendered as containers if they have _draw_)
-    const nodes = objects.filter((o) => {
-      // Only include objects that have drawing instructions
-      return o._draw_ || o._ldraw_;
+    // Group nodes into layers by depth
+    const layers = new Map(); // depth -> [nodeId, ...]
+    allNodes.forEach((o) => {
+      const d = depth.get(nodeId(o));
+      if (!layers.has(d)) layers.set(d, []);
+      layers.get(d).push(nodeId(o));
     });
 
-    // Include all edges
-    const visibleEdges = edges;
+    // --- 5. Compute layout positions (vertical: layers top-to-bottom) ---
+    const totalDepth = Math.max(0, ...[...depth.values()]);
+    const maxNodesPerLayer = Math.max(...[...layers.values()].map((l) => l.length));
 
-    if (nodes.length === 0) return;
+    // Compute max node width per layer for proper sizing
+    const layerMaxWidth = new Map();
+    layers.forEach((layerNodes, d) => {
+      let maxW = 100;
+      layerNodes.forEach((nId) => {
+        const node = nodeMap.get(nId);
+        const rawLabel = node?.label || nId;
+        const label = rawLabel.replace(/\\n/g, '\n');
+        const lines = label.split('\n');
+        const longestLine = lines.reduce((a, b) => (a.length > b.length ? a : b), '');
+        maxW = Math.max(maxW, longestLine.length * 8);
+      });
+      layerMaxWidth.set(d, maxW);
+    });
 
-    // Setup SVG
+    const nodeSpacingX = Math.max(...[...layerMaxWidth.values()]) + 30;
+    const svgWidth = Math.max(maxNodesPerLayer * nodeSpacingX + PADDING * 2, 200);
+    const svgHeight = (totalDepth + 1) * NODE_V_SPACING + PADDING * 2;
+
+    // nodePos: nodeId -> { x, y, nodeWidth, label }
+    const nodePos = new Map();
+    layers.forEach((layerNodes, d) => {
+      const y = d * NODE_V_SPACING + PADDING;
+      const count = layerNodes.length;
+      const totalLayerWidth = count * nodeSpacingX;
+      const startX = (svgWidth - totalLayerWidth) / 2 + nodeSpacingX / 2;
+      layerNodes.forEach((nId, i) => {
+        const node = nodeMap.get(nId);
+        const rawLabel = node?.label || nId;
+        const label = rawLabel.replace(/\\n/g, '\n');
+        const lines = label.split('\n');
+        const longestLine = lines.reduce((a, b) => (a.length > b.length ? a : b), '');
+        const nodeWidth = Math.max(100, longestLine.length * 8);
+        const x = startX + i * nodeSpacingX;
+        nodePos.set(nId, { x, y, nodeWidth, label });
+      });
+    });
+
+    // --- Setup SVG ---
     const svg = d3.select(svgRef.current);
     svg.selectAll('*').remove();
-    svg.attr('viewBox', `0 0 ${graphWidth} ${graphHeight}`);
+    svg.attr('viewBox', `0 0 ${svgWidth} ${svgHeight}`);
+
+    // Arrowhead marker
+    const defs = svg.append('defs');
+    defs.append('marker')
+      .attr('id', 'arrowhead')
+      .attr('viewBox', '0 -5 10 10')
+      .attr('refX', 10)
+      .attr('refY', 0)
+      .attr('markerWidth', 6)
+      .attr('markerHeight', 6)
+      .attr('orient', 'auto')
+      .append('path')
+      .attr('d', 'M0,-5L10,0L0,5')
+      .attr('fill', '#64748b');
 
     const g = svg.append('g');
 
@@ -78,156 +169,89 @@ export default function DotGraph({ graph, width = 800, height = 600, highlighted
       });
     svg.call(zoom);
 
-    // Render drawing operations from _draw_ array
-    const renderDrawOps = (parent, drawOps, labelDrawOps) => {
-      if (!drawOps && !labelDrawOps) return;
+    // --- Render edges (behind nodes) ---
+    const linkGen = d3.linkVertical()
+      .x((d) => d.x)
+      .y((d) => d.y);
 
-      let currentStroke = '#e2e8f0'; // Light color for dark theme
-      let currentFill = 'none';
-      let currentFontSize = 14;
-
-      // Render shape operations
-      if (drawOps) {
-        for (const op of drawOps) {
-          switch (op.op) {
-            case 'c': // stroke color
-              currentStroke = parseColor(op.color) || currentStroke;
-              break;
-            case 'C': // fill color
-              currentFill = parseColor(op.color) || currentFill;
-              break;
-            case 'e': // unfilled ellipse
-            case 'E': // filled ellipse
-              if (op.rect) {
-                const [cx, cy, rx, ry] = op.rect;
-                parent.append('ellipse')
-                  .attr('cx', cx)
-                  .attr('cy', flipY(cy))
-                  .attr('rx', rx)
-                  .attr('ry', ry)
-                  .attr('fill', op.op === 'E' ? currentFill : 'none')
-                  .attr('stroke', currentStroke)
-                  .attr('stroke-width', 1);
-              }
-              break;
-            case 'p': // unfilled polygon
-            case 'P': // filled polygon
-              if (op.points) {
-                const pointsStr = op.points.map(p => `${p[0]},${flipY(p[1])}`).join(' ');
-                parent.append('polygon')
-                  .attr('points', pointsStr)
-                  .attr('fill', op.op === 'P' ? currentFill : 'none')
-                  .attr('stroke', currentStroke)
-                  .attr('stroke-width', 1);
-              }
-              break;
-            case 'b': // bezier curve
-            case 'B': // filled bezier
-              if (op.points && op.points.length >= 4) {
-                let path = `M${op.points[0][0]},${flipY(op.points[0][1])}`;
-                for (let i = 1; i < op.points.length; i += 3) {
-                  if (i + 2 < op.points.length) {
-                    const p1 = op.points[i];
-                    const p2 = op.points[i + 1];
-                    const p3 = op.points[i + 2];
-                    path += ` C${p1[0]},${flipY(p1[1])} ${p2[0]},${flipY(p2[1])} ${p3[0]},${flipY(p3[1])}`;
-                  }
-                }
-                parent.append('path')
-                  .attr('d', path)
-                  .attr('fill', op.op === 'B' ? currentFill : 'none')
-                  .attr('stroke', currentStroke)
-                  .attr('stroke-width', 1.5);
-              }
-              break;
-            case 'L': // polyline
-              if (op.points) {
-                const pointsStr = op.points.map(p => `${p[0]},${flipY(p[1])}`).join(' ');
-                parent.append('polyline')
-                  .attr('points', pointsStr)
-                  .attr('fill', 'none')
-                  .attr('stroke', currentStroke)
-                  .attr('stroke-width', 1.5);
-              }
-              break;
-          }
-        }
-      }
-
-      // Render label operations
-      if (labelDrawOps) {
-        for (const op of labelDrawOps) {
-          switch (op.op) {
-            case 'F': // font
-              currentFontSize = op.size || 14;
-              break;
-            case 'c': // text color
-              currentStroke = parseColor(op.color) || currentStroke;
-              break;
-            case 'T': // text
-              if (op.pt && op.text) {
-                const [x, y] = op.pt;
-                let textAnchor = 'middle';
-                if (op.align === 'l') textAnchor = 'start';
-                else if (op.align === 'r') textAnchor = 'end';
-
-                parent.append('text')
-                  .attr('x', x)
-                  .attr('y', flipY(y))
-                  .attr('text-anchor', textAnchor)
-                  .attr('dominant-baseline', 'middle')
-                  .attr('font-size', currentFontSize)
-                  .attr('font-family', 'Times-Roman, serif')
-                  .attr('fill', currentStroke)
-                  .text(op.text);
-              }
-              break;
-          }
-        }
-      }
-    };
-
-    // Render edges first (so they appear behind nodes)
     const edgesGroup = g.append('g').attr('class', 'edges');
-    visibleEdges.forEach((edge) => {
-      const edgeGroup = edgesGroup.append('g');
+    edges.forEach((edge) => {
+      const tailNode = nodeMap.get(String(edge.tail));
+      const headNode = nodeMap.get(String(edge.head));
+      if (!tailNode || !headNode) return;
+      const srcPos = nodePos.get(nodeId(tailNode));
+      const tgtPos = nodePos.get(nodeId(headNode));
+      if (!srcPos || !tgtPos) return;
 
-      // Render edge path
-      renderDrawOps(edgeGroup, edge._draw_, null);
-
-      // Render arrowhead
-      if (edge._hdraw_) {
-        renderDrawOps(edgeGroup, edge._hdraw_, null);
-      }
-
-      // Render edge label if present
-      if (edge._ldraw_) {
-        renderDrawOps(edgeGroup, null, edge._ldraw_);
-      }
+      edgesGroup.append('path')
+        .attr('d', linkGen({
+          source: { x: srcPos.x, y: srcPos.y + NODE_HEIGHT / 2 },
+          target: { x: tgtPos.x, y: tgtPos.y - NODE_HEIGHT / 2 },
+        }))
+        .attr('fill', 'none')
+        .attr('stroke', '#475569')
+        .attr('stroke-width', 1.5)
+        .attr('marker-end', 'url(#arrowhead)');
     });
 
-    // Render nodes
+    // --- Render nodes ---
     const nodesGroup = g.append('g').attr('class', 'nodes');
     const nodeInfo = new Map();
     nodeInfoRef.current.clear();
 
-    nodes.forEach((node) => {
+    allNodes.forEach((node) => {
+      const nId = nodeId(node);
+      const pos = nodePos.get(nId);
+      if (!pos) return;
+      const { x, y, nodeWidth, label } = pos;
+      const lines = label.split('\n');
+
       const nodeGroup = nodesGroup.append('g')
         .attr('class', 'node')
-        .attr('data-label', node.label || '')
+        .attr('data-label', label)
         .style('cursor', 'pointer');
 
-      nodeInfo.set(nodeGroup.node(), node);
-      nodeInfoRef.current.set(nodeGroup.node(), node);
+      // Rectangle
+      nodeGroup.append('rect')
+        .attr('x', x - nodeWidth / 2)
+        .attr('y', y - NODE_HEIGHT / 2)
+        .attr('width', nodeWidth)
+        .attr('height', NODE_HEIGHT)
+        .attr('rx', 6)
+        .attr('fill', '#1e293b')
+        .attr('stroke', '#475569')
+        .attr('stroke-width', 1);
 
-      // Render node shape
-      renderDrawOps(nodeGroup, node._draw_, null);
+      // Label text (multi-line via tspan)
+      const textEl = nodeGroup.append('text')
+        .attr('x', x)
+        .attr('y', y)
+        .attr('text-anchor', 'middle')
+        .attr('dominant-baseline', 'middle')
+        .attr('font-size', 11)
+        .attr('font-family', 'monospace')
+        .attr('fill', '#e2e8f0');
 
-      // Render node label
-      renderDrawOps(nodeGroup, null, node._ldraw_);
+      if (lines.length === 1) {
+        textEl.text(label);
+      } else {
+        const lineHeight = 13;
+        const totalTextHeight = (lines.length - 1) * lineHeight;
+        lines.forEach((line, i) => {
+          textEl.append('tspan')
+            .attr('x', x)
+            .attr('dy', i === 0 ? -totalTextHeight / 2 : lineHeight)
+            .text(line);
+        });
+      }
+
+      // Store label for tooltip and highlight effects
+      const nodeInfoData = { label };
+      nodeInfo.set(nodeGroup.node(), nodeInfoData);
+      nodeInfoRef.current.set(nodeGroup.node(), nodeInfoData);
     });
 
-    // Tooltip - remove any stale tooltips first to handle edge cases (hot reload, early returns)
+    // Tooltip - remove stale tooltips to handle hot reload / early returns
     d3.selectAll('.dot-graph-tooltip').remove();
     const tooltip = d3.select('body')
       .append('div')
@@ -248,13 +272,11 @@ export default function DotGraph({ graph, width = 800, height = 600, highlighted
 
     nodesGroup.selectAll('.node')
       .on('mousemove', function(event) {
-        const node = nodeInfo.get(this);
-        if (!node) return;
-
-        const label = (node.label || '').replace(/\\n/g, '\n');
+        const info = nodeInfo.get(this);
+        if (!info) return;
         tooltip
           .style('opacity', 1)
-          .text(label)
+          .text(info.label)
           .style('left', `${event.clientX + 15}px`)
           .style('top', `${event.clientY + 15}px`);
       })

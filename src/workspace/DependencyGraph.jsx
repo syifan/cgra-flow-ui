@@ -53,74 +53,95 @@ export default function DependencyGraph({
     return buildDependencyGraph(instructionData);
   }, [instructionData]);
 
-  // Calculate layout positions for nodes
+  // Calculate layout positions for nodes using topological (Kahn's BFS) depth
   const layoutData = useMemo(() => {
-    if (nodes.length === 0) return { nodes: [], edges: [], width: 0, height: 0 };
+    if (nodes.length === 0) return { nodes: [], edges: [], width: 0, height: 0, slides: [], depths: [] };
 
-    // Group nodes by index_per_ii (animation slide)
-    const nodesBySlide = new Map();
-    nodes.forEach((node) => {
-      if (!nodesBySlide.has(node.indexPerII)) {
-        nodesBySlide.set(node.indexPerII, []);
+    // --- Topological depth via Kahn's BFS ---
+    const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+
+    const adj = new Map(nodes.map((n) => [n.id, []]));
+    const inDegree = new Map(nodes.map((n) => [n.id, 0]));
+    edges.forEach((edge) => {
+      if (!adj.has(edge.source) || !nodeMap.has(edge.target)) return;
+      adj.get(edge.source).push(edge.target);
+      inDegree.set(edge.target, (inDegree.get(edge.target) || 0) + 1);
+    });
+
+    const depth = new Map(nodes.map((n) => [n.id, 0]));
+    const queue = nodes.filter((n) => inDegree.get(n.id) === 0).map((n) => n.id);
+    const visited = new Set();
+    let qi = 0;
+    while (qi < queue.length) {
+      const nId = queue[qi++];
+      visited.add(nId);
+      for (const mId of (adj.get(nId) || [])) {
+        const nd = (depth.get(nId) || 0) + 1;
+        if (nd > (depth.get(mId) || 0)) depth.set(mId, nd);
+        inDegree.set(mId, (inDegree.get(mId) || 0) - 1);
+        if (inDegree.get(mId) === 0) queue.push(mId);
       }
-      nodesBySlide.get(node.indexPerII).push(node);
+    }
+    // Cycle fallback: unvisited nodes go to last layer
+    const maxDepth = Math.max(0, ...[...depth.values()]);
+    nodes.forEach((n) => {
+      if (!visited.has(n.id)) depth.set(n.id, maxDepth + 1);
     });
 
-    // Sort slides (index_per_ii values)
-    const slides = Array.from(nodesBySlide.keys()).sort((a, b) => a - b);
-
-    // Calculate positions
-    let maxNodesInColumn = 0;
-    slides.forEach((slide) => {
-      const count = nodesBySlide.get(slide).length;
-      if (count > maxNodesInColumn) maxNodesInColumn = count;
+    // Group by depth
+    const layerMap = new Map();
+    nodes.forEach((n) => {
+      const d = depth.get(n.id);
+      if (!layerMap.has(d)) layerMap.set(d, []);
+      layerMap.get(d).push(n);
     });
+    const sortedDepths = [...layerMap.keys()].sort((a, b) => a - b);
 
-    const graphWidth =
-      MARGIN.left + slides.length * (NODE_WIDTH + NODE_PADDING_X) + MARGIN.right;
-    const graphHeight =
-      MARGIN.top + maxNodesInColumn * (NODE_HEIGHT + NODE_PADDING_Y) + MARGIN.bottom;
+    const maxNodesInLayer = Math.max(...[...layerMap.values()].map((l) => l.length));
+    const graphWidth = MARGIN.left + maxNodesInLayer * (NODE_WIDTH + NODE_PADDING_X) + MARGIN.right;
+    const graphHeight = MARGIN.top + sortedDepths.length * (NODE_HEIGHT + NODE_PADDING_Y) + MARGIN.bottom;
 
-    // Assign positions to nodes
+    // Assign x, y positions – vertical layout: depth determines row (y), index determines column (x)
     const positionedNodes = [];
-    slides.forEach((slide, slideIndex) => {
-      const nodesAtSlide = nodesBySlide.get(slide);
-      // Sort by PE location for consistent ordering
-      nodesAtSlide.sort((a, b) => {
+    sortedDepths.forEach((d, depthIndex) => {
+      const layerNodes = layerMap.get(d);
+      // Sort within layer by PE location for consistent, readable ordering
+      layerNodes.sort((a, b) => {
         if (a.pe.row !== b.pe.row) return a.pe.row - b.pe.row;
         return a.pe.col - b.pe.col;
       });
-
-      nodesAtSlide.forEach((node, nodeIndex) => {
+      const totalLayerWidth = layerNodes.length * (NODE_WIDTH + NODE_PADDING_X);
+      const startX = MARGIN.left + (maxNodesInLayer * (NODE_WIDTH + NODE_PADDING_X) - totalLayerWidth) / 2;
+      layerNodes.forEach((node, ni) => {
         positionedNodes.push({
           ...node,
-          x: MARGIN.left + slideIndex * (NODE_WIDTH + NODE_PADDING_X),
-          y: MARGIN.top + nodeIndex * (NODE_HEIGHT + NODE_PADDING_Y)
+          x: startX + ni * (NODE_WIDTH + NODE_PADDING_X),
+          y: MARGIN.top + depthIndex * (NODE_HEIGHT + NODE_PADDING_Y),
+          depth: d
         });
       });
     });
 
     // Create positioned edges
-    const nodeMap = new Map(positionedNodes.map((n) => [n.id, n]));
+    const positionedNodeMap = new Map(positionedNodes.map((n) => [n.id, n]));
     const positionedEdges = edges
       .map((edge) => {
-        const source = nodeMap.get(edge.source);
-        const target = nodeMap.get(edge.target);
+        const source = positionedNodeMap.get(edge.source);
+        const target = positionedNodeMap.get(edge.target);
         if (!source || !target) return null;
-        return {
-          ...edge,
-          sourceNode: source,
-          targetNode: target
-        };
+        return { ...edge, sourceNode: source, targetNode: target };
       })
       .filter(Boolean);
+
+    const slides = [...new Set(positionedNodes.map((n) => n.indexPerII))].sort((a, b) => a - b);
 
     return {
       nodes: positionedNodes,
       edges: positionedEdges,
       width: graphWidth,
       height: graphHeight,
-      slides
+      slides,
+      depths: sortedDepths
     };
   }, [nodes, edges]);
 
@@ -181,19 +202,20 @@ export default function DependencyGraph({
     // Column highlight layer (behind everything else)
     g.append('g').attr('class', 'column-highlights');
 
-    // Draw slide (index_per_ii) markers
+    // Draw depth-level markers to the left of each row
     const slideLabels = g.append('g').attr('class', 'slide-labels');
-    layoutData.slides?.forEach((slide, i) => {
-      const x = MARGIN.left + i * (NODE_WIDTH + NODE_PADDING_X) + NODE_WIDTH / 2;
+    layoutData.depths?.forEach((d, i) => {
+      const y = MARGIN.top + i * (NODE_HEIGHT + NODE_PADDING_Y) + NODE_HEIGHT / 2;
       slideLabels
         .append('text')
-        .attr('x', x)
-        .attr('y', MARGIN.top - 15)
-        .attr('text-anchor', 'middle')
+        .attr('x', MARGIN.left - 15)
+        .attr('y', y)
+        .attr('text-anchor', 'end')
+        .attr('dominant-baseline', 'middle')
         .attr('font-size', 10)
         .attr('font-family', '"Fira Code", monospace')
         .attr('fill', '#94a3b8')
-        .text(`II=${slide}`);
+        .text(`L${d}`);
     });
 
     // Draw edges first (behind nodes)
@@ -202,26 +224,26 @@ export default function DependencyGraph({
     const ARROW_SIZE = 8; // Must match markerWidth
 
     layoutData.edges.forEach((edge) => {
-      const sourceX = edge.sourceNode.x + NODE_WIDTH;
-      const sourceY = edge.sourceNode.y + NODE_HEIGHT / 2;
+      const sourceX = edge.sourceNode.x + NODE_WIDTH / 2;
+      const sourceY = edge.sourceNode.y + NODE_HEIGHT;
       // Line ends at back of arrowhead, arrow tip extends to target node edge
-      const targetX = edge.targetNode.x - ARROW_SIZE;
-      const targetY = edge.targetNode.y + NODE_HEIGHT / 2;
+      const targetX = edge.targetNode.x + NODE_WIDTH / 2;
+      const targetY = edge.targetNode.y - ARROW_SIZE;
 
-      // Determine if edge goes forward or backward in the slide order
-      const isForward = edge.targetNode.indexPerII >= edge.sourceNode.indexPerII;
+      // Determine if edge goes forward or backward in topological order
+      const isForward = (edge.targetNode.depth ?? 0) >= (edge.sourceNode.depth ?? 0);
 
-      // Create curved path
-      const midX = (sourceX + targetX) / 2;
+      // Create curved path (vertical flow)
+      const midY = (sourceY + targetY) / 2;
       let path;
 
       if (isForward) {
-        // Forward edge: gentle curve
-        path = `M ${sourceX} ${sourceY} C ${midX} ${sourceY}, ${midX} ${targetY}, ${targetX} ${targetY}`;
+        // Forward edge: gentle vertical curve
+        path = `M ${sourceX} ${sourceY} C ${sourceX} ${midY}, ${targetX} ${midY}, ${targetX} ${targetY}`;
       } else {
-        // Backward edge: arc above
-        const arcHeight = Math.min(50, Math.abs(targetX - sourceX) * 0.3);
-        path = `M ${sourceX} ${sourceY} C ${sourceX + 20} ${sourceY - arcHeight}, ${targetX - 20} ${targetY - arcHeight}, ${targetX} ${targetY}`;
+        // Backward edge: arc to the right
+        const arcWidth = Math.min(50, Math.abs(targetY - sourceY) * 0.3);
+        path = `M ${sourceX} ${sourceY} C ${sourceX + arcWidth} ${sourceY + 20}, ${targetX + arcWidth} ${targetY - 20}, ${targetX} ${targetY}`;
       }
 
       const isRegister = edge.type === 'register';
@@ -360,27 +382,9 @@ export default function DependencyGraph({
       ? new Set(layoutData.nodes.filter((n) => n.indexPerII === currentSlide).map((n) => n.id))
       : new Set();
 
-    // Find the slide index for the current slide value
-    const currentSlideIndex = layoutData.slides?.indexOf(currentSlide) ?? -1;
-
-    // Update column highlight background
+    // With topological layout, nodes at the same indexPerII are spread across different
+    // depth columns, so a single-column background highlight no longer applies.
     columnHighlights.selectAll('rect').remove();
-    if (hasSlideHighlight && currentSlideIndex >= 0) {
-      const columnX = MARGIN.left + currentSlideIndex * (NODE_WIDTH + NODE_PADDING_X) - NODE_PADDING_X / 2;
-      const columnWidth = NODE_WIDTH + NODE_PADDING_X;
-      const columnHeight = layoutData.height - 10;
-
-      columnHighlights
-        .append('rect')
-        .attr('x', columnX)
-        .attr('y', 5)
-        .attr('width', columnWidth)
-        .attr('height', columnHeight)
-        .attr('rx', 6)
-        .attr('fill', 'rgba(34, 211, 238, 0.12)')
-        .attr('stroke', 'rgba(34, 211, 238, 0.3)')
-        .attr('stroke-width', 1);
-    }
 
     // Apply node highlighting - keep all nodes visible, just add glow effects
     nodesGroup.selectAll('.node').each(function () {
