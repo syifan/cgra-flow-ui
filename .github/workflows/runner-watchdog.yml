@@ -1,0 +1,70 @@
+name: Runner Watchdog
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: production-runner-watchdog
+  cancel-in-progress: false
+
+jobs:
+  ensure-runner-online:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check and restart production runner if needed
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.RUNNER_SSH_HOST }}
+          port: ${{ secrets.RUNNER_SSH_PORT || 22 }}
+          username: ${{ secrets.RUNNER_SSH_USER }}
+          key: ${{ secrets.RUNNER_SSH_KEY }}
+          command_timeout: 5m
+          script: |
+            set -euo pipefail
+
+            PROCESS_NAME="cgra-runner"
+            RUNNER_DIR="$HOME/cgra-runner/repo/runner"
+
+            if ! command -v pm2 >/dev/null 2>&1; then
+              echo "pm2 is not installed on host"
+              exit 1
+            fi
+
+            pid="$(pm2 pid "$PROCESS_NAME" | tail -n 1 | tr -d '[:space:]')"
+            if [ -n "${pid:-}" ] && [ "$pid" != "0" ]; then
+              echo "$PROCESS_NAME is healthy (pid=$pid)"
+              pm2 status "$PROCESS_NAME"
+              exit 0
+            fi
+
+            echo "$PROCESS_NAME is offline. Attempting restart..."
+            if [ ! -d "$RUNNER_DIR" ]; then
+              echo "Runner directory missing: $RUNNER_DIR"
+              exit 1
+            fi
+
+            cd "$RUNNER_DIR"
+
+            if [ -f ecosystem.config.cjs ]; then
+              pm2 startOrReload ecosystem.config.cjs --update-env
+            elif [ -f start.sh ]; then
+              pm2 start ./start.sh --name "$PROCESS_NAME"
+            else
+              echo "No restart entrypoint found (expected ecosystem.config.cjs or start.sh)"
+              exit 1
+            fi
+
+            pm2 save
+            sleep 3
+
+            new_pid="$(pm2 pid "$PROCESS_NAME" | tail -n 1 | tr -d '[:space:]')"
+            if [ -z "${new_pid:-}" ] || [ "$new_pid" = "0" ]; then
+              echo "Runner restart failed"
+              pm2 logs "$PROCESS_NAME" --lines 50 --nostream || true
+              exit 1
+            fi
+
+            echo "$PROCESS_NAME restarted successfully (pid=$new_pid)"
