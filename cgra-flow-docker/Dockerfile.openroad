@@ -1,0 +1,171 @@
+# Dockerfile.openroad
+#
+# Extends cgra/cgra-flow:ui by layering OpenROAD from the official orfs image.
+# This avoids rebuilding the entire cgra-flow image from scratch.
+#
+# orfs base: Ubuntu 22.04 (Jammy)
+# cgra-flow:ui base: Ubuntu 24.04 (Noble)
+#
+# Because the two images use different Ubuntu versions, some system library
+# versions differ (libicu70 vs libicu74, libyaml-cpp0.7 vs 0.8, libpython3.10,
+# libortools.so.9, etc.).  To avoid polluting the Ubuntu 24.04 system libs we
+# copy version-specific libraries to /opt/orfs-libs/ and expose them only to
+# OpenROAD via an LD_LIBRARY_PATH wrapper script.
+#
+# Build:
+#   docker build -f Dockerfile.openroad -t cgra/cgra-flow:ui-openroad cgra-flow-docker
+#
+# Verify OpenROAD is available:
+#   docker run --rm cgra/cgra-flow:ui-openroad openroad -version
+
+# ============================================
+# Stage 1: OpenROAD source (orfs official image, Ubuntu 22.04)
+# ============================================
+FROM openroad/orfs@sha256:0d0dd3d8d346360a71f6325ce776a984c5a6296fc6e51956b53f136e1dd13462 AS orfs
+
+# Collect all OpenROAD runtime deps whose versions differ between 22.04 and 24.04
+# into a single staging directory so we can copy them in one layer.
+RUN mkdir -p /orfs-stage/libs && \
+    # OpenROAD install tree (binary, private libs, share data)
+    cp -r /OpenROAD-flow-scripts/tools/install/OpenROAD /orfs-stage/OpenROAD && \
+    # Yosys install tree (binary + share data, version-matched with ORFS scripts)
+    cp -r /OpenROAD-flow-scripts/tools/install/yosys /orfs-stage/yosys && \
+    # OpenROAD Flow Scripts: Makefile + TCL scripts + platform PDK data.
+    # These drive the full synth→place→route pipeline without graywolf/qrouter.
+    mkdir -p /orfs-stage/flow && \
+    cp  /OpenROAD-flow-scripts/flow/Makefile /orfs-stage/flow/ && \
+    cp -r /OpenROAD-flow-scripts/flow/util     /orfs-stage/flow/ && \
+    cp -r /OpenROAD-flow-scripts/flow/scripts  /orfs-stage/flow/ && \
+    cp -r /OpenROAD-flow-scripts/flow/platforms /orfs-stage/flow/ && \
+    mkdir -p /orfs-stage/flow/designs /orfs-stage/flow/results \
+             /orfs-stage/flow/logs   /orfs-stage/flow/objects && \
+    # or-tools shared library (not a standard distro package)
+    find /opt/or-tools -name "libortools.so*" -exec cp {} /orfs-stage/libs/ \; && \
+    # Version-specific system libs that Ubuntu 24.04 ships at a different version:
+    #   libicu70   (Ubuntu 24.04 ships libicu74)
+    #   libyaml-cpp0.7  (Ubuntu 24.04 ships 0.8)
+    #   libpython3.10   (Ubuntu 24.04 ships 3.12 by default)
+    #   libtclreadline  (may not exist in 24.04 repos)
+    for lib in \
+        libicudata.so.70 libicui18n.so.70 libicuuc.so.70 \
+        libyaml-cpp.so.0.7 \
+        libpython3.10.so.1.0 \
+        libtclreadline-2.3.8.so \
+    ; do \
+        src=$(find /lib /usr/lib -name "${lib}*" 2>/dev/null | head -1); \
+        [ -n "$src" ] && cp "$src" /orfs-stage/libs/ || true; \
+    done
+
+# ============================================
+# Stage 2: cgra-flow:ui + OpenROAD (Ubuntu 24.04)
+# ============================================
+FROM cgra/cgra-flow:ui
+
+# Copy OpenROAD install tree into /opt/OpenROAD
+COPY --from=orfs /orfs-stage/OpenROAD /opt/OpenROAD
+
+# Copy the ORFS-bundled yosys (version-matched with the ORFS TCL scripts).
+# This is placed at ORFS's default YOSYS_EXE path so no override is needed.
+COPY --from=orfs /orfs-stage/yosys /opt/tools/install/yosys
+
+# Copy version-specific libraries into an isolated directory so they don't
+# interfere with the Ubuntu 24.04 system libs already in this image.
+COPY --from=orfs /orfs-stage/libs/ /opt/orfs-libs/
+
+# Copy the OpenROAD Flow Scripts (Makefile, TCL scripts, asap7 PDK, etc.).
+# The full PnR pipeline (synth→place→route→finish) is driven by ORFS;
+# graywolf/qrouter/magic are NOT needed.
+COPY --from=orfs /orfs-stage/flow/ /opt/orfs-flow/
+
+# Install OpenROAD runtime dependencies available in Ubuntu 24.04 apt.
+# Build tools (cmake, bison, flex, etc.) are intentionally omitted —
+# nothing needs to be compiled from source any more.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libtcl8.6 \
+        tcl-tclreadline \
+        libgomp1 \
+        libqt5charts5 \
+        libqt5widgets5 \
+        libqt5gui5 \
+        libqt5core5t64 \
+        libgl1 \
+        libpng16-16t64 \
+        libharfbuzz0b \
+        libmd4c0 \
+        libdouble-conversion3 \
+        libpcre2-16-0 \
+        time \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create a compatibility symlink for OpenROAD at the path ORFS expects.
+# Yosys is already at its expected path (/opt/tools/install/yosys) via COPY.
+RUN mkdir -p /opt/tools/install/OpenROAD/bin \
+    && ln -sf /usr/local/bin/openroad /opt/tools/install/OpenROAD/bin/openroad
+
+# Pre-create the CgraTemplateRTL ORFS design config.
+# VERILOG_FILES points to /layout/design_sv2v.v which is written at job runtime.
+RUN mkdir -p /opt/orfs-flow/designs/asap7/CgraTemplateRTL \
+    && printf '%s\n' \
+        'export PLATFORM               = asap7' \
+        'export DESIGN_NAME            = CgraTemplateRTL' \
+        '# VERILOG_FILES is supplied at make time: make VERILOG_FILES=/layout/design_sv2v.v' \
+        'export SDC_FILE               = /opt/orfs-flow/designs/asap7/CgraTemplateRTL/constraint.sdc' \
+        'export SYNTH_HIERARCHICAL     = 1' \
+        'export RTLMP_FLOW             = True' \
+        'export ENABLE_DPO             = True' \
+        'export CORE_UTILIZATION       = 15' \
+        'export CORE_ASPECT_RATIO      = 1' \
+        'export GPL_ROUTABILITY_DRIVEN = 1' \
+        'export CORE_MARGIN            = 5' \
+        'export PLACE_DENSITY          = 0.3' \
+        'export TNS_END_PERCENT        = 100' \
+        'export CTS_BUF_CELL           = BUFx8_ASAP7_75t_R' \
+        'export DETAILED_ROUTE_ARGS    = -bottom_routing_layer M2 -top_routing_layer M9 -save_guide_updates -verbose 1 -droute_end_iter 45' \
+        'export RECOVER_POWER          = 50' \
+        'export MIN_ROUTING_LAYER      = M2' \
+        'export MAX_ROUTING_LAYER      = M9' \
+        'export GLOBAL_ROUTE_ARGS      = -congestion_iterations 40 -verbose' \
+        'export REMOVE_CELLS_FOR_EQY   = TAPCELL*' \
+        'export SKIP_GATE_CLONING      = 1' \
+        'export GPL_TIMING_DRIVEN      = 0' \
+        > /opt/orfs-flow/designs/asap7/CgraTemplateRTL/config.mk \
+    && printf '%s\n' \
+        'current_design CgraTemplateRTL' \
+        '' \
+        'set clk_name      core_clock' \
+        'set clk_port_name clk' \
+        'set clk_period    10000' \
+        'set clk_io_pct    0.2' \
+        '' \
+        'set clk_port [get_ports $clk_port_name]' \
+        '' \
+        'create_clock -name $clk_name -period $clk_period $clk_port' \
+        '' \
+        'set non_clock_inputs [lsearch -inline -all -not -exact [all_inputs] $clk_port]' \
+        '' \
+        'set_input_delay  [expr $clk_period * $clk_io_pct] -clock $clk_name $non_clock_inputs' \
+        'set_output_delay [expr $clk_period * $clk_io_pct] -clock $clk_name [all_outputs]' \
+        > /opt/orfs-flow/designs/asap7/CgraTemplateRTL/constraint.sdc
+
+# Refresh ldconfig so /opt/orfs-libs and tool library dirs are registered
+RUN echo /opt/orfs-libs > /etc/ld.so.conf.d/orfs-libs.conf && \
+    echo /opt/OpenROAD/lib >> /etc/ld.so.conf.d/orfs-libs.conf && \
+    echo /opt/tools/install/yosys/lib >> /etc/ld.so.conf.d/orfs-libs.conf && \
+    ldconfig
+
+# Create a wrapper script so callers just run `openroad` as usual.
+# The wrapper prepends /opt/orfs-libs to LD_LIBRARY_PATH so version-pinned
+# libs from Ubuntu 22.04 are found before any Ubuntu 24.04 counterparts.
+RUN printf '#!/bin/sh\nexport LD_LIBRARY_PATH=/opt/orfs-libs:/opt/OpenROAD/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}\nexec /opt/OpenROAD/bin/openroad "$@"\n' \
+        > /usr/local/bin/openroad && \
+    chmod +x /usr/local/bin/openroad
+
+# Smoke-check: fail the build early if any required tool or config is missing
+RUN openroad -version \
+    && /opt/tools/install/yosys/bin/yosys -V \
+    && test -f /opt/orfs-flow/Makefile \
+    && test -f /opt/orfs-flow/designs/asap7/CgraTemplateRTL/config.mk
+
+WORKDIR /cgra
+
+CMD ["/bin/bash"]

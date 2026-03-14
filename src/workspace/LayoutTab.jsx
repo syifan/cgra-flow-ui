@@ -1,12 +1,14 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import PropTypes from 'prop-types';
 import {
   Accordion,
   AccordionDetails,
   AccordionSummary,
+  Alert,
   Box,
   Divider,
   Grid,
+  LinearProgress,
   Typography,
   TextField,
   Select,
@@ -14,34 +16,57 @@ import {
   FormControl,
   InputLabel,
   Button,
-  CircularProgress,
   Paper,
   InputAdornment,
   IconButton,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import FolderOpenIcon from '@mui/icons-material/FolderOpen';
-import layoutImage from '../../CGRA-Flow-sample/layout/final_all.webp';
 import ReportPanel from './verification/ReportPanel';
+import { submitLayoutJob, subscribeToJob } from './services/verificationService';
 
 function LayoutTab({ projectId, sverilogReady }) {
   const [sdcPath, setSdcPath] = useState('');
   const [mkPath, setMkPath] = useState('');
   const [process, setProcess] = useState('asap7');
-  const [loading, setLoading] = useState(false);
-  const [showResult, setShowResult] = useState(false);
+  const [jobId, setJobId] = useState(null);
+  const [jobStatus, setJobStatus] = useState(null);
+  const [jobProgress, setJobProgress] = useState(0);
+  const [jobStage, setJobStage] = useState('');
+  const [imageUrl, setImageUrl] = useState(null);
+  const [jobError, setJobError] = useState(null);
 
   const sdcInputRef = useRef(null);
   const mkInputRef = useRef(null);
 
-  const handleRun = () => {
-    setLoading(true);
-    setShowResult(false);
-    setTimeout(() => {
-      setLoading(false);
-      setShowResult(true);
-    }, 1500);
+  const handleRun = async () => {
+    setJobStatus('queued');
+    setJobProgress(0);
+    setJobStage('');
+    setImageUrl(null);
+    setJobError(null);
+    try {
+      const id = await submitLayoutJob(projectId);
+      setJobId(id);
+    } catch (err) {
+      setJobStatus('failed');
+      setJobError(err.message || 'Failed to submit layout job');
+    }
   };
+
+  useEffect(() => {
+    if (!jobId) return;
+    const unsubscribe = subscribeToJob(jobId, (update) => {
+      setJobStatus(update.status);
+      if (update.info) {
+        if (update.info.progress !== undefined) setJobProgress(update.info.progress);
+        if (update.info.stage !== undefined) setJobStage(update.info.stage);
+        if (update.info.imageUrl) setImageUrl(update.info.imageUrl);
+      }
+      if (update.error_message) setJobError(update.error_message);
+    });
+    return () => unsubscribe();
+  }, [jobId]);
 
   return (
     <Box sx={{ height: '100%', p: 2, boxSizing: 'border-box' }}>
@@ -143,20 +168,34 @@ function LayoutTab({ projectId, sverilogReady }) {
               <Button
                 variant="contained"
                 onClick={handleRun}
-                disabled={loading}
+                disabled={jobStatus === 'queued' || jobStatus === 'running'}
               >
                 RTL → Layout
               </Button>
-              {loading && <CircularProgress size={24} />}
             </Box>
+
+            {(jobStatus === 'queued' || jobStatus === 'running') && (
+              <Box sx={{ mt: 1 }}>
+                <LinearProgress variant="determinate" value={jobProgress} />
+                {jobStage && (
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                    {jobStage}
+                  </Typography>
+                )}
+              </Box>
+            )}
+
+            {jobStatus === 'failed' && jobError && (
+              <Alert severity="error" sx={{ mt: 1 }}>{jobError}</Alert>
+            )}
           </Paper>
 
-          {showResult && (
+          {jobStatus === 'success' && imageUrl && (
             <Box sx={{ mt: 2 }}>
               <Typography variant="h6" sx={{ mb: 1 }}>Layout Result</Typography>
               <Box
                 component="img"
-                src={layoutImage}
+                src={imageUrl}
                 alt="Layout result"
                 sx={{ width: '100%', maxWidth: 800, display: 'block', borderRadius: 1 }}
               />

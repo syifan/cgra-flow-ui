@@ -1,4 +1,4 @@
-current_design MeshMultiCgraTemplateRTL
+current_design CgraTemplateRTL
 
 set clk_name  core_clock
 set clk_port_name clk
