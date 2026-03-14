@@ -108,9 +108,11 @@ export async function submitSynthesisJob(projectId) {
  * to Supabase Storage, and writes imageUrl to this job's info column.
  *
  * @param {string} projectId - The project ID
+ * @param {string|null} sdcContent - Optional constraint.sdc file content
+ * @param {string|null} mkContent  - Optional config.mk file content
  * @returns {Promise<string>} The new job's ID
  */
-export async function submitLayoutJob(projectId) {
+export async function submitLayoutJob(projectId, sdcContent = null, mkContent = null) {
   const {
     data: { user }
   } = await supabase.auth.getUser();
@@ -122,7 +124,10 @@ export async function submitLayoutJob(projectId) {
       user_id: user?.id,
       type: 'layout',
       status: 'queued',
-      info: {}
+      info: {
+        ...(sdcContent ? { sdcContent } : {}),
+        ...(mkContent  ? { mkContent  } : {}),
+      }
     })
     .select()
     .single();

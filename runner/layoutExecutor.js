@@ -130,8 +130,10 @@ function runWithProgress(cmd, args, timeoutMs, onProgress) {
       if (code === 0) {
         resolve({ stdout, stderr });
       } else {
-        const tail = (stderr || stdout).slice(-3000);
-        reject(new Error(`Process exited with code ${code}.\n${tail}`));
+        const err = new Error(`Process exited with code ${code}.`);
+        err.processStdout = stdout;
+        err.processStderr = stderr;
+        reject(err);
       }
     });
 
@@ -228,13 +230,33 @@ export async function executeLayoutJob(job) {
       console.log(`  ✓ Downloaded design.v (${fileBuffer.length} bytes)`);
     }
 
+    // ── Step 3.5: Write user-provided config files if any ────────────────
+    const sdcContent = job.info?.sdcContent ?? null;
+    const mkContent  = job.info?.mkContent  ?? null;
+    if (sdcContent) {
+      await fs.writeFile(path.join(layoutDir, 'constraint.sdc'), sdcContent, 'utf8');
+      console.log('  ✓ Wrote user constraint.sdc');
+    }
+    if (mkContent) {
+      await fs.writeFile(path.join(layoutDir, 'config.mk'), mkContent, 'utf8');
+      console.log('  ✓ Wrote user config.mk');
+    }
+
     // ── Step 4: Write the layout shell script ────────────────────────────
     const layoutScriptPath = path.join(layoutDir, 'layout.sh');
 
     // Paths inside the Docker container
     const ORFS_FLOW  = '/opt/orfs-flow';
-    const DESIGN_CONFIG = `${ORFS_FLOW}/designs/asap7/CgraTemplateRTL/config.mk`;
+    const DESIGN_CONFIG = mkContent
+      ? '/layout/config.mk'
+      : `${ORFS_FLOW}/designs/asap7/CgraTemplateRTL/config.mk`;
     const RESULTS_DIR   = `${ORFS_FLOW}/results/asap7/CgraTemplateRTL`;
+    // Build make overrides; command-line vars take precedence over Makefile vars
+    const makeOverrides = [
+      `DESIGN_CONFIG=${DESIGN_CONFIG}`,
+      sdcContent ? 'SDC_FILE=/layout/constraint.sdc' : '',
+      'VERILOG_FILES=/layout/design_sv2v.v',
+    ].filter(Boolean).join(' ');
 
     // When using the bundled default_design.v it is already plain Verilog
     // (sv2v was run during image preparation), so we just copy it.
@@ -262,7 +284,8 @@ export async function executeLayoutJob(job) {
       `MAKE_LOG=/layout/make.log`,
       `cd ${ORFS_FLOW}`,
       'set +e',
-      `make DESIGN_CONFIG=${DESIGN_CONFIG} VERILOG_FILES=/layout/design_sv2v.v 2>&1 | tee "$MAKE_LOG"`,
+      `make ${makeOverrides} 2>&1 | tee "$MAKE_LOG"`,
+
       'MAKE_EXIT=${PIPESTATUS[0]}',
       'set -e',
       'if [ "$MAKE_EXIT" -ne 0 ]; then',
@@ -312,15 +335,25 @@ export async function executeLayoutJob(job) {
       `  Running Docker layout (image: ${DOCKER_IMAGE}, timeout: ${LAYOUT_DOCKER_TIMEOUT_MS > 0 ? LAYOUT_DOCKER_TIMEOUT_MS / 1000 + 's' : 'none'})...`
     );
 
-    await runWithProgress(
-      'docker',
-      dockerArgs,
-      LAYOUT_DOCKER_TIMEOUT_MS,
-      async (progress, stage) => {
-        console.log(`  ↑ Progress ${progress}% [${stage}] (${elapsed()}s elapsed)`);
-        await updateProgress(job.id, progress, stage, elapsed());
-      }
-    );
+    try {
+      await runWithProgress(
+        'docker',
+        dockerArgs,
+        LAYOUT_DOCKER_TIMEOUT_MS,
+        async (progress, stage) => {
+          console.log(`  ↑ Progress ${progress}% [${stage}] (${elapsed()}s elapsed)`);
+          await updateProgress(job.id, progress, stage, elapsed());
+        }
+      );
+    } catch (dockerErr) {
+      const log = [
+        dockerErr.processStderr,
+        dockerErr.processStdout,
+      ].filter(Boolean).join('\n').slice(-30000) || dockerErr.message;
+      const failErr = new Error(dockerErr.message);
+      failErr.jobInfo = { stage: 'failed', timeCost: elapsed(), log };
+      throw failErr;
+    }
 
     console.log(`  ✓ Docker layout completed (${elapsed()}s total)`);
 

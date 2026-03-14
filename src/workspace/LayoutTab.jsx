@@ -28,6 +28,8 @@ import { submitLayoutJob, subscribeToJob } from './services/verificationService'
 function LayoutTab({ projectId, sverilogReady }) {
   const [sdcPath, setSdcPath] = useState('');
   const [mkPath, setMkPath] = useState('');
+  const [sdcFile, setSdcFile] = useState(null);
+  const [mkFile, setMkFile] = useState(null);
   const [process, setProcess] = useState('asap7');
   const [jobId, setJobId] = useState(null);
   const [jobStatus, setJobStatus] = useState(null);
@@ -35,9 +37,20 @@ function LayoutTab({ projectId, sverilogReady }) {
   const [jobStage, setJobStage] = useState('');
   const [imageUrl, setImageUrl] = useState(null);
   const [jobError, setJobError] = useState(null);
+  const [jobLog, setJobLog] = useState(null);
+  const [elapsedSec, setElapsedSec] = useState(0);
+  const [timeCost, setTimeCost] = useState(null);
 
   const sdcInputRef = useRef(null);
   const mkInputRef = useRef(null);
+  const jobStartRef = useRef(null);
+  const timerRef = useRef(null);
+
+  const formatElapsed = (sec) => {
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return m > 0 ? `${m}m ${s}s` : `${s}s`;
+  };
 
   const handleRun = async () => {
     setJobStatus('queued');
@@ -45,8 +58,14 @@ function LayoutTab({ projectId, sverilogReady }) {
     setJobStage('');
     setImageUrl(null);
     setJobError(null);
+    setJobLog(null);
+    setElapsedSec(0);
+    setTimeCost(null);
+    jobStartRef.current = Date.now();
     try {
-      const id = await submitLayoutJob(projectId);
+      const sdcContent = sdcFile ? await sdcFile.text() : null;
+      const mkContent  = mkFile  ? await mkFile.text()  : null;
+      const id = await submitLayoutJob(projectId, sdcContent, mkContent);
       setJobId(id);
     } catch (err) {
       setJobStatus('failed');
@@ -54,16 +73,32 @@ function LayoutTab({ projectId, sverilogReady }) {
     }
   };
 
+  // Client-side elapsed-time ticker
+  useEffect(() => {
+    if (jobStatus === 'queued' || jobStatus === 'running') {
+      timerRef.current = setInterval(() => {
+        if (jobStartRef.current) {
+          setElapsedSec(Math.floor((Date.now() - jobStartRef.current) / 1000));
+        }
+      }, 1000);
+      return () => clearInterval(timerRef.current);
+    } else {
+      clearInterval(timerRef.current);
+    }
+  }, [jobStatus]);
+
   useEffect(() => {
     if (!jobId) return;
     const unsubscribe = subscribeToJob(jobId, (update) => {
       setJobStatus(update.status);
-      if (update.info) {
-        if (update.info.progress !== undefined) setJobProgress(update.info.progress);
-        if (update.info.stage !== undefined) setJobStage(update.info.stage);
-        if (update.info.imageUrl) setImageUrl(update.info.imageUrl);
+      if (update.result) {
+        if (update.result.progress !== undefined) setJobProgress(update.result.progress);
+        if (update.result.stage   !== undefined) setJobStage(update.result.stage);
+        if (update.result.imageUrl)              setImageUrl(update.result.imageUrl);
+        if (update.result.timeCost !== undefined) setTimeCost(update.result.timeCost);
+        if (update.result.log)                   setJobLog(update.result.log);
       }
-      if (update.error_message) setJobError(update.error_message);
+      if (update.error) setJobError(update.error);
     });
     return () => unsubscribe();
   }, [jobId]);
@@ -100,7 +135,8 @@ function LayoutTab({ projectId, sverilogReady }) {
               accept=".sdc"
               style={{ display: 'none' }}
               onChange={(e) => {
-                if (e.target.files[0]) setSdcPath(e.target.files[0].name);
+                const f = e.target.files[0];
+                if (f) { setSdcFile(f); setSdcPath(f.name); }
               }}
             />
             <input
@@ -109,7 +145,8 @@ function LayoutTab({ projectId, sverilogReady }) {
               accept=".mk"
               style={{ display: 'none' }}
               onChange={(e) => {
-                if (e.target.files[0]) setMkPath(e.target.files[0].name);
+                const f = e.target.files[0];
+                if (f) { setMkFile(f); setMkPath(f.name); }
               }}
             />
 
@@ -177,22 +214,55 @@ function LayoutTab({ projectId, sverilogReady }) {
             {(jobStatus === 'queued' || jobStatus === 'running') && (
               <Box sx={{ mt: 1 }}>
                 <LinearProgress variant="determinate" value={jobProgress} />
-                {jobStage && (
-                  <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                    {jobStage}
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 0.5 }}>
+                  <Typography variant="caption" color="text.secondary">
+                    {jobStage || 'queued'}
                   </Typography>
-                )}
+                  <Typography variant="caption" color="text.secondary">
+                    {formatElapsed(elapsedSec)} elapsed
+                  </Typography>
+                </Box>
               </Box>
             )}
 
-            {jobStatus === 'failed' && jobError && (
-              <Alert severity="error" sx={{ mt: 1 }}>{jobError}</Alert>
+            {jobStatus === 'failed' && (
+              <Box sx={{ mt: 1 }}>
+                {timeCost !== null && (
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                    Failed after {formatElapsed(Math.round(timeCost))}
+                  </Typography>
+                )}
+                {jobError && <Alert severity="error" sx={{ mb: 1 }}>{jobError}</Alert>}
+                {jobLog && (
+                  <Box sx={{
+                    p: 1,
+                    bgcolor: 'grey.900',
+                    color: 'grey.100',
+                    borderRadius: 1,
+                    overflow: 'auto',
+                    maxHeight: 300,
+                    fontFamily: 'monospace',
+                    fontSize: '0.75rem',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-all',
+                  }}>
+                    {jobLog}
+                  </Box>
+                )}
+              </Box>
             )}
           </Paper>
 
           {jobStatus === 'success' && imageUrl && (
             <Box sx={{ mt: 2 }}>
-              <Typography variant="h6" sx={{ mb: 1 }}>Layout Result</Typography>
+              <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 2, mb: 1 }}>
+                <Typography variant="h6">Layout Result</Typography>
+                {timeCost !== null && (
+                  <Typography variant="caption" color="text.secondary">
+                    Completed in {formatElapsed(Math.round(timeCost))}
+                  </Typography>
+                )}
+              </Box>
               <Box
                 component="img"
                 src={imageUrl}
