@@ -16,7 +16,7 @@
  *   - yosys  (installed in Dockerfile via oss-cad-suite)
  *
  * Environment variables:
- *   DOCKER_IMAGE                 - Docker image (default: cgra/cgra-flow:ui)
+ *   DOCKER_IMAGE                 - Docker image (default: cgra/cgra-flow:web-ui)
  *   SUPABASE_STORAGE_BUCKET      - Storage bucket (default: job-artifacts)
  *   SYNTHESIS_DOCKER_TIMEOUT_MS  - Timeout in ms (default: 3600000 = 60 min)
  */
@@ -39,7 +39,7 @@ const supabase = createClient(
   { auth: { autoRefreshToken: false, persistSession: false } }
 );
 
-const DOCKER_IMAGE = process.env.DOCKER_IMAGE || 'cgra/cgra-flow:ui';
+const DOCKER_IMAGE = process.env.DOCKER_IMAGE || 'cgra/cgra-flow:web-ui';
 const GRAPH_BUCKET = process.env.SUPABASE_STORAGE_BUCKET || 'job-artifacts';
 const SYNTHESIS_DOCKER_TIMEOUT_MS = parseInt(
   process.env.SYNTHESIS_DOCKER_TIMEOUT_MS || '3600000',

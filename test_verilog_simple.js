@@ -11,7 +11,7 @@ import { promisify } from 'util';
 const execAsync = promisify(exec);
 
 const TEST_DIR = './test_vectorcgra';
-const DOCKER_IMAGE = process.env.DOCKER_IMAGE || 'cgra/cgra-flow:ui';
+const DOCKER_IMAGE = process.env.DOCKER_IMAGE || 'cgra/cgra-flow:web-ui';
 
 async function main() {
   console.log('🧪 Verilog Generation Test (using CgraTemplateRTL_test)\n');

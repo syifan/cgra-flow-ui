@@ -2,12 +2,12 @@
  * Test Executor for run_tests jobs.
  *
  * Parses run_tests/cases.txt, executes each pytest command sequentially inside
- * the cgra/cgra-flow:ui Docker image, and reports incremental progress by
+ * the cgra/cgra-flow:web-ui Docker image, and reports incremental progress by
  * patching jobs.info in Supabase after each test completes.
  *
  * Environment variables:
  *   CASES_FILE_PATH       - Path to cases.txt (default: ../CGRA-Flow-sample/cases.txt relative to this file)
- *   DOCKER_IMAGE          - Docker image to use (default: cgra/cgra-flow:ui)
+ *   DOCKER_IMAGE          - Docker image to use (default: cgra/cgra-flow:web-ui)
  *   TEST_DOCKER_TIMEOUT_MS - Per-test timeout in ms (default: 600000 = 10 min)
  * 
  * See runner/README.md for full configuration documentation.
@@ -43,7 +43,7 @@ const supabase = createClient(
 const CASES_FILE_PATH = process.env.CASES_FILE_PATH
   || path.resolve(__dirname, '../CGRA-Flow-sample/cases.txt');
 
-const DOCKER_IMAGE = process.env.DOCKER_IMAGE || 'cgra/cgra-flow:ui';
+const DOCKER_IMAGE = process.env.DOCKER_IMAGE || 'cgra/cgra-flow:web-ui';
 const TEST_DOCKER_TIMEOUT_MS = parseInt(process.env.TEST_DOCKER_TIMEOUT_MS || '600000', 10);
 const STDOUT_CAP_BYTES = 8 * 1024; // 8 KB
 

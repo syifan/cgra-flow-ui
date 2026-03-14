@@ -1,6 +1,6 @@
 # Dockerfile.openroad
 #
-# Extends cgra/cgra-flow:ui by layering OpenROAD from the official orfs image.
+# Extends cgra/cgra-flow:web-ui by layering OpenROAD from the official orfs image.
 # This avoids rebuilding the entire cgra-flow image from scratch.
 #
 # orfs base: Ubuntu 22.04 (Jammy)
@@ -59,7 +59,7 @@ RUN mkdir -p /orfs-stage/libs && \
 # ============================================
 # Stage 2: cgra-flow:ui + OpenROAD (Ubuntu 24.04)
 # ============================================
-FROM cgra/cgra-flow:ui
+FROM cgra/cgra-flow:web-ui
 
 # Copy OpenROAD install tree into /opt/OpenROAD
 COPY --from=orfs /orfs-stage/OpenROAD /opt/OpenROAD
