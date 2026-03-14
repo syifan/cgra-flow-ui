@@ -102,6 +102,44 @@ export async function submitSynthesisJob(projectId) {
 }
 
 /**
+ * Submit a layout job for the given project.
+ * The runner picks up the latest successful verilog-generation job for the
+ * project, runs sv2v + OpenROAD PnR inside Docker, uploads the result image
+ * to Supabase Storage, and writes imageUrl to this job's info column.
+ *
+ * @param {string} projectId - The project ID
+ * @param {string|null} sdcContent - Optional constraint.sdc file content
+ * @param {string|null} mkContent  - Optional config.mk file content
+ * @returns {Promise<string>} The new job's ID
+ */
+export async function submitLayoutJob(projectId, sdcContent = null, mkContent = null) {
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+
+  const { data: newJob, error } = await supabase
+    .from('jobs')
+    .insert({
+      project_id: projectId,
+      user_id: user?.id,
+      type: 'layout',
+      status: 'queued',
+      info: {
+        ...(sdcContent ? { sdcContent } : {}),
+        ...(mkContent  ? { mkContent  } : {}),
+      }
+    })
+    .select()
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to submit layout job: ${error.message}`);
+  }
+
+  return newJob.id;
+}
+
+/**
  * Subscribe to job row updates for a specific job.
  *
  * @param {string} jobId - The job ID to watch

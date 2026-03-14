@@ -41,15 +41,15 @@ No manual `docker pull` is needed for Supabase.
 
 ### 2.2 cgra-flow Image
 
-The job runner executes CGRA mapping jobs inside a Docker container using the `cgra/cgra-flow:ui` image.
+The job runner executes CGRA mapping jobs inside a Docker container using the `cgra/cgra-flow:web-ui` image.
 
 ```bash
-docker pull cgra/cgra-flow:ui
+docker pull cgra/cgra-flow:web-ui
 ```
 
 Expected output (image layers downloading, then):
 ```
-Status: Downloaded newer image for cgra/cgra-flow:ui
+Status: Downloaded newer image for cgra/cgra-flow:web-ui
 ```
 
 ---
@@ -138,7 +138,7 @@ POLL_INTERVAL_MS=5000
 
 RUNNER_MODE=real
 JOBS_DIR=./jobs
-DOCKER_IMAGE=cgra/cgra-flow:ui
+DOCKER_IMAGE=cgra/cgra-flow:web-ui
 DOCKER_TIMEOUT_MS=600000
 ```
 
@@ -237,7 +237,7 @@ If the job reaches **Completed**, your local setup is fully working.
 2. If the runner terminal is closed or shows errors, restart it: `npm run runner`
 3. In `runner/.env`, confirm:
    - `RUNNER_MODE=real` (not `fake`)
-   - `DOCKER_IMAGE=cgra/cgra-flow:ui`
+   - `DOCKER_IMAGE=cgra/cgra-flow:web-ui`
 4. Check for stale runner processes from previous sessions:
 
    **Windows (PowerShell):**
