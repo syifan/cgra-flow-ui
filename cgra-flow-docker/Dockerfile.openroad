@@ -13,10 +13,10 @@
 # OpenROAD via an LD_LIBRARY_PATH wrapper script.
 #
 # Build:
-#   docker build -f Dockerfile.openroad -t cgra/cgra-flow:ui-openroad cgra-flow-docker
+#   docker build -f Dockerfile.openroad -t cgra/cgra-flow:web-ui cgra-flow-docker
 #
 # Verify OpenROAD is available:
-#   docker run --rm cgra/cgra-flow:ui-openroad openroad -version
+#   docker run --rm cgra/cgra-flow:web-ui openroad -version
 
 # ============================================
 # Stage 1: OpenROAD source (orfs official image, Ubuntu 22.04)

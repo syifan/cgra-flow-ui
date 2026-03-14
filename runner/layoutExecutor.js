@@ -17,7 +17,7 @@
  *   - openroad  (installed from openroad/orfs image layer)
  *
  * Environment variables:
- *   DOCKER_IMAGE               - Docker image (default: cgra/cgra-flow:ui-openroad)
+ *   DOCKER_IMAGE               - Docker image (default: cgra/cgra-flow:web-ui)
  *   SUPABASE_STORAGE_BUCKET    - Storage bucket (default: job-artifacts)
  *   LAYOUT_DOCKER_TIMEOUT_MS   - Timeout in ms (default: 0 = no timeout)
  */
@@ -40,7 +40,7 @@ const supabase = createClient(
   { auth: { autoRefreshToken: false, persistSession: false } }
 );
 
-const DOCKER_IMAGE = process.env.DOCKER_IMAGE || 'cgra/cgra-flow:ui-openroad';
+const DOCKER_IMAGE = process.env.DOCKER_IMAGE || 'cgra/cgra-flow:web-ui';
 const GRAPH_BUCKET = process.env.SUPABASE_STORAGE_BUCKET || 'job-artifacts';
 const LAYOUT_DOCKER_TIMEOUT_MS = parseInt(
   process.env.LAYOUT_DOCKER_TIMEOUT_MS || '0',

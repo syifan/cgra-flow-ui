@@ -40,7 +40,7 @@ The executor SHALL write a shell script, mount a temp directory into the Docker 
 
 #### Scenario: Docker container is started for PnR
 - **WHEN** the layout job begins executing
-- **THEN** `docker run --rm -v <tempDir>:/layout <DOCKER_IMAGE> bash /layout/layout.sh` is invoked with the `cgra/cgra-flow:ui-openroad` image
+- **THEN** `docker run --rm -v <tempDir>:/layout <DOCKER_IMAGE> bash /layout/layout.sh` is invoked with the `cgra/cgra-flow:web-ui` image
 
 #### Scenario: mflowgen drives the flow
 - **WHEN** the layout shell script runs inside Docker
@@ -84,7 +84,7 @@ The executor SHALL respect a `LAYOUT_DOCKER_TIMEOUT_MS` environment variable (de
 ---
 
 ### Requirement: Docker image includes OpenROAD
-The `cgra/cgra-flow:ui-openroad` image SHALL have `openroad` on `PATH`.
+The `cgra/cgra-flow:web-ui` image SHALL have `openroad` on `PATH`.
 
 #### Scenario: openroad binary is available
 - **WHEN** the container starts

@@ -1,6 +1,6 @@
 ## Context
 
-The Layout tab currently submits no real job — `handleRun` just delays 1.5 s and then shows the static `final_all.webp` bundled in the repo. The Docker image has been extended (`cgra/cgra-flow:ui-openroad`) with OpenROAD via a new `Dockerfile.openroad` that layers `openroad/orfs` on top of the existing `cgra/cgra-flow:ui`. The runner already has the `synthesis` job type as a near-identical precedent (`synthesisExecutor.js`): it finds the latest `verilog-generation` job, downloads the file, writes a shell script, mounts a temp directory into Docker, and streams `PROGRESS:<n>:<label>` lines back to Supabase.
+The Layout tab currently submits no real job — `handleRun` just delays 1.5 s and then shows the static `final_all.webp` bundled in the repo. The Docker image has been extended (`cgra/cgra-flow:web-ui`) with OpenROAD via a new `Dockerfile.openroad` that layers `openroad/orfs` on top of the existing `cgra/cgra-flow:ui`. The runner already has the `synthesis` job type as a near-identical precedent (`synthesisExecutor.js`): it finds the latest `verilog-generation` job, downloads the file, writes a shell script, mounts a temp directory into Docker, and streams `PROGRESS:<n>:<label>` lines back to Supabase.
 
 ## Goals / Non-Goals
 
