@@ -5,6 +5,7 @@
 import { executeMappingJob, executeVerilogGenerationJob } from './mappingExecutor.js';
 import { executeRunTestsJob } from './testExecutor.js';
 import { executeSynthesisJob } from './synthesisExecutor.js';
+import { executeLayoutJob } from './layoutExecutor.js';
 
 /**
  * Claim the next available job atomically.
@@ -163,7 +164,7 @@ export async function executeJob(job) {
       return await executeSynthesisJob(job);
 
     case 'layout':
-      throw new Error(`Job type "${job.type}" not yet implemented`);
+      return await executeLayoutJob(job);
 
     default:
       throw new Error(`Unknown job type: ${job.type}`);

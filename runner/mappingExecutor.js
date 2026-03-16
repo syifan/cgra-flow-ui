@@ -41,7 +41,7 @@ const supabase = createClient(
  * Configuration
  */
 const JOBS_DIR = process.env.JOBS_DIR || './jobs';
-const DOCKER_IMAGE = process.env.DOCKER_IMAGE || 'cgra/cgra-flow:ui';
+const DOCKER_IMAGE = process.env.DOCKER_IMAGE || 'cgra/cgra-flow:web-ui';
 const DOCKER_TIMEOUT_MS = parseInt(process.env.DOCKER_TIMEOUT_MS || '600000', 10); // 10 minutes
 // Verilog generation involves PyMTL3 → Verilog translation + Verilator compilation, which can
 // take 30+ minutes for large CGRAs. Use a separate (longer) timeout.

@@ -12,7 +12,7 @@ import yaml from 'js-yaml';
 const execAsync = promisify(exec);
 
 const TEST_DIR = './test_vectorcgra';
-const DOCKER_IMAGE = process.env.DOCKER_IMAGE || 'cgra/cgra-flow:ui';
+const DOCKER_IMAGE = process.env.DOCKER_IMAGE || 'cgra/cgra-flow:web-ui';
 
 const testArchitecture = {
   architecture: { name: 'NeuraMultiCgra', version: '1.0' },
