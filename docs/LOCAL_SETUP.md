@@ -122,7 +122,7 @@ VITE_SUPABASE_ANON_KEY=<paste the "anon key" from npx supabase status>
 | `npx supabase status` field | `.env` variable |
 |---|---|
 | `API URL` | `VITE_SUPABASE_URL` |
-| `anon key` | `VITE_SUPABASE_ANON_KEY` |
+| `anon (publishable) key` | `VITE_SUPABASE_ANON_KEY` |
 
 ### 5.3 Create the Runner `runner/.env`
 
@@ -131,7 +131,7 @@ Create a file named `.env` inside the `runner/` directory:
 ```dotenv
 # runner/.env
 SUPABASE_URL=http://127.0.0.1:54321
-SUPABASE_SERVICE_ROLE_KEY=<paste the "service_role key" from npx supabase status>
+SUPABASE_SERVICE_ROLE_KEY=<paste the "service_role (secret) key" from npx supabase status>
 
 RUNNER_ID=runner-001
 POLL_INTERVAL_MS=5000
@@ -170,6 +170,7 @@ Expected: output showing API URL, DB URL, Studio URL etc. If it has stopped, run
 ### Terminal 2 — Frontend Dev Server
 
 ```bash
+cd cgra-flow-ui
 npm run dev
 ```
 
@@ -186,6 +187,7 @@ Verify: open [http://localhost:5173](http://localhost:5173) in your browser. You
 ### Terminal 3 — Job Runner
 
 ```bash
+cd cgra-flow-ui
 npm run runner
 ```
 
