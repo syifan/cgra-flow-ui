@@ -105,9 +105,9 @@ Started supabase local development setup.
           DB URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
       Studio URL: http://127.0.0.1:54323
     Inbucket URL: http://127.0.0.1:54324
-      JWT secret: super-secret-jwt-token-with-at-least-32-characters-long
-        anon key: eyJhbGci...
-service_role key: eyJhbGci...
+         JWT secret: super-secret-jwt-token-with-at-least-32-characters-long
+anon (publishable) key: eyJhbGci...
+ service_role (secret) key: eyJhbGci...
 ```
 
 To retrieve credentials again at any time:
@@ -123,7 +123,7 @@ Create a file named `.env` in the **project root** (same directory as `package.j
 ```dotenv
 # .env  (project root)
 VITE_SUPABASE_URL=http://127.0.0.1:54321
-VITE_SUPABASE_ANON_KEY=<paste the "anon key" from npx supabase status>
+VITE_SUPABASE_ANON_KEY=<paste the "anon (publishable) key" from npx supabase status>
 ```
 
 **Mapping from `npx supabase status` output:**
@@ -156,9 +156,9 @@ DOCKER_TIMEOUT_MS=600000
 | `npx supabase status` field | `runner/.env` variable |
 |---|---|
 | `API URL` | `SUPABASE_URL` |
-| `service_role key` | `SUPABASE_SERVICE_ROLE_KEY` |
+| `service_role (secret) key` | `SUPABASE_SERVICE_ROLE_KEY` |
 
-> **Important:** Use the `service_role key` for the runner (not the `anon key`). The runner needs elevated permissions to update job records.
+> **Important:** Use the `service_role (secret) key` for the runner (not the `anon (publishable) key`). The runner needs elevated permissions to update job records.
 
 ---
 
