@@ -75,6 +75,15 @@ npm install
 npm run runner:install
 ```
 
+### 4.1 Sample Layout Input Files
+
+If you want to test the Layout flow, sample input files are already included in this repository:
+
+- `CGRA-Flow-sample/layout/constraint.sdc`
+- `CGRA-Flow-sample/layout/config.mk`
+
+Use these files when the UI asks for `constraint.sdc` and `config.mk`, rather than creating them from scratch.
+
 ---
 
 ## 5. Start Supabase & Configure Environment
