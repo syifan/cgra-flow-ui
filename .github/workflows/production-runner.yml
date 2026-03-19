@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - "runner/**"
+      - "cgra-flow-docker/**"
       - ".github/workflows/production-runner.yml"
 
 jobs:
@@ -23,6 +24,7 @@ jobs:
           port: ${{ secrets.RUNNER_SSH_PORT || 22 }}
           username: ${{ secrets.RUNNER_SSH_USER }}
           key: ${{ secrets.RUNNER_SSH_KEY }}
+          command_timeout: 90m
           script: |
             set -e
 
@@ -34,6 +36,18 @@ jobs:
             rm -rf repo
             git clone --depth 1 https://github.com/${{ github.repository }}.git repo
 
+            # Build production Docker image used by mapping jobs
+            DOCKER_BASE_IMAGE="cgra-flow-base:llvm-v1"
+            DOCKER_IMAGE="cgra-flow:latest"
+            cd repo/cgra-flow-docker
+            if ! docker image inspect "$DOCKER_BASE_IMAGE" >/dev/null 2>&1; then
+              echo "Base image not found, building: $DOCKER_BASE_IMAGE"
+              docker build --target llvm-base -t "$DOCKER_BASE_IMAGE" .
+            fi
+            echo "Building production image: $DOCKER_IMAGE"
+            docker build -t "$DOCKER_IMAGE" .
+            docker image inspect "$DOCKER_IMAGE" >/dev/null
+
             cd repo/runner
 
             # Write production environment file
@@ -43,15 +57,24 @@ jobs:
               'RUNNER_MODE=real' \
               'RUNNER_ID=runner-production' \
               'POLL_INTERVAL_MS=5000' \
+              'DOCKER_IMAGE=cgra-flow:latest' \
+              'DOCKER_TIMEOUT_MS=600000' \
               > .env
 
             # Install dependencies
             npm ci --omit=dev
 
-            # Stop existing production runner (keeps PR-specific runners intact)
-            pm2 delete cgra-runner 2>/dev/null || true
+            # Ensure PM2 can resurrect processes after host reboot (best effort).
+            # This requires passwordless sudo on the target host.
+            if command -v systemctl >/dev/null 2>&1; then
+              if sudo -n true 2>/dev/null; then
+                sudo -n env PATH="$PATH" pm2 startup systemd -u "$USER" --hp "$HOME" >/dev/null
+              else
+                echo "Warning: passwordless sudo unavailable; skipping pm2 startup bootstrap"
+              fi
+            fi
 
-            # Start production runner
+            # Start production runner with hardened restart policy
             cat > start.sh << 'STARTEOF'
             #!/bin/bash
             set -a
@@ -61,7 +84,26 @@ jobs:
             STARTEOF
             chmod +x start.sh
 
-            pm2 start ./start.sh --name cgra-runner
+            cat > ecosystem.config.cjs << 'ECOEOF'
+            module.exports = {
+              apps: [
+                {
+                  name: 'cgra-runner',
+                  script: './start.sh',
+                  autorestart: true,
+                  min_uptime: '10s',
+                  max_restarts: 20,
+                  restart_delay: 5000,
+                  exp_backoff_restart_delay: 100,
+                  max_memory_restart: '1G',
+                  kill_timeout: 30000,
+                  time: true
+                }
+              ]
+            };
+            ECOEOF
+
+            pm2 startOrReload ecosystem.config.cjs --update-env
             pm2 save
 
             # Show status and recent logs
