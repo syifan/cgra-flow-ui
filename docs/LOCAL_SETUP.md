@@ -75,6 +75,15 @@ npm install
 npm run runner:install
 ```
 
+### 4.1 Sample Layout Input Files
+
+If you want to test the Layout flow, sample input files are already included in this repository:
+
+- `CGRA-Flow-sample/layout/constraint.sdc`
+- `CGRA-Flow-sample/layout/config.mk`
+
+Use these files when the UI asks for `constraint.sdc` and `config.mk`, rather than creating them from scratch.
+
 ---
 
 ## 5. Start Supabase & Configure Environment
@@ -96,9 +105,9 @@ Started supabase local development setup.
           DB URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
       Studio URL: http://127.0.0.1:54323
     Inbucket URL: http://127.0.0.1:54324
-      JWT secret: super-secret-jwt-token-with-at-least-32-characters-long
-        anon key: eyJhbGci...
-service_role key: eyJhbGci...
+         JWT secret: super-secret-jwt-token-with-at-least-32-characters-long
+anon (publishable) key: eyJhbGci...
+ service_role (secret) key: eyJhbGci...
 ```
 
 To retrieve credentials again at any time:
@@ -114,7 +123,7 @@ Create a file named `.env` in the **project root** (same directory as `package.j
 ```dotenv
 # .env  (project root)
 VITE_SUPABASE_URL=http://127.0.0.1:54321
-VITE_SUPABASE_ANON_KEY=<paste the "anon key" from npx supabase status>
+VITE_SUPABASE_ANON_KEY=<paste the "anon (publishable) key" from npx supabase status>
 ```
 
 **Mapping from `npx supabase status` output:**
@@ -122,7 +131,7 @@ VITE_SUPABASE_ANON_KEY=<paste the "anon key" from npx supabase status>
 | `npx supabase status` field | `.env` variable |
 |---|---|
 | `API URL` | `VITE_SUPABASE_URL` |
-| `anon key` | `VITE_SUPABASE_ANON_KEY` |
+| `anon (publishable) key` | `VITE_SUPABASE_ANON_KEY` |
 
 ### 5.3 Create the Runner `runner/.env`
 
@@ -131,7 +140,7 @@ Create a file named `.env` inside the `runner/` directory:
 ```dotenv
 # runner/.env
 SUPABASE_URL=http://127.0.0.1:54321
-SUPABASE_SERVICE_ROLE_KEY=<paste the "service_role key" from npx supabase status>
+SUPABASE_SERVICE_ROLE_KEY=<paste the "service_role (secret) key" from npx supabase status>
 
 RUNNER_ID=runner-001
 POLL_INTERVAL_MS=5000
@@ -147,9 +156,9 @@ DOCKER_TIMEOUT_MS=600000
 | `npx supabase status` field | `runner/.env` variable |
 |---|---|
 | `API URL` | `SUPABASE_URL` |
-| `service_role key` | `SUPABASE_SERVICE_ROLE_KEY` |
+| `service_role (secret) key` | `SUPABASE_SERVICE_ROLE_KEY` |
 
-> **Important:** Use the `service_role key` for the runner (not the `anon key`). The runner needs elevated permissions to update job records.
+> **Important:** Use the `service_role (secret) key` for the runner (not the `anon (publishable) key`). The runner needs elevated permissions to update job records.
 
 ---
 
@@ -170,6 +179,7 @@ Expected: output showing API URL, DB URL, Studio URL etc. If it has stopped, run
 ### Terminal 2 — Frontend Dev Server
 
 ```bash
+cd cgra-flow-ui
 npm run dev
 ```
 
@@ -186,6 +196,7 @@ Verify: open [http://localhost:5173](http://localhost:5173) in your browser. You
 ### Terminal 3 — Job Runner
 
 ```bash
+cd cgra-flow-ui
 npm run runner
 ```
 
