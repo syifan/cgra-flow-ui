@@ -227,9 +227,8 @@ MiniPeGrid.propTypes = {
 /**
  * MultiChartView - Show all index_per_ii values as a scrollable grid
  */
-function MultiChartView({ instructionData, maxIndexPerII }) {
+function MultiChartView({ instructionData, maxIndexPerII, onSlideSelect }) {
   const [jumpValue, setJumpValue] = useState('');
-  const containerRef = useRef(null);
 
   const handleJump = useCallback(() => {
     const idx = parseInt(jumpValue, 10);
@@ -267,26 +266,33 @@ function MultiChartView({ instructionData, maxIndexPerII }) {
 
       {/* Scrollable chart grid */}
       <Box
-        ref={containerRef}
         sx={{
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
           gap: 2,
           flex: 1,
           overflow: 'auto',
-          pb: 2
+          pb: 2,
+          pt: 1
         }}
       >
         {slideIndices.map((idx) => (
           <Box
             key={idx}
             id={`slide-card-${idx}`}
+            onClick={() => onSlideSelect?.(idx)}
             sx={{
               border: '1px solid',
               borderColor: 'divider',
               borderRadius: 1,
               p: 1,
-              bgcolor: 'rgba(15, 23, 42, 0.3)'
+              bgcolor: 'rgba(15, 23, 42, 0.3)',
+              cursor: 'pointer',
+              transition: 'border-color 0.2s, background-color 0.2s',
+              '&:hover': {
+                borderColor: 'primary.main',
+                bgcolor: 'rgba(15, 23, 42, 0.5)'
+              }
             }}
           >
             <Typography variant="caption" sx={{ color: 'text.secondary', mb: 1, display: 'block' }}>
@@ -302,7 +308,8 @@ function MultiChartView({ instructionData, maxIndexPerII }) {
 
 MultiChartView.propTypes = {
   instructionData: PropTypes.object,
-  maxIndexPerII: PropTypes.number.isRequired
+  maxIndexPerII: PropTypes.number.isRequired,
+  onSlideSelect: PropTypes.func
 };
 
 /**
@@ -498,6 +505,12 @@ function MappingInstructionGrid({ instructionData, onInstructionHover, onSlideCh
     setIsLooping((prev) => !prev);
   }, []);
 
+  const handleSlideSelect = useCallback((idx) => {
+    setViewMode('animation');
+    setCurrentSlide(idx);
+    setIsPlaying(false);
+  }, []);
+
   if (!instructionData?.array_config) {
     return (
       <Box
@@ -550,9 +563,13 @@ function MappingInstructionGrid({ instructionData, onInstructionHover, onSlideCh
       )}
 
       {/* Render based on mode */}
-      <Box sx={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+      <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
         {viewMode === 'multi' ? (
-          <MultiChartView instructionData={instructionData} maxIndexPerII={maxSlide} />
+          <MultiChartView
+            instructionData={instructionData}
+            maxIndexPerII={maxSlide}
+            onSlideSelect={handleSlideSelect}
+          />
         ) : (
           <SingleGridView
             instructionData={instructionData}
