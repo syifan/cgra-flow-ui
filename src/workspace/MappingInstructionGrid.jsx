@@ -59,7 +59,7 @@ function buildPeNodes(instructionData) {
 
   for (let row = 0; row < rows; row++) {
     for (let col = 0; col < columns; col++) {
-      const coreId = coreMap.get(`${col},${row}`) || `${col}-${row}`;
+      const coreId = coreMap.get(`${col},${row}`) ?? `${col}-${row}`;
       nodes.push({
         id: `pe-${col}-${row}`,
         coreId,
@@ -428,20 +428,23 @@ function MappingInstructionGrid({ instructionData, onInstructionHover, onSlideCh
 
     const timer = setInterval(() => {
       setCurrentSlide((s) => {
-        if (s >= maxSlide) {
-          if (isLooping) {
-            return 0; // Loop back to start
-          } else {
-            setIsPlaying(false); // Stop at end
-            return s;
-          }
+        const current = Number.isFinite(s) ? s : 0;
+        if (current >= maxSlide) {
+          return isLooping ? 0 : current;
         }
-        return s + 1;
+        return current + 1;
       });
     }, playbackSpeed);
 
     return () => clearInterval(timer);
   }, [isPlaying, playbackSpeed, maxSlide, isLooping]);
+
+  // Stop playback when reaching the last slide in non-looping mode
+  useEffect(() => {
+    if (currentSlide >= maxSlide && isPlaying && !isLooping) {
+      setIsPlaying(false);
+    }
+  }, [currentSlide, maxSlide, isPlaying, isLooping]);
 
   // Reset slide when instruction data changes
   // This is an intentional setState in effect - when data changes, we need to reset UI state
@@ -459,7 +462,8 @@ function MappingInstructionGrid({ instructionData, onInstructionHover, onSlideCh
     // Switch to animation mode if not already
     setViewMode('animation');
     // Jump to the target slide (index_per_ii)
-    setCurrentSlide(jumpTarget.indexPerII);
+    const targetSlide = Number(jumpTarget.indexPerII);
+    setCurrentSlide(Number.isFinite(targetSlide) ? targetSlide : 0);
     // Stop any playing animation
     setIsPlaying(false);
     // Highlight the target PE
@@ -485,7 +489,8 @@ function MappingInstructionGrid({ instructionData, onInstructionHover, onSlideCh
   }, []);
 
   const handleSlideChange = useCallback((value) => {
-    setCurrentSlide(value);
+    const slide = Number(value);
+    setCurrentSlide(Number.isFinite(slide) ? slide : 0);
     setIsPlaying(false);
   }, []);
 

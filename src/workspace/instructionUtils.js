@@ -3,6 +3,25 @@
  */
 
 /**
+ * Resolve index_per_ii for an instruction.
+ * Some backend outputs omit index_per_ii and only provide timestep;
+ * in that case derive it as timestep % compiled_ii.
+ * @param {object} inst - Instruction object
+ * @param {object} instructionData - Parent instruction data (for compiled_ii)
+ * @returns {number}
+ */
+export function resolveIndexPerII(inst, instructionData) {
+  if (inst.index_per_ii !== undefined && inst.index_per_ii !== null) {
+    return Number(inst.index_per_ii);
+  }
+  const compiledII = instructionData?.array_config?.compiled_ii || 0;
+  if (compiledII > 0 && inst.timestep !== undefined && inst.timestep !== null) {
+    return Number(inst.timestep) % compiledII;
+  }
+  return 0;
+}
+
+/**
  * Build a map of core_id to (column, row) position
  * @param {object} instructionData - The instruction data from mapping
  * @returns {Map<string, {column: number, row: number}>}
@@ -23,10 +42,11 @@ export function buildCorePositionMap(instructionData) {
  */
 export function getInstructionsAtIndexPerII(instructionData, indexPerII) {
   const results = [];
+  const targetII = Number(indexPerII);
   instructionData?.array_config?.cores?.forEach((core) => {
     core.entries?.forEach((entry) => {
       entry.instructions?.forEach((inst) => {
-        if (inst.index_per_ii === indexPerII) {
+        if (resolveIndexPerII(inst, instructionData) === targetII) {
           results.push({
             coreId: core.core_id,
             column: core.column,
@@ -50,7 +70,7 @@ export function getAllIndexPerII(instructionData) {
   instructionData?.array_config?.cores?.forEach((core) => {
     core.entries?.forEach((entry) => {
       entry.instructions?.forEach((inst) => {
-        indices.add(inst.index_per_ii);
+        indices.add(resolveIndexPerII(inst, instructionData));
       });
     });
   });
@@ -59,14 +79,28 @@ export function getAllIndexPerII(instructionData) {
 
 /**
  * Get the maximum index_per_ii in the instruction data
- * This should equal compiled_ii - 1
+ * Prefers compiled_ii from array_config when available, otherwise computes from actual data.
  * @param {object} instructionData - The instruction data from mapping
  * @returns {number}
  */
 export function getMaxIndexPerII(instructionData) {
-  // The max index_per_ii is compiled_ii - 1
+  // Prefer compiled_ii metadata if present (compiled_ii - 1 = max index)
   const compiledIi = instructionData?.array_config?.compiled_ii || 0;
-  return compiledIi > 0 ? compiledIi - 1 : 0;
+  if (compiledIi > 0) return compiledIi - 1;
+
+  // Fallback: compute from actual instruction entries
+  let maxIndex = 0;
+  instructionData?.array_config?.cores?.forEach((core) => {
+    core.entries?.forEach((entry) => {
+      entry.instructions?.forEach((inst) => {
+        const ii = resolveIndexPerII(inst, instructionData);
+        if (ii > maxIndex) {
+          maxIndex = ii;
+        }
+      });
+    });
+  });
+  return maxIndex;
 }
 
 /**
