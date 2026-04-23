@@ -3,7 +3,7 @@
  * The dependency graph shows data dependencies between operations with 1-to-1 PE linking.
  */
 
-import { directionToDelta, isRegisterOperand, isDirectionOperand } from './instructionUtils';
+import { directionToDelta, isRegisterOperand, isDirectionOperand, resolveIndexPerII } from './instructionUtils';
 
 /**
  * Build graph nodes from instruction data
@@ -19,11 +19,12 @@ export function buildDependencyNodes(instructionData) {
       entry.instructions?.forEach((inst) => {
         inst.operations?.forEach((op, opIndex) => {
           const suffix = opIndex > 0 ? `[${opIndex}]` : '';
+          const indexPerII = resolveIndexPerII(inst, instructionData);
           nodes.push({
-            id: `${op.opcode}@ii${inst.index_per_ii}@PE(${core.column},${core.row})${suffix}`,
+            id: `${op.opcode}@ii${indexPerII}@PE(${core.column},${core.row})${suffix}`,
             opcode: op.opcode || '',
             timestep: inst.timestep,
-            indexPerII: inst.index_per_ii,
+            indexPerII,
             pe: {
               col: core.column,
               row: core.row,

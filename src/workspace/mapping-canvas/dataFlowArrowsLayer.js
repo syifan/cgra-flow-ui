@@ -79,15 +79,26 @@ export function createDataFlowArrowsLayer(root) {
       return { x1: fromCenter.x, y1: fromCenter.y, x2: toCenter.x, y2: toCenter.y };
     }
 
-    // Offset from center to edge of PE
-    const offset = PE_SIZE / 2 + 4;
-    const arrowClearance = ARROW_HEAD_SIZE + 2;
+    const halfSize = PE_SIZE / 2;
+    const endClearance = halfSize + ARROW_HEAD_SIZE + 2;
+    const startOffset = halfSize + 2;
+
+    // For very close PEs (adjacent), ensure arrow doesn't collapse or reverse
+    if (startOffset + endClearance >= len) {
+      const safeOffset = len * 0.45;
+      return {
+        x1: fromCenter.x + (dx / len) * safeOffset,
+        y1: fromCenter.y + (dy / len) * safeOffset,
+        x2: toCenter.x - (dx / len) * safeOffset,
+        y2: toCenter.y - (dy / len) * safeOffset
+      };
+    }
 
     return {
-      x1: fromCenter.x + (dx / len) * offset,
-      y1: fromCenter.y + (dy / len) * offset,
-      x2: toCenter.x - (dx / len) * (offset + arrowClearance),
-      y2: toCenter.y - (dy / len) * (offset + arrowClearance)
+      x1: fromCenter.x + (dx / len) * startOffset,
+      y1: fromCenter.y + (dy / len) * startOffset,
+      x2: toCenter.x - (dx / len) * endClearance,
+      y2: toCenter.y - (dy / len) * endClearance
     };
   };
 
