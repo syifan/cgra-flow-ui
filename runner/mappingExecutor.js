@@ -64,6 +64,33 @@ const DOCKER_ARCH_SPEC_PATH = process.env.DOCKER_ARCH_SPEC_PATH || '/cgra/datafl
 const DOCKER_LLVM_LIT_PATH = process.env.DOCKER_LLVM_LIT_PATH || '/cgra/llvm-project/build/bin/llvm-lit';
 
 /**
+ * `--user` fragment for `docker run` so files created on bind-mounted host directories are owned
+ * by the same UID/GID as the Node runner process.
+ *
+ * Reason: Docker defaults to root in the container. A root-owned `fir_kernel.mlir` on the host is
+ * readable by your user but not writable; `patchSeededTestFile` must rewrite that file and then
+ * fails with EACCES. llvm-lit and verilog generation also write into mounted dirs; matching the
+ * host user avoids root-owned outputs the runner cannot read or patch.
+ *
+ * Set `DOCKER_RUN_USER` (e.g. `1000:1000`) if `getuid`/`getgid` are unavailable (some platforms).
+ */
+function dockerRunUserShellFragment() {
+  const explicit = process.env.DOCKER_RUN_USER?.trim();
+  if (explicit) {
+    if (!/^\d+:\d+$/.test(explicit)) {
+      throw new Error(
+        `Invalid DOCKER_RUN_USER="${explicit}". Use numeric uid:gid only (e.g. 1000:1000).`
+      );
+    }
+    return `--user ${explicit}`;
+  }
+  if (typeof process.getuid === 'function' && typeof process.getgid === 'function') {
+    return `--user ${process.getuid()}:${process.getgid()}`;
+  }
+  return '';
+}
+
+/**
  * Execute a mapping job
  *
  * @param {object} job - The job object from database
@@ -338,11 +365,14 @@ async function processBenchmark(jobDir, jobId, benchmark, archYamlPath) {
   // This copies once per run and lets us bind-mount the entire benchmark folder.
   const seedCommand = [
     'docker run --rm',
+    dockerRunUserShellFragment(),
     `-v "${absoluteBenchmarkDir}:/workspace"`,
     DOCKER_IMAGE,
     'bash -lc',
     `"shopt -s dotglob && cp -r ${benchmarkTestDir}/* /workspace/"`,
-  ].join(' ');
+  ]
+    .filter(Boolean)
+    .join(' ');
   await execAsync(seedCommand);
 
   // Patch seeded test files to use architecture-agnostic FileCheck directives.
@@ -365,14 +395,17 @@ async function processBenchmark(jobDir, jobId, benchmark, archYamlPath) {
   const dockerCommand = [
     'docker run',
     '--rm',
+    dockerRunUserShellFragment(),
     `--name ${containerName}`,
     `-v "${absoluteBenchmarkDir}:${benchmarkTestDir}"`,
-    `-v "${absoluteJobDir}/architecture.yaml:${DOCKER_ARCH_SPEC_PATH}:ro"`,
+    `-v "${absoluteJobDir}/architecture.yaml:${DOCKER_ARCH_SPEC_PATH}:ro"`, // overwrite the architecture.yaml in the container
     '-w',
     benchmarkTestDir,
     DOCKER_IMAGE,
     `${DOCKER_LLVM_LIT_PATH} -v ${testFilePath}`
-  ].join(' ');
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   console.log(`    Running: llvm-lit ${testFilePath}`);
 
@@ -821,13 +854,16 @@ if __name__ == '__main__':
 
   const dockerCommand = [
     'docker run --rm',
+    dockerRunUserShellFragment(),
     `-v "${absoluteArchYamlPath}:${archYamlInContainer}"`,
     `-v "${absoluteVerilogDir}:${verilogOutputDir}"`,
     `-v "${absolutePythonWrapper}:/tmp/run_verilog_gen.py"`,
     `-w /cgra`,
     DOCKER_IMAGE,
     'python3 /tmp/run_verilog_gen.py'
-  ].join(' ');
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   console.log(`  Running VectorCGRA test in Docker...`);
 
