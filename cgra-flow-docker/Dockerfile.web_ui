@@ -1,0 +1,13 @@
+FROM cgra/cgra-flow:web-ui-base
+
+RUN apt-get update && \
+    apt-get install vim -y 
+
+WORKDIR /cgra/VectorCGRA
+
+RUN git pull 
+
+# Set default working directory
+WORKDIR /cgra
+# Default command
+CMD ["/bin/bash"]
