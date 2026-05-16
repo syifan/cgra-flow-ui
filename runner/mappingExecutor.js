@@ -11,6 +11,7 @@ import { createClient } from '@supabase/supabase-js';
 import { config } from 'dotenv';
 import yaml from 'js-yaml';
 import { convertJsonToYamlString } from './converter/converter.js';
+import { convertArchitectureToVectorCGRAYaml } from './converter/vectorCgraConverter.js';
 
 config();
 
@@ -62,6 +63,33 @@ const GRAPH_BUCKET_RETRY_INTERVAL_MS = 60000; // Retry bucket creation after 1 m
 const DOCKER_DATAFLOW_TEST_DIR = process.env.DOCKER_DATAFLOW_TEST_DIR || '/cgra/dataflow/test';
 const DOCKER_ARCH_SPEC_PATH = process.env.DOCKER_ARCH_SPEC_PATH || '/cgra/dataflow/test/arch_spec/architecture.yaml';
 const DOCKER_LLVM_LIT_PATH = process.env.DOCKER_LLVM_LIT_PATH || '/cgra/llvm-project/build/bin/llvm-lit';
+
+/**
+ * `--user` fragment for `docker run` so files created on bind-mounted host directories are owned
+ * by the same UID/GID as the Node runner process.
+ *
+ * Reason: Docker defaults to root in the container. A root-owned `fir_kernel.mlir` on the host is
+ * readable by your user but not writable; `patchSeededTestFile` must rewrite that file and then
+ * fails with EACCES. llvm-lit and verilog generation also write into mounted dirs; matching the
+ * host user avoids root-owned outputs the runner cannot read or patch.
+ *
+ * Set `DOCKER_RUN_USER` (e.g. `1000:1000`) if `getuid`/`getgid` are unavailable (some platforms).
+ */
+function dockerRunUserShellFragment() {
+  const explicit = process.env.DOCKER_RUN_USER?.trim();
+  if (explicit) {
+    if (!/^\d+:\d+$/.test(explicit)) {
+      throw new Error(
+        `Invalid DOCKER_RUN_USER="${explicit}". Use numeric uid:gid only (e.g. 1000:1000).`
+      );
+    }
+    return `--user ${explicit}`;
+  }
+  if (typeof process.getuid === 'function' && typeof process.getgid === 'function') {
+    return `--user ${process.getuid()}:${process.getgid()}`;
+  }
+  return '';
+}
 
 /**
  * Execute a mapping job
@@ -338,11 +366,14 @@ async function processBenchmark(jobDir, jobId, benchmark, archYamlPath) {
   // This copies once per run and lets us bind-mount the entire benchmark folder.
   const seedCommand = [
     'docker run --rm',
+    dockerRunUserShellFragment(),
     `-v "${absoluteBenchmarkDir}:/workspace"`,
     DOCKER_IMAGE,
     'bash -lc',
     `"shopt -s dotglob && cp -r ${benchmarkTestDir}/* /workspace/"`,
-  ].join(' ');
+  ]
+    .filter(Boolean)
+    .join(' ');
   await execAsync(seedCommand);
 
   // Patch seeded test files to use architecture-agnostic FileCheck directives.
@@ -365,14 +396,17 @@ async function processBenchmark(jobDir, jobId, benchmark, archYamlPath) {
   const dockerCommand = [
     'docker run',
     '--rm',
+    dockerRunUserShellFragment(),
     `--name ${containerName}`,
     `-v "${absoluteBenchmarkDir}:${benchmarkTestDir}"`,
-    `-v "${absoluteJobDir}/architecture.yaml:${DOCKER_ARCH_SPEC_PATH}:ro"`,
+    `-v "${absoluteJobDir}/architecture.yaml:${DOCKER_ARCH_SPEC_PATH}:ro"`, // overwrite the architecture.yaml in the container
     '-w',
     benchmarkTestDir,
     DOCKER_IMAGE,
     `${DOCKER_LLVM_LIT_PATH} -v ${testFilePath}`
-  ].join(' ');
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   console.log(`    Running: llvm-lit ${testFilePath}`);
 
@@ -749,7 +783,7 @@ import os
 # Add the parent of VectorCGRA to the path so 'import VectorCGRA' resolves correctly
 sys.path.insert(0, '/cgra')
 
-from VectorCGRA.multi_cgra.test.MeshMultiCgraTemplateRTL_test import test_mesh_multi_cgra_universal, test_simplified_multi_cgra
+from VectorCGRA.multi_cgra.test.MeshMultiCgraTemplateRTL_test import test_mesh_multi_hetero_cgra, test_simplified_multi_cgra
 
 def main():
     arch_yaml_path = '${archYamlInContainer}'
@@ -770,10 +804,10 @@ def main():
     success = True
     
     try:
-        test_mesh_multi_cgra_universal(cmdline_opts, arch_yaml_path)
-        print("SUCCESS: test_mesh_multi_cgra_universal completed")
+        test_mesh_multi_hetero_cgra(cmdline_opts, arch_yaml_path)
+        print("SUCCESS: test_mesh_multi_hetero_cgra completed")
     except Exception as e:
-        print(f"FAILED: test_mesh_multi_cgra_universal failed: {e}")
+        print(f"FAILED: test_mesh_multi_hetero_cgra failed: {e}")
         import traceback
         traceback.print_exc()
         success = False
@@ -821,13 +855,16 @@ if __name__ == '__main__':
 
   const dockerCommand = [
     'docker run --rm',
+    dockerRunUserShellFragment(),
     `-v "${absoluteArchYamlPath}:${archYamlInContainer}"`,
     `-v "${absoluteVerilogDir}:${verilogOutputDir}"`,
     `-v "${absolutePythonWrapper}:/tmp/run_verilog_gen.py"`,
     `-w /cgra`,
     DOCKER_IMAGE,
     'python3 /tmp/run_verilog_gen.py'
-  ].join(' ');
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   console.log(`  Running VectorCGRA test in Docker...`);
 
@@ -977,159 +1014,3 @@ function parsePytestErrors(output) {
   return output.slice(-1000);
 }
 
-/**
- * Convert architecture JSON to VectorCGRA-compatible YAML format
- * This ensures the YAML matches VectorCGRA's expected schema
- */
-function convertArchitectureToVectorCGRAYaml(architectureData) {
-  // architectureData is project.data = { version, architecture: { CGRAs, multiCgraRows, ... } }
-  // The frontend stores architecture with camelCase fields from handleApplyAIConfig.
-  const arch = architectureData.architecture || architectureData;
-
-  // ── Multi-CGRA dimensions ────────────────────────────────────────────────
-  // Frontend stores: arch.multiCgraRows / arch.multiCgraColumns (from handleApplyAIConfig)
-  let multiRows = arch.multiCgraRows
-    ?? arch.multi_cgra_defaults?.rows
-    ?? 1;
-  let multiCols = arch.multiCgraColumns
-    ?? arch.multi_cgra_defaults?.columns
-    ?? 1;
-
-  // VectorCGRA ArchParser requires: cgra_rows <= cgra_columns AND num_cgras is power-of-2
-  // Enforce rows <= columns by swapping if needed
-  if (multiRows > multiCols) {
-    [multiRows, multiCols] = [multiCols, multiRows];
-  }
-  // Round total CGRAs up to the nearest power-of-2
-  let numCgras = multiRows * multiCols;
-  if (numCgras > 0 && (numCgras & (numCgras - 1)) !== 0) {
-    // next power of 2
-    numCgras = 1 << Math.ceil(Math.log2(numCgras));
-    multiCols = numCgras / multiRows;
-  }
-
-  // The test harness (MeshMultiCgraTemplateRTL_test.py) hard-codes dst_cgra_id = 2,
-  // which requires CgraIdType = mk_bits(clog2(num_cgras)) to be at least Bits2
-  // (i.e. num_cgras >= 4). Enforce a minimum 2×2 multi-CGRA grid.
-  if (multiRows * multiCols < 4) {
-    multiRows = 2;
-    multiCols = 2;
-  }
-
-  // ── Per-CGRA dimensions (from the first CGRA in the array) ──────────────
-  const firstCgra = (arch.CGRAs || [])[0] || {};
-  // VectorCGRA's Verilator compilation becomes OOM-fatal for per-CGRA sizes > 2×2.
-  // The reference arch.yaml (and all passing tests) use 2×2 per-CGRA tiles.
-  // A 4×4 per-CGRA grid produces ~16× more RTL, causing g++ (cc1plus) to be
-  // killed by the Linux OOM killer during Verilated shared-library compilation.
-  // Cap at 2 to match the only tested/supported Verilator compilation size.
-  const MAX_PER_CGRA_TILES = 2;
-  const rawPerRows = firstCgra.perCgraRows ?? arch.cgra_defaults?.rows ?? 4;
-  const rawPerCols = firstCgra.perCgraColumns ?? arch.cgra_defaults?.columns ?? 4;
-  const perRows = Math.min(rawPerRows, MAX_PER_CGRA_TILES);
-  const perCols = Math.min(rawPerCols, MAX_PER_CGRA_TILES);
-  if (rawPerRows > MAX_PER_CGRA_TILES || rawPerCols > MAX_PER_CGRA_TILES) {
-    console.log(`  ⚠ Per-CGRA size clamped from ${rawPerRows}×${rawPerCols} to ${perRows}×${perCols} for SVerilog generation (Verilator OOM limit)`);
-  }
-  // configMemSize MUST be 16 — the test (MeshMultiCgraTemplateRTL_test.py) hardcodes
-  // ctrl_mem_size = 16 when creating all payload types (CtrlAddrType = mk_bits(clog2(16)) = Bits4).
-  // id2ctrlMemSize_map in the test is read from our YAML and passed to TileRTL, which creates
-  // ctrl_mem with clog2(configMemSize) address bits. Both must match → configMemSize must be 16.
-  const configMemSize = 16;
-
-  // ── Tile FU types ────────────────────────────────────────────────────────
-  // The frontend stores FU enablement as tileFunctionalUnits: { alu: true, mul: false, ... }
-  // VectorCGRA's fu_map uses different names — notably 'add' instead of 'alu'.
-  // We translate frontend FU names to VectorCGRA fu_map keys and filter out unsupported ones.
-  //
-  // VectorCGRA fu_map valid keys (from CgraTemplateRTL.py):
-  //   add, mul, div, fadd, fmul, fdiv, logic, cmp, sel, type_conv, vfmul,
-  //   fadd_fadd, fmul_fadd, grant, loop_control, phi, constant, mem, return,
-  //   mem_indexed, alloca, shift
-  const FRONTEND_TO_VECTORCGRA_FU = {
-    alu: 'add',          // frontend 'alu' (add/sub) → VectorCGRA 'add' (AdderRTL)
-    mul: 'mul',
-    div: 'div',
-    shift: 'shift',
-    logic: 'logic',
-    cmp: 'cmp',
-    sel: 'sel',
-    fadd: 'fadd',
-    fmul: 'fmul',
-    fdiv: 'fdiv',
-    fmul_fadd: 'fmul_fadd',
-    fadd_fadd: 'fadd_fadd',
-    mem: 'mem',
-    mem_indexed: 'mem_indexed',
-    alloca: 'alloca',
-    type_conv: 'type_conv',
-    constant: 'constant',
-    phi: 'phi',
-    return: 'return',
-    loop_control: 'loop_control',
-    grant: 'grant',
-    vfmul: 'vfmul',
-    // mac, gep, memset, branch, data_mov, ctrl_mov, reserve, data, vadd, vmul, vector
-    // are not in VectorCGRA's fu_map — omit them
-  };
-
-  let fuTypes;
-  const firstPe = firstCgra.PEs?.[0];
-  if (firstPe?.tileFunctionalUnits && typeof firstPe.tileFunctionalUnits === 'object') {
-    const translated = new Set();
-    for (const [fu, enabled] of Object.entries(firstPe.tileFunctionalUnits)) {
-      if (enabled && FRONTEND_TO_VECTORCGRA_FU[fu]) {
-        translated.add(FRONTEND_TO_VECTORCGRA_FU[fu]);
-      }
-    }
-    fuTypes = Array.from(translated);
-  }
-  if (!fuTypes || fuTypes.length === 0) {
-    // Default: full VectorCGRA-compatible FU set (matches reference arch.yaml exactly)
-    fuTypes = ['add', 'mul', 'div', 'fadd', 'fmul', 'fdiv', 'logic', 'cmp', 'sel',
-               'type_conv', 'vfmul', 'fadd_fadd', 'fmul_fadd', 'grant', 'loop_control',
-               'phi', 'constant', 'mem', 'return', 'mem_indexed', 'alloca', 'shift'];
-  }
-
-  // ── Build VectorCGRA-compatible YAML structure ───────────────────────────
-  const vectorCgraYaml = {
-    architecture: {
-      name: 'NeuraMultiCgra',
-      version: '1.0'
-    },
-    multi_cgra_defaults: {
-      base_topology: arch.multi_cgra_defaults?.base_topology || 'mesh',
-      rows: multiRows,
-      columns: multiCols,
-      memory: {
-        capacity: arch.multi_cgra_defaults?.memory?.capacity || 256,
-        'data bitwidth': arch.multi_cgra_defaults?.memory?.['data bitwidth'] || 64,
-        'vector lanes': arch.multi_cgra_defaults?.memory?.['vector lanes'] || 1
-      }
-    },
-    cgra_defaults: {
-      rows: perRows,
-      columns: perCols,
-      configMemSize,
-      'per bank sram': firstCgra.sramBanks ?? arch.cgra_defaults?.['per bank sram'] ?? 8
-    },
-    tile_defaults: {
-      num_registers: arch.tile_defaults?.num_registers || 16,
-      fu_types: fuTypes
-    }
-  };
-
-  // Add overrides if present
-  if (arch.link_overrides?.length > 0) {
-    vectorCgraYaml.link_overrides = arch.link_overrides;
-  }
-  if (arch.tile_overrides?.length > 0) {
-    vectorCgraYaml.tile_overrides = arch.tile_overrides;
-  }
-
-  return yaml.dump(vectorCgraYaml, {
-    sortKeys: false,
-    defaultFlowStyle: false,
-    lineWidth: -1
-  });
-}
