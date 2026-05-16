@@ -191,8 +191,7 @@ export function convertArchitectureToVectorCGRAYamlObject(architectureData) {
   const vectorCgraYaml = {
     architecture: {
       name: 'NeuraMultiCgra',
-      version: '1.0',
-      checkpoint: 'pbk'
+      version: '1.0'
     },
     multi_cgra_defaults: {
       base_topology: arch.multi_cgra_defaults?.base_topology || 'mesh',
