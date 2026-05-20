@@ -14,11 +14,53 @@ import { executeLayoutJob } from './layoutExecutor.js';
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  * @param {string} runnerId
  * @param {string|null} targetProjectId - Optional project filter for test isolation
+ * @param {number} leaseTimeoutSeconds - Time after which a running job is considered stale
  * @returns {Promise<object|null>} The claimed job or null if no jobs available
  */
-export async function claimNextJob(supabase, runnerId, targetProjectId = null) {
+export async function claimNextJob(
+  supabase,
+  runnerId,
+  targetProjectId = null,
+  leaseTimeoutSeconds = 300
+) {
+  const safeLeaseSeconds = Number.isFinite(leaseTimeoutSeconds)
+    ? Math.max(30, Math.floor(leaseTimeoutSeconds))
+    : 300
+  const staleCutoffIso = new Date(Date.now() - safeLeaseSeconds * 1000).toISOString()
+
   // Test-only path: scope claims to one project to avoid queue interference
   if (targetProjectId) {
+    // Requeue stale running jobs for this project in test mode (without RPC path).
+    const staleUpdate = {
+      status: 'queued',
+      started_at: null,
+      heartbeat_at: null,
+      updated_at: new Date().toISOString()
+    }
+
+    const { error: staleHeartbeatError } = await supabase
+      .from('jobs')
+      .update(staleUpdate)
+      .eq('status', 'running')
+      .eq('project_id', targetProjectId)
+      .lt('heartbeat_at', staleCutoffIso)
+
+    if (staleHeartbeatError) {
+      throw staleHeartbeatError
+    }
+
+    const { error: staleNoHeartbeatError } = await supabase
+      .from('jobs')
+      .update(staleUpdate)
+      .eq('status', 'running')
+      .eq('project_id', targetProjectId)
+      .is('heartbeat_at', null)
+      .lt('started_at', staleCutoffIso)
+
+    if (staleNoHeartbeatError) {
+      throw staleNoHeartbeatError
+    }
+
     const { data: queuedJob, error: selectError } = await supabase
       .from('jobs')
       .select('*')
@@ -45,6 +87,7 @@ export async function claimNextJob(supabase, runnerId, targetProjectId = null) {
       .update({
         status: 'running',
         started_at: new Date().toISOString(),
+        heartbeat_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         info: nextInfo
       })
@@ -61,7 +104,8 @@ export async function claimNextJob(supabase, runnerId, targetProjectId = null) {
   }
 
   const { data, error } = await supabase.rpc('claim_next_job', {
-    p_runner_id: runnerId
+    p_runner_id: runnerId,
+    p_lease_timeout_seconds: safeLeaseSeconds
   })
 
   if (error) {
@@ -70,6 +114,26 @@ export async function claimNextJob(supabase, runnerId, targetProjectId = null) {
 
   // RPC returns an array (SETOF), return first item or null
   return data && data.length > 0 ? data[0] : null
+}
+
+/**
+ * Update job heartbeat for an actively running job.
+ *
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {string} jobId
+ */
+export async function touchJobHeartbeat(supabase, jobId) {
+  const now = new Date().toISOString()
+  const { error } = await supabase
+    .from('jobs')
+    .update({
+      heartbeat_at: now,
+      updated_at: now
+    })
+    .eq('id', jobId)
+    .eq('status', 'running')
+
+  if (error) throw error
 }
 
 /**
@@ -85,6 +149,7 @@ export async function completeJob(supabase, jobId, resultInfo = {}) {
     .update({
       status: 'success',
       completed_at: new Date().toISOString(),
+      heartbeat_at: null,
       info: resultInfo
     })
     .eq('id', jobId)
@@ -103,6 +168,7 @@ export async function failJob(supabase, jobId, errorMessage, info) {
   const update = {
     status: 'failed',
     completed_at: new Date().toISOString(),
+    heartbeat_at: null,
     error_message: errorMessage
   }
 

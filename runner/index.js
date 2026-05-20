@@ -7,7 +7,14 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { config } from 'dotenv'
-import { claimNextJob, completeJob, failJob, executeJobFake, executeJob } from './jobProcessor.js'
+import {
+  claimNextJob,
+  completeJob,
+  failJob,
+  executeJobFake,
+  executeJob,
+  touchJobHeartbeat
+} from './jobProcessor.js'
 
 // Load environment variables
 config()
@@ -19,6 +26,8 @@ const RUNNER_ID = process.env.RUNNER_ID || `runner-${Date.now()}`
 const POLL_INTERVAL_MS = parseInt(process.env.POLL_INTERVAL_MS || '5000', 10)
 const RUNNER_MODE = process.env.RUNNER_MODE || 'fake' // 'fake' or 'real'
 const RUNNER_PROJECT_ID = process.env.RUNNER_PROJECT_ID || null
+const HEARTBEAT_INTERVAL_MS = parseInt(process.env.HEARTBEAT_INTERVAL_MS || '10000', 10)
+const JOB_LEASE_TIMEOUT_SECONDS = parseInt(process.env.JOB_LEASE_TIMEOUT_SECONDS || '300', 10)
 
 // Validate required environment variables
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -46,6 +55,8 @@ async function runLoop() {
   console.log(`Runner ${RUNNER_ID} started`)
   console.log(`Mode: ${RUNNER_MODE}`)
   console.log(`Polling interval: ${POLL_INTERVAL_MS}ms`)
+  console.log(`Heartbeat interval: ${HEARTBEAT_INTERVAL_MS}ms`)
+  console.log(`Job lease timeout: ${JOB_LEASE_TIMEOUT_SECONDS}s`)
   if (RUNNER_PROJECT_ID) {
     console.log(`Project scope: ${RUNNER_PROJECT_ID}`)
   }
@@ -54,7 +65,12 @@ async function runLoop() {
   while (isRunning) {
     try {
       // Try to claim a job
-      const job = await claimNextJob(supabase, RUNNER_ID, RUNNER_PROJECT_ID)
+      const job = await claimNextJob(
+        supabase,
+        RUNNER_ID,
+        RUNNER_PROJECT_ID,
+        JOB_LEASE_TIMEOUT_SECONDS
+      )
 
       if (job) {
         currentJob = job
@@ -64,7 +80,17 @@ async function runLoop() {
         console.log(`  Project: ${job.project_id}`)
         console.log(`  User: ${job.user_id}`)
 
+        let heartbeatTimer
         try {
+          // Send heartbeat immediately, then periodically while this job runs.
+          await touchJobHeartbeat(supabase, job.id)
+          heartbeatTimer = setInterval(() => {
+            touchJobHeartbeat(supabase, job.id).catch((heartbeatError) => {
+              console.error(`  ⚠ Heartbeat update failed: ${heartbeatError.message}`)
+            })
+          }, HEARTBEAT_INTERVAL_MS)
+          heartbeatTimer.unref?.()
+
           // Execute the job (fake or real based on mode)
           const resultInfo = RUNNER_MODE === 'real'
             ? await executeJob(job)
@@ -82,6 +108,10 @@ async function runLoop() {
           // Use execError.jobInfo which contains job_package from the finally block
           await failJob(supabase, job.id, execError.message, execError.jobInfo || {})
           console.log('')
+        } finally {
+          if (heartbeatTimer) {
+            clearInterval(heartbeatTimer)
+          }
         }
 
         currentJob = null
